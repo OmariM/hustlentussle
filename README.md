@@ -1,5 +1,6 @@
 sample output (starts from round 4):
 
+```
 ======= ROUND 4 =======
 Billy(2) & Val(0) vs Gustavo(0) & Christine(1)
 ==== CONTESTANT JUDGES ======
@@ -951,3 +952,4 @@ Follow votes:
         Nonoko: ['*Kenji*', '*Diane*', 'Gustavo', 'Faustine', 'Reina']
 Guest Judges: ['Kenji', 'Diane']
 Contestant Judges: ['Gustavo', 'Faustine', 'Reina']
+```
