@@ -1,4 +1,5 @@
 import random
+from re import I
 
 """
 ok so here's what i need
@@ -25,8 +26,9 @@ general order:
         2.2 get contestant judges
 
 Commonly used strings:
-Leads -- Kenji, Omari, Logan, Shige, Rob, Ian, Billy, Gustavo
+Leads -- Lesar, Omari, Logan, Shige, Rob, Ian, Billy, Gustavo
 Follows -- Faustine, Reina, Christine, Val, Tati, Dainty Disco, Nonoko, Emma
+Guest Judges -- Kenji, Diane
 
 """
 
@@ -73,9 +75,12 @@ class Game:
                 "Please enter the names of the follows separated by commas: "
             ).split(",")
         ]
-        self.guest_judges = input(
-            "Please enter the names of the guest judges separated by commas: "
-        ).split(",")
+        self.guest_judges = [
+            name.strip()
+            for name in input(
+                "Please enter the names of the guest judges separated by commas: "
+            ).split(",")
+        ]
         self.total_num_leads = len(self.leads)
         self.total_num_follows = len(self.follows)
         random.shuffle(self.leads)
@@ -97,27 +102,9 @@ class Game:
         random.shuffle(eligible_judges)
         return eligible_judges[:num]
 
-    def finish_round(self):
-        winning_lead_num = input(
-            f"Which lead did you prefer?\n[1] {self.pair_1[0].name}\n[2] {self.pair_2[0].name}\n"
-        )
-        self.winning_lead = (
-            self.pair_1[0] if winning_lead_num == "1" else self.pair_2[0]
-        )
-        losing_lead = self.pair_1[0] if winning_lead_num == "2" else self.pair_2[0]
-        self.winning_lead.points += 1
-        self.leads.append(losing_lead)
-
-        winning_follow_num = input(
-            f"Which follow did you prefer?\n[1] {self.pair_1[1].name}\n[2] {self.pair_2[1].name}\n"
-        )
-        self.winning_follow = (
-            self.pair_1[1] if winning_follow_num == "1" else self.pair_2[1]
-        )
-        losing_follow = self.pair_1[1] if winning_follow_num == "2" else self.pair_2[1]
-        self.winning_follow.points += 1
-        self.follows.append(losing_follow)
-
+    def check_for_win(self):
+        if self.winning_lead == None or self.winning_follow == None:
+            return
         if self.winning_lead.points == self.total_num_leads - 1:
             if self.has_winning_lead is False:
                 print(f"{self.winning_lead.name} has won for the leads!")
@@ -141,11 +128,15 @@ class Game:
 
     def run(self):
         while self.state != 1:
-            self.finish_round()
+            self.judge_leads()
+            self.judge_follows()
+            self.check_for_win()
             self.next_round()
             print_game_state(self)
         print(3 * "\n")
         print("Game finished!")
+        if self.winning_lead == None or self.winning_follow == None:
+            return
         self.leads.append(self.winning_lead)
         self.follows.append(self.winning_follow)
         print(3 * "\n")
@@ -154,6 +145,71 @@ class Game:
         self.follows = sorted(self.follows, key=lambda c: c.points, reverse=True)
         for i in range(len(self.leads)):
             print(self.leads[i], self.follows[i])
+
+    def judge_round(self, contestant_1, contestant_2, lead_or_follow):
+        contestant_1_name = contestant_1.name
+        contestant_2_name = contestant_2.name
+        contestant_1_score = 0
+        contestant_2_score = 0
+        for guest_judge in self.guest_judges:
+            guest_judge_decision = int(
+                input(
+                    f"\n{guest_judge}, select your vote for the {lead_or_follow}s:\n[1] {contestant_1_name}\n[2] {contestant_2_name}\n[3] Tie ('open hands')\n[4] No contest ('crossed hands')\n"
+                )
+            )
+            if guest_judge_decision == 1:
+                contestant_1_score += 2
+            elif guest_judge_decision == 2:
+                contestant_2_score += 2
+            elif guest_judge_decision == 3:
+                contestant_1_score += 1
+                contestant_2_score += 1
+            elif guest_judge_decision == 4:
+                pass
+        for contestant_judge in self.contestant_judges:
+            contestant_judge_decision = int(
+                input(
+                    f"\n{contestant_judge}, select your vote the {lead_or_follow}s:\n[1] {contestant_1_name}\n[2] {contestant_2_name}\n"
+                )
+            )
+            if contestant_judge_decision == 1:
+                contestant_1_score += 1
+            elif contestant_judge_decision == 2:
+                contestant_2_score += 1
+
+        # Currently we don't handle ties
+        if lead_or_follow == "lead":
+            losing_lead = None
+            if contestant_1_score >= contestant_2_score:
+                self.winning_lead = contestant_1
+                losing_lead = contestant_2
+            else:
+                self.winning_lead = contestant_2
+                losing_lead = contestant_1
+            print(
+                f"{self.winning_lead.name} beat {losing_lead.name}, {max(contestant_1_score, contestant_2_score)}-{min(contestant_1_score, contestant_2_score)}"
+            )
+            self.winning_lead.points += 1
+            self.leads.append(losing_lead)
+        elif lead_or_follow == "follow":
+            losing_follow = None
+            if contestant_1_score >= contestant_2_score:
+                self.winning_follow = contestant_1
+                losing_follow = contestant_2
+            else:
+                self.winning_follow = contestant_2
+                losing_follow = contestant_1
+            print(
+                f"{self.winning_follow.name} beat {losing_follow}, {max(contestant_1_score, contestant_2_score)}-{min(contestant_1_score, contestant_2_score)}"
+            )
+            self.winning_follow.points += 1
+            self.follows.append(losing_follow)
+
+    def judge_leads(self):
+        self.judge_round(self.pair_1[0], self.pair_2[0], "lead")
+
+    def judge_follows(self):
+        self.judge_round(self.pair_1[1], self.pair_2[1], "follow")
 
 
 ### DEBUGGING METHODS ###
