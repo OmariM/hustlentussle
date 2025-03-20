@@ -52,23 +52,8 @@ class Round:
 class Game:
     state = 0
     round_num = 1
-    leads = [
-        Contestant("Omari"),
-        Contestant("Logan"),
-        Contestant("Danny"),
-        Contestant("Shige"),
-        Contestant("Kenji"),
-    ]
-    follows = [
-        Contestant("Christine"),
-        Contestant("Val"),
-        Contestant("Nonoko"),
-        Contestant("Reina"),
-        Contestant("Shiki"),
-    ]
     current_round = None
     rounds = []
-    guest_judges = ["Gil"]
     contestant_judges = []
     winning_lead = None
     winning_follow = None
@@ -88,6 +73,9 @@ class Game:
                 "Please enter the names of the follows separated by commas: "
             ).split(",")
         ]
+        self.guest_judges = input(
+            "Please enter the names of the guest judges separated by commas: "
+        ).split(",")
         self.total_num_leads = len(self.leads)
         self.total_num_follows = len(self.follows)
         random.shuffle(self.leads)
