@@ -43,10 +43,12 @@ class Contestant:
 
 
 class Round:
-    def __init__(self, round_num, leads, follows, judges, contestant_judges) -> None:
+    def __init__(
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges
+    ) -> None:
         self.round_num = round_num
-        self.leads = leads
-        self.follows = follows
+        self.lead_votes = lead_votes
+        self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
 
@@ -57,6 +59,7 @@ class Game:
     current_round = None
     rounds = []
     contestant_judges = []
+    num_contestant_judges = 3
     winning_lead = None
     winning_follow = None
     has_winning_lead = False
@@ -87,20 +90,20 @@ class Game:
         random.shuffle(self.follows)
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.follows.pop(0))
-        self.contestant_judges = self.get_contestant_judges(2)
+        self.contestant_judges = self.get_contestant_judges()
         self.current_round = Round(
             self.round_num,
             {self.pair_1[0]: [], self.pair_2[0]: []},
             {self.pair_1[1]: [], self.pair_2[1]: []},
             self.guest_judges,
-            self.contestant_judges,
+            [judge.name for judge in self.contestant_judges],
         )
         print_game_state(self)
 
-    def get_contestant_judges(self, num):
+    def get_contestant_judges(self):
         eligible_judges = self.leads + self.follows
         random.shuffle(eligible_judges)
-        return eligible_judges[:num]
+        return eligible_judges[: self.num_contestant_judges]
 
     def check_for_win(self):
         if self.winning_lead == None or self.winning_follow == None:
@@ -124,12 +127,21 @@ class Game:
             return
         self.pair_1 = (self.winning_lead, self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.winning_follow)
-        self.contestant_judges = self.get_contestant_judges(2)
+        self.contestant_judges = self.get_contestant_judges()
+        self.rounds.append(self.current_round)
+        self.current_round = Round(
+            self.round_num,
+            {self.pair_1[0]: [], self.pair_2[0]: []},
+            {self.pair_1[1]: [], self.pair_2[1]: []},
+            self.guest_judges,
+            [judge.name for judge in self.contestant_judges],
+        )
 
     def run(self):
         while self.state != 1:
             self.judge_leads()
             self.judge_follows()
+            print_round(self.current_round)
             self.check_for_win()
             self.next_round()
             print_game_state(self)
@@ -145,6 +157,10 @@ class Game:
         self.follows = sorted(self.follows, key=lambda c: c.points, reverse=True)
         for i in range(len(self.leads)):
             print(self.leads[i], self.follows[i])
+        print(3 * "\n")
+        print(4 * "=" + " Detailed Results " + 4 * "=")
+        for round in self.rounds:
+            print_round(round)
 
     def judge_round(self, contestant_1, contestant_2, lead_or_follow):
         contestant_1_name = contestant_1.name
@@ -159,9 +175,39 @@ class Game:
             )
             if guest_judge_decision == 1:
                 contestant_1_score += 2
+                if lead_or_follow == "lead":
+                    self.current_round.lead_votes[contestant_1].append(
+                        f"*{guest_judge}*"
+                    )
+                else:
+                    self.current_round.follow_votes[contestant_1].append(
+                        f"*{guest_judge}*"
+                    )
             elif guest_judge_decision == 2:
+                if lead_or_follow == "lead":
+                    self.current_round.lead_votes[contestant_2].append(
+                        f"*{guest_judge}*"
+                    )
+                else:
+                    self.current_round.follow_votes[contestant_2].append(
+                        f"*{guest_judge}*"
+                    )
                 contestant_2_score += 2
             elif guest_judge_decision == 3:
+                if lead_or_follow == "lead":
+                    self.current_round.lead_votes[contestant_1].append(
+                        f"*{guest_judge}*"
+                    )
+                    self.current_round.lead_votes[contestant_2].append(
+                        f"*{guest_judge}*"
+                    )
+                else:
+                    self.current_round.follow_votes[contestant_1].append(
+                        f"*{guest_judge}*"
+                    )
+                    self.current_round.follow_votes[contestant_2].append(
+                        f"*{guest_judge}*"
+                    )
                 contestant_1_score += 1
                 contestant_2_score += 1
             elif guest_judge_decision == 4:
@@ -169,13 +215,29 @@ class Game:
         for contestant_judge in self.contestant_judges:
             contestant_judge_decision = int(
                 input(
-                    f"\n{contestant_judge}, select your vote the {lead_or_follow}s:\n[1] {contestant_1_name}\n[2] {contestant_2_name}\n"
+                    f"\n{contestant_judge.name}, select your vote the {lead_or_follow}s:\n[1] {contestant_1_name}\n[2] {contestant_2_name}\n"
                 )
             )
             if contestant_judge_decision == 1:
                 contestant_1_score += 1
+                if lead_or_follow == "lead":
+                    self.current_round.lead_votes[contestant_1].append(
+                        f"{contestant_judge.name}"
+                    )
+                else:
+                    self.current_round.follow_votes[contestant_1].append(
+                        f"{contestant_judge.name}"
+                    )
             elif contestant_judge_decision == 2:
                 contestant_2_score += 1
+                if lead_or_follow == "lead":
+                    self.current_round.lead_votes[contestant_2].append(
+                        f"{contestant_judge.name}"
+                    )
+                else:
+                    self.current_round.follow_votes[contestant_2].append(
+                        f"{contestant_judge.name}"
+                    )
 
         # Currently we don't handle ties
         if lead_or_follow == "lead":
@@ -232,6 +294,22 @@ def print_game_state(game):
     print("========== FOLLOWS ==========")
     print(", ".join(get_contestant_names(game.follows)))
     print("=============================")
+
+
+def print_round(round):
+    print(3 * "\n")
+    print(f"Round {round.round_num}")
+    print(f"Lead votes:")
+    print_votes_string(round.lead_votes)
+    print(f"Follow votes:")
+    print_votes_string(round.follow_votes)
+    print(f"Guest Judges: {round.judges}")
+    print(f"Contestant Judges: {round.contestant_judges}")
+
+
+def print_votes_string(contestant_votes):
+    for contestant, votes in contestant_votes.items():
+        print(f"\t{contestant.name}: {str(votes)}")
 
 
 ######################
