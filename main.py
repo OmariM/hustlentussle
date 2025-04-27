@@ -86,6 +86,22 @@ if __name__ == "__main__":
             print(Fore.YELLOW + msg)
         game.next_round()
 
+    # Final Results - Separate Leaderboards
     print_header("FINAL RESULTS")
-    final = game.finalize_results()
-    # display leaderboard...
+    leads_sorted, follows_sorted = game.finalize_results()
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    print("\n" + "🟦" * 20)
+    print(f"{Fore.BLUE}Top Leads:{Style.RESET_ALL}")
+    print("🟦" * 20)
+    for idx, lead in enumerate(leads_sorted):
+        medal = medals[idx] if idx < len(medals) else ""
+        print(f"{medal} {Fore.GREEN}{lead.name} ({lead.points})")
+
+    print("\n" + "🟪" * 20)
+    print(f"{Fore.MAGENTA}Top Follows:{Style.RESET_ALL}")
+    print("🟪" * 20)
+    for idx, follow in enumerate(follows_sorted):
+        medal = medals[idx] if idx < len(medals) else ""
+        print(f"{medal} {Fore.CYAN}{follow.name} ({follow.points})")

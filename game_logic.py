@@ -72,11 +72,6 @@ class Game:
         return eligible[: self.num_contestant_judges]
 
     def next_round(self):
-        """
-        Advance to the next round, pairing leads and follows appropriately.
-        Winners from previous judging do not face each other.
-        Tie pairs continue with new opponents.
-        """
         self.round_num += 1
         self.rounds.append(self.current_round)
 
@@ -85,7 +80,6 @@ class Game:
             lead1, lead2 = self.tie_lead_pair
             self.tie_lead_pair = None
         else:
-            # Winning lead keeps competing, and a fresh lead joins second pair
             lead1 = self.winning_lead
             lead2 = self.leads.pop(0)
 
@@ -94,7 +88,6 @@ class Game:
             follow1, follow2 = self.tie_follow_pair
             self.tie_follow_pair = None
         else:
-            # Fresh follow for first pair, winning follow for second pair
             follow1 = self.follows.pop(0)
             follow2 = self.winning_follow
 
@@ -217,10 +210,15 @@ class Game:
         return self.state == 1
 
     def finalize_results(self):
-        if self.winning_lead not in self.leads:
+        # Append final winners if missing
+        if self.winning_lead and self.winning_lead not in self.leads:
             self.leads.append(self.winning_lead)
-        if self.winning_follow not in self.follows:
+        if self.winning_follow and self.winning_follow not in self.follows:
             self.follows.append(self.winning_follow)
+
+        # Sort separately by points
         self.leads.sort(key=lambda c: c.points, reverse=True)
         self.follows.sort(key=lambda c: c.points, reverse=True)
-        return list(zip(self.leads, self.follows))
+
+        # Return two separate leaderboards
+        return self.leads, self.follows
