@@ -4,7 +4,18 @@ from main import Game
 def simulate_round(game, pair, role, votes):
     print(f"\nSimulating {role.capitalize()} Round:")
     result = game.judge_round(pair[0], pair[1], role, votes)
-    print("Result:", result)
+
+    winner = result["winner"]
+    guest_votes = result["guest_votes"]
+    contestant_votes = result["contestant_votes"]
+
+    print(f"Winner: {winner}")
+    print(
+        f"Guest Judges who voted for {winner}: {', '.join(guest_votes) if guest_votes else 'None'}"
+    )
+    print(
+        f"Contestant Judges who voted for {winner}: {', '.join(contestant_votes) if contestant_votes else 'None'}"
+    )
 
 
 def run_test_cases():

@@ -1,5 +1,6 @@
 import random
 
+
 class Contestant:
     def __init__(self, name) -> None:
         self.name = name
@@ -8,13 +9,17 @@ class Contestant:
     def __str__(self) -> str:
         return f"{self.name} ({self.points})"
 
+
 class Round:
-    def __init__(self, round_num, lead_votes, follow_votes, judges, contestant_judges) -> None:
+    def __init__(
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges
+    ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
         self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
+
 
 class Game:
     state = 0
@@ -49,24 +54,30 @@ class Game:
             {self.pair_1[0]: [], self.pair_2[0]: []},
             {self.pair_1[1]: [], self.pair_2[1]: []},
             self.guest_judges,
-            [judge.name for judge in self.contestant_judges]
+            [judge.name for judge in self.contestant_judges],
         )
 
     def get_contestant_judges(self):
         eligible = self.leads + self.follows
         random.shuffle(eligible)
-        return eligible[:self.num_contestant_judges]
+        return eligible[: self.num_contestant_judges]
 
     def check_for_win(self):
         if not self.winning_leads or not self.winning_follows:
             return None
 
         result = []
-        if self.winning_leads[0].points == self.total_num_leads - 1 and not self.has_winning_lead:
+        if (
+            self.winning_leads[0].points == self.total_num_leads - 1
+            and not self.has_winning_lead
+        ):
             self.has_winning_lead = True
             result.append(f"{self.winning_leads[0].name} has won for the leads!")
 
-        if self.winning_follows[0].points == self.total_num_follows - 1 and not self.has_winning_follow:
+        if (
+            self.winning_follows[0].points == self.total_num_follows - 1
+            and not self.has_winning_follow
+        ):
             self.has_winning_follow = True
             result.append(f"{self.winning_follows[0].name} has won for the follows!")
 
@@ -91,11 +102,14 @@ class Game:
             {self.pair_1[0]: [], self.pair_2[0]: []},
             {self.pair_1[1]: [], self.pair_2[1]: []},
             self.guest_judges,
-            [judge.name for judge in self.contestant_judges]
+            [judge.name for judge in self.contestant_judges],
         )
 
     def judge_round(self, contestant_1, contestant_2, role, votes):
-        guest_votes = [decision for voter, decision in votes if voter in self.guest_judges]
+        c1_score, c2_score = 0, 0
+        guest_votes = [
+            decision for voter, decision in votes if voter in self.guest_judges
+        ]
 
         if guest_votes.count(3) == len(self.guest_judges):  # Tie condition
             contestant_1.points += 1
@@ -104,17 +118,20 @@ class Game:
                 self.winning_leads = [contestant_1, contestant_2]
             else:
                 self.winning_follows = [contestant_1, contestant_2]
-            return {"winner": f"Tie between {contestant_1.name} and {contestant_2.name}", "loser": None, "score": (1, 1)}
+            return {
+                "winner": f"Tie between {contestant_1.name} and {contestant_2.name}",
+                "guest_votes": [],
+                "contestant_votes": [],
+            }
 
         if guest_votes.count(4) == len(self.guest_judges):  # No Contest condition
             if role == "lead":
                 self.winning_leads = [self.leads.pop(0)]
             else:
                 self.winning_follows = [self.follows.pop(0)]
-            return {"winner": "No Contest", "loser": None, "score": (0, 0)}
+            return {"winner": "No Contest", "guest_votes": [], "contestant_votes": []}
 
         # Normal voting
-        c1_score, c2_score = 0, 0
         for voter, decision in votes:
             is_guest = voter in self.guest_judges
             if decision == 1:
@@ -125,9 +142,11 @@ class Game:
                 c1_score += 1
                 c2_score += 1
 
-        return self.process_results(contestant_1, contestant_2, c1_score, c2_score, role)
+        return self.process_results(
+            contestant_1, contestant_2, c1_score, c2_score, role, votes
+        )
 
-    def process_results(self, c1, c2, c1_score, c2_score, role):
+    def process_results(self, c1, c2, c1_score, c2_score, role, votes):
         if role == "lead":
             winner = c1 if c1_score >= c2_score else c2
             loser = c2 if c1_score >= c2_score else c1
@@ -141,10 +160,19 @@ class Game:
             self.follows.append(loser)
             winner.points += 1
 
+        guest_votes_for_winner = []
+        contestant_votes_for_winner = []
+        for voter, decision in votes:
+            if (decision == 1 and winner == c1) or (decision == 2 and winner == c2):
+                if voter in self.guest_judges:
+                    guest_votes_for_winner.append(voter)
+                else:
+                    contestant_votes_for_winner.append(voter)
+
         return {
             "winner": winner.name,
-            "loser": loser.name,
-            "score": (max(c1_score, c2_score), min(c1_score, c2_score))
+            "guest_votes": guest_votes_for_winner,
+            "contestant_votes": contestant_votes_for_winner,
         }
 
     def get_game_state(self):
