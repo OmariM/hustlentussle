@@ -1,9 +1,11 @@
 from main import Game
 
+
 def simulate_round(game, pair, role, votes):
     print(f"\nSimulating {role.capitalize()} Round:")
     result = game.judge_round(pair[0], pair[1], role, votes)
     print("Result:", result)
+
 
 def run_test_cases():
     # Setup basic game
@@ -32,6 +34,12 @@ def run_test_cases():
     # Test 4: All votes for contestant 1
     votes_sweep = [("Kenji", 1), ("Diane", 1), ("Reina", 1), ("Rob", 1)]
     simulate_round(game, follow_pair, "follow", votes_sweep)
+
+    # Test 5: Double Tie - Check both continue
+    votes_double_tie = [("Kenji", 3), ("Diane", 3), ("Reina", 1), ("Rob", 2)]
+    simulate_round(game, lead_pair, "lead", votes_double_tie)
+    print(f"Winning leads after tie: {[c.name for c in game.winning_leads]}")
+
 
 if __name__ == "__main__":
     run_test_cases()
