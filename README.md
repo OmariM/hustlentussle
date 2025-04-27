@@ -143,3 +143,42 @@ Top Follows:
 - Different scoring rules for large competitions.
 
 ---
+
+
+---
+
+# 🧪 Testing
+
+## Run Simulation Tests
+
+This project includes a test script to simulate different voting scenarios (Tie, No Contest, Normal Voting, Sweeps).
+
+To run it:
+
+```bash
+python test_simulation.py
+```
+
+You’ll see printed outputs like:
+
+```
+Simulating Lead Round:
+Result: {'winner': 'Logan and Rob', 'loser': None, 'score': (1, 1)}
+
+Simulating Follow Round:
+Result: {'winner': 'No Contest', 'loser': None, 'score': (0, 0)}
+
+Simulating Lead Round:
+Result: {'winner': 'Rob', 'loser': 'Logan', 'score': (4, 3)}
+
+Simulating Follow Round:
+Result: {'winner': 'Emma', 'loser': 'Tati', 'score': (6, 0)}
+```
+
+Each test covers:
+- Double Tie handling
+- Double No Contest handling
+- Normal voting logic
+- Unanimous wins
+
+✅ Perfect for validating the system behavior after any changes!

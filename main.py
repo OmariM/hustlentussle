@@ -46,6 +46,7 @@ if __name__ == "__main__":
         print(f"{Fore.BLUE}Matchup 2:{Style.RESET_ALL} {format_contestant_with_points(state['pair_2'][0], game.leads)} (Lead) & {format_contestant_with_points(state['pair_2'][1], game.follows)} (Follow)")
         print(f"{Fore.MAGENTA}Contestant Judges:{Style.RESET_ALL} {', '.join(state['contestant_judges'])}")
 
+        # Lead Voting
         votes = []
         print_header("Voting for Leads")
         for judge in game.guest_judges + state['contestant_judges']:
@@ -56,6 +57,7 @@ if __name__ == "__main__":
         result_leads = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
         print(Fore.GREEN + f"Winner: {result_leads['winner']} beat {result_leads['loser']} {result_leads['score'][0]}-{result_leads['score'][1]}")
 
+        # Follow Voting
         votes = []
         print_header("Voting for Follows")
         for judge in game.guest_judges + state['contestant_judges']:
@@ -76,23 +78,13 @@ if __name__ == "__main__":
     print_header("FINAL RESULTS")
     final_pairs = game.finalize_results()
 
-    sorted_leads = sorted([lead for lead, _ in final_pairs], key=lambda l: l.points, reverse=True)
-    sorted_follows = sorted([follow for _, follow in final_pairs], key=lambda f: f.points, reverse=True)
+    # Sort final pairs by combined points (highest first)
+    final_pairs.sort(key=lambda pair: (pair[0].points + pair[1].points), reverse=True)
 
     medals = ["🥇", "🥈", "🥉"]
 
-    print("\n" + "🟦" * 20)
-    print(f"{Fore.BLUE}Top Leads:{Style.RESET_ALL}")
-    print("🟦" * 20)
-    for idx, lead in enumerate(sorted_leads):
+    for idx, (lead, follow) in enumerate(final_pairs):
         medal = medals[idx] if idx < len(medals) else ""
-        print(f"{medal} {Fore.GREEN}{lead.name} ({lead.points})")
-
-    print("\n" + "🟪" * 20)
-    print(f"{Fore.MAGENTA}Top Follows:{Style.RESET_ALL}")
-    print("🟪" * 20)
-    for idx, follow in enumerate(sorted_follows):
-        medal = medals[idx] if idx < len(medals) else ""
-        print(f"{medal} {Fore.CYAN}{follow.name} ({follow.points})")
+        print(f"{medal} {Fore.GREEN}{lead.name} ({lead.points}) {Style.RESET_ALL}- {Fore.CYAN}{follow.name} ({follow.points})")
 
     print("\n" + Fore.MAGENTA + Style.BRIGHT + "===== Thank you for playing! =====")

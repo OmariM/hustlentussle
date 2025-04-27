@@ -8,7 +8,6 @@ class Contestant:
     def __str__(self) -> str:
         return f"{self.name} ({self.points})"
 
-
 class Round:
     def __init__(self, round_num, lead_votes, follow_votes, judges, contestant_judges) -> None:
         self.round_num = round_num
@@ -16,7 +15,6 @@ class Round:
         self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
-
 
 class Game:
     state = 0
@@ -97,8 +95,25 @@ class Game:
         )
 
     def judge_round(self, contestant_1, contestant_2, role, votes):
-        c1_score, c2_score = 0, 0
+        guest_votes = [decision for voter, decision in votes if voter in self.guest_judges]
 
+        if guest_votes.count(3) == len(self.guest_judges):
+            contestant_1.points += 1
+            contestant_2.points += 1
+            if role == "lead":
+                self.winning_lead = contestant_1
+            else:
+                self.winning_follow = contestant_2
+            return {"winner": contestant_1.name + " and " + contestant_2.name, "loser": None, "score": (1, 1)}
+
+        if guest_votes.count(4) == len(self.guest_judges):
+            if role == "lead":
+                self.winning_lead = self.leads.pop(0)
+            else:
+                self.winning_follow = self.follows.pop(0)
+            return {"winner": "No Contest", "loser": None, "score": (0, 0)}
+
+        c1_score, c2_score = 0, 0
         for voter, decision in votes:
             is_guest = voter in self.guest_judges
             star = is_guest
