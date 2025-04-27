@@ -127,8 +127,16 @@ class Game:
         # No Contest: both guest judges choose No Contest
         if guest_votes.count(4) == len(self.guest_judges):
             if role == "lead":
+                # Return previous leads to end of the queue
+                self.leads.append(contestant_1)
+                self.leads.append(contestant_2)
+                # Pick next lead for continuation
                 self.winning_lead = self.leads.pop(0)
             else:
+                # Return previous follows to end of the queue
+                self.follows.append(contestant_1)
+                self.follows.append(contestant_2)
+                # Pick next follow for continuation
                 self.winning_follow = self.follows.pop(0)
             return {"winner": "No Contest", "guest_votes": [], "contestant_votes": []}
 
