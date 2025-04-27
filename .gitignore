@@ -1,29 +1,7 @@
-# Ignore Python cache
 __pycache__/
 *.pyc
 *.pyo
-
-# Ignore virtual environment
 venv/
-
-# Ignore VSCode project files (optional)
 .vscode/
-
-# Ignore macOS system files (optional)
 .DS_Store
-
-# Ignore environment variables or local settings (if any)
 .env
-
-# Byte-compiled / optimized / DLL files
-*.py[cod]
-*$py.class
-
-# Pytest cache
-.pytest_cache/
-
-# Coverage reports
-htmlcov/
-.coverage
-.tox/
-

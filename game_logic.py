@@ -8,6 +8,7 @@ class Contestant:
     def __str__(self) -> str:
         return f"{self.name} ({self.points})"
 
+
 class Round:
     def __init__(self, round_num, lead_votes, follow_votes, judges, contestant_judges) -> None:
         self.round_num = round_num
@@ -15,6 +16,7 @@ class Round:
         self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
+
 
 class Game:
     state = 0
