@@ -1,184 +1,98 @@
-# Hustle n' Tussle - Dance Competition CLI
+# Hustle n’ Tussle - Dance Competition CLI
 
-A colorful and interactive command-line app to run a **partner dance competition**!
-
-Participants are split into **Leads** and **Follows**, with **Guest Judges** and **Contestant Judges** voting each round.
-The game automatically tracks scores, matchups, and produces a leaderboard with medals! 🥇🥈🥉
+A command‑line application to manage a partner dance competition between **Leads** and **Follows**. The game randomly pairs dancers, uses **Guest Judges** and **Contestant Judges** to vote each round, supports **Ties** and **No Contest**, tracks individual points, and displays final leaderboards.
 
 ---
 
-## 🕺 Features
+## 🔧 Installation
 
-- ✅ Random matchups between Leads and Follows.
-- ✅ Color-coded round displays and voting prompts.
-- ✅ Guest Judges can select Tie/No Contest; Contestant Judges must pick a contestant.
-- ✅ Tracks points for every contestant individually.
-- ✅ Round-by-round progression until final winners are crowned.
-- ✅ Polished final leaderboard display with medals and rankings.
-
----
-
-## 🚀 How to Run
-
-1. Clone or download the project folder.
-
-2. (Optional but recommended) Create and activate a virtual environment:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/hustle-n-tussle.git
+   cd hustle-n-tussle
+   ```
+2. (Optional) Create a virtual environment and activate it:
    ```bash
    python3 -m venv venv
-   source venv/bin/activate    # (Mac/Linux)
-   venv\Scripts\activate     # (Windows)
+   source venv/bin/activate   # Mac/Linux
+   venv\\Scripts\\activate    # Windows
    ```
-
 3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. Start the game:
-   ```bash
-   python main.py
-   ```
-
 ---
 
-## 🎯 Project Structure
+## 🚀 Usage
 
-```
-hustlentussle/
-├── main.py             # Interactive CLI frontend
-├── game_logic.py        # Backend game logic
-├── requirements.txt     # Project dependencies
-├── .gitignore           # Ignored files/folders
-└── README.md            # This file
+### Run the Interactive CLI
+
+```bash
+python main.py
 ```
 
----
+- **Enter** lead names, follow names, and guest judge names (comma‑separated).
+- **Vote** each round for Leads (with Tie/No Contest options for guests) and for Follows.
+- **Results** and points update automatically until winners are determined.
 
-## 📋 Example Round Input
-
-You will first enter the contestants:
-
-```
-Enter lead names (comma-separated): Logan, Ian, Rob
-Enter follow names (comma-separated): Emma, Tati, Reina
-Enter guest judge names (comma-separated): Kenji, Diane
-```
-
-**Then the system will display the matchups:**
-
-```
-===== Round 1 =====
-Matchup 1: Logan (0 pts) (Lead) & Emma (0 pts) (Follow)
-Matchup 2: Ian (0 pts) (Lead) & Tati (0 pts) (Follow)
-Contestant Judges: Rob, Reina
-
-Voting for Leads:
-Kenji vote:
- [1] Logan
- [2] Ian
- [3] Tie
- [4] No Contest
-Choice: 1
-Diane vote:
- [1] Logan
- [2] Ian
- [3] Tie
- [4] No Contest
-Choice: 2
-Rob vote:
- [1] Logan
- [2] Ian
-Choice: 1
-Reina vote:
- [1] Logan
- [2] Ian
-Choice: 2
-
-Winner: Logan beat Ian 4-2
-```
-
----
-
-## 🛠 Requirements
-
-- Python 3.8+
-- `colorama` (installed via `requirements.txt`)
-
----
-
-## 🏆 Final Results Example
-
-```
-🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦
-Top Leads:
-🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦
-🥇 Logan (5)
-🥈 Ian (3)
-🥉 Rob (2)
-
-🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪
-Top Follows:
-🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪🟪
-🥇 Reina (4)
-🥈 Tati (2)
-🥉 Emma (1)
-```
-
----
-
-## 📢 Notes
-
-- Guest Judges can vote for Tie/No Contest.
-- Contestant Judges must vote for one contestant.
-- Points are awarded per win.
-- Contestant Judges are randomly chosen each round.
-
----
-
-## ✨ Future Enhancements
-
-- Web frontend for online voting.
-- Save/load tournament mid-game.
-- Animated bracket visualization.
-- Different scoring rules for large competitions.
-
----
-
-
----
-
-# 🧪 Testing
-
-## Run Simulation Tests
-
-This project includes a test script to simulate different voting scenarios (Tie, No Contest, Normal Voting, Sweeps).
-
-To run it:
+### Run Automated Tests
 
 ```bash
 python test_simulation.py
 ```
 
-You’ll see printed outputs like:
+- Validates tie handling, no contest logic, split votes, sweeps, and queue behavior.
+- Outputs a PASS/FAIL summary for 7 test scenarios.
 
-```
-Simulating Lead Round:
-Result: {'winner': 'Logan and Rob', 'loser': None, 'score': (1, 1)}
+### Run Simple Simulation
 
-Simulating Follow Round:
-Result: {'winner': 'No Contest', 'loser': None, 'score': (0, 0)}
-
-Simulating Lead Round:
-Result: {'winner': 'Rob', 'loser': 'Logan', 'score': (4, 3)}
-
-Simulating Follow Round:
-Result: {'winner': 'Emma', 'loser': 'Tati', 'score': (6, 0)}
+```bash
+python simulate_test.py
 ```
 
-Each test covers:
-- Double Tie handling
-- Double No Contest handling
-- Normal voting logic
-- Unanimous wins
+- Walks through 3 rounds of simulated winners to demonstrate pairing logic.
 
-✅ Perfect for validating the system behavior after any changes!
+---
+
+## ⚙️ Features
+
+- **Random Pairing**: Each round pairs one Lead with one Follow.
+- **Guest & Contestant Judges**: Guests can choose Tie or No Contest; contestants must pick a winner.
+- **Tie Handling**: Both tied dancers gain +1 point and continue to the next round with fresh opponents.
+- **No Contest**: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected.
+- **Scoring**: Points awarded per win; tracked individually and sorted.
+- **Final Leaderboards**: Displays separate Top Leads and Top Follows sorted by points.
+
+---
+
+## 📂 Project Structure
+
+```
+hustle-n-tussle/
+├── game_logic.py         # Core game engine
+├── main.py               # CLI frontend
+├── test_simulation.py    # Automated unit‑style tests
+├── simulate_test.py      # Simple round simulation script
+├── requirements.txt      # External dependencies (colorama)
+├── .gitignore
+└── README.md             # This file
+```
+
+---
+
+## 📝 Customization
+
+- **Scoring Rules**: Adjust point values in `judge_round`.
+- **Judge Counts**: Change `num_contestant_judges` in `Game` class.
+- **Tie/No Contest Options**: Extend or modify in `main.py` voting prompts.
+
+---
+
+## 🤝 Contributing
+
+Feel free to submit pull requests or open issues on GitHub. All enhancements and bug fixes are welcome!
+
+---
+
+*Enjoy running your dance competition!*
