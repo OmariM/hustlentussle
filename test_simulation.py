@@ -138,6 +138,35 @@ def run_test_cases():
         print(f"Test 7 FAIL: expected end {expected_end}, got {after_leads[-2:]}")
         fail_count += 1
 
+    # Test 8: Early exit finalize top sorted
+    game = Game(lead_names, follow_names, guest_judges)
+    lead_pair = (game.pair_1[0], game.pair_2[0])
+    follow_pair = (game.pair_1[1], game.pair_2[1])
+    # Simulate one round of clear wins
+    simulate_round(
+        game, lead_pair, "lead", [("Kenji", 1), ("Diane", 1), ("Reina", 1), ("Rob", 1)]
+    )
+    simulate_round(
+        game,
+        follow_pair,
+        "follow",
+        [("Kenji", 1), ("Diane", 1), ("Reina", 1), ("Rob", 1)],
+    )
+    # Early exit
+    leads_sorted, follows_sorted = game.finalize_results()
+    if leads_sorted[0].points > leads_sorted[1].points:
+        print("Test 8 PASS: Top lead correct after early exit")
+        pass_count += 1
+    else:
+        print(f"Test 8 FAIL: top lead not correct, got {leads_sorted[0].name}")
+        fail_count += 1
+    if follows_sorted[0].points > follows_sorted[1].points:
+        print("Test 8 PASS: Top follow correct after early exit")
+        pass_count += 1
+    else:
+        print(f"Test 8 FAIL: top follow not correct, got {follows_sorted[0].name}")
+        fail_count += 1
+
     # Summary
     total = pass_count + fail_count
     print(f"\nSummary: {pass_count}/{total} tests passed, {fail_count} failed.")

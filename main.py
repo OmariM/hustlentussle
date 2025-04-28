@@ -35,13 +35,14 @@ def format_contestant_with_points(name, contestants):
 
 if __name__ == "__main__":
     print(Fore.GREEN + Style.BRIGHT + "Welcome to the Dance Competition!\n")
-    leads = input("Enter lead names (comma-separated): ").split(",")
-    follows = input("Enter follow names (comma-separated): ").split(",")
-    guests = input("Enter guest judge names (comma-separated): ").split(",")
+    lead_names = input("Enter lead names (comma-separated): ").split(",")
+    follow_names = input("Enter follow names (comma-separated): ").split(",")
+    guest_judges = input("Enter guest judge names (comma-separated): ").split(",")
 
-    game = Game(leads, follows, guests)
+    game = Game(lead_names, follow_names, guest_judges)
 
-    while not game.is_finished():
+    # Main loop with option to end early
+    while True:
         state = game.get_game_state()
         print_header(f"Round {state['round']}")
         print(
@@ -54,36 +55,43 @@ if __name__ == "__main__":
         )
         print(f"Contestant Judges: {', '.join(state['contestant_judges'])}")
 
-        # Vote Leads
+        # Vote Leads (compare pair_1[0] vs pair_2[0])
         votes = []
         print_header("Voting for Leads")
+        lead1 = state["pair_1"][0]
+        lead2 = state["pair_2"][0]
         for judge in game.guest_judges + state["contestant_judges"]:
             is_guest = judge in game.guest_judges
-            decision = get_vote_input(
-                judge, state["pair_1"][0], state["pair_2"][0], is_guest
-            )
+            decision = get_vote_input(judge, lead1, lead2, is_guest)
             votes.append((judge, decision))
-        res = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
-        print(Fore.GREEN + f"Winner: {res['winner']}")
-        print("Guest Votes:", ", ".join(res["guest_votes"]) or "None")
-        print("Contestant Votes:", ", ".join(res["contestant_votes"]) or "None")
+        res_lead = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
+        print(Fore.GREEN + f"Winner: {res_lead['winner']}")
+        print("Guest Votes:      ", ", ".join(res_lead["guest_votes"]) or "None")
+        print("Contestant Votes:", ", ".join(res_lead["contestant_votes"]) or "None")
 
-        # Vote Follows
+        # Vote Follows (compare pair_1[1] vs pair_2[1])
         votes = []
         print_header("Voting for Follows")
+        follow1 = state["pair_1"][1]
+        follow2 = state["pair_2"][1]
         for judge in game.guest_judges + state["contestant_judges"]:
             is_guest = judge in game.guest_judges
-            decision = get_vote_input(
-                judge, state["pair_1"][1], state["pair_2"][1], is_guest
-            )
+            decision = get_vote_input(judge, follow1, follow2, is_guest)
             votes.append((judge, decision))
-        res = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", votes)
-        print(Fore.GREEN + f"Winner: {res['winner']}")
-        print("Guest Votes:", ", ".join(res["guest_votes"]) or "None")
-        print("Contestant Votes:", ", ".join(res["contestant_votes"]) or "None")
+        res_follow = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", votes)
+        print(Fore.GREEN + f"Winner: {res_follow['winner']}")
+        print("Guest Votes:      ", ", ".join(res_follow["guest_votes"]) or "None")
+        print("Contestant Votes:", ", ".join(res_follow["contestant_votes"]) or "None")
 
+        # Win-check messages
         for msg in game.check_for_win() or []:
             print(Fore.YELLOW + msg)
+
+        # Option to end battle early
+        end_choice = input("\nEnd battle now? [y/N]: ")
+        if end_choice.strip().lower().startswith("y") or game.is_finished():
+            break
+
         game.next_round()
 
     # Final Results - Separate Leaderboards
@@ -92,6 +100,7 @@ if __name__ == "__main__":
 
     medals = ["🥇", "🥈", "🥉"]
 
+    # Leads leaderboard
     print("\n" + "🟦" * 20)
     print(f"{Fore.BLUE}Top Leads:{Style.RESET_ALL}")
     print("🟦" * 20)
@@ -99,6 +108,7 @@ if __name__ == "__main__":
         medal = medals[idx] if idx < len(medals) else ""
         print(f"{medal} {Fore.GREEN}{lead.name} ({lead.points})")
 
+    # Follows leaderboard
     print("\n" + "🟪" * 20)
     print(f"{Fore.MAGENTA}Top Follows:{Style.RESET_ALL}")
     print("🟪" * 20)
