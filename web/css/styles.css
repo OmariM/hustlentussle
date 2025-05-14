@@ -185,6 +185,12 @@ textarea {
     border: 1px solid var(--border-color);
     border-radius: 5px;
     background-color: #f8f9fa;
+    transition: all 0.3s ease;
+}
+
+.judge-card.voted {
+    border-left: 4px solid var(--primary-color);
+    background-color: #f0f4f8;
 }
 
 .judge-name {
@@ -202,10 +208,18 @@ textarea {
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    transition: all 0.2s ease;
 }
 
 .vote-btn:hover {
     opacity: 0.9;
+}
+
+/* Selected button styles */
+.vote-btn.selected {
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
+    font-weight: bold;
 }
 
 .vote-option-1 {
@@ -213,18 +227,38 @@ textarea {
     color: white;
 }
 
+.vote-option-1.selected {
+    background-color: #2fa8cd;
+    box-shadow: 0 0 0 3px rgba(76, 201, 240, 0.3);
+}
+
 .vote-option-2 {
     background-color: var(--follow-color);
     color: white;
+}
+
+.vote-option-2.selected {
+    background-color: #d91a6d;
+    box-shadow: 0 0 0 3px rgba(247, 37, 133, 0.3);
 }
 
 .vote-option-tie {
     background-color: #ffd166;
 }
 
+.vote-option-tie.selected {
+    background-color: #f4c142;
+    box-shadow: 0 0 0 3px rgba(255, 209, 102, 0.3);
+}
+
 .vote-option-nocontest {
     background-color: #118ab2;
     color: white;
+}
+
+.vote-option-nocontest.selected {
+    background-color: #0e7294;
+    box-shadow: 0 0 0 3px rgba(17, 138, 178, 0.3);
 }
 
 .results {

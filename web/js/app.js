@@ -164,6 +164,12 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     option1Btn.className = 'vote-btn vote-option-1';
     option1Btn.textContent = option1Name;
     option1Btn.addEventListener('click', () => {
+        // Remove selected class from all buttons in this judge card
+        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        // Add selected class to this button
+        option1Btn.classList.add('selected');
         recordVote(judgeName, 1, voteType);
         judgeCard.classList.add('voted');
     });
@@ -173,6 +179,12 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     option2Btn.className = 'vote-btn vote-option-2';
     option2Btn.textContent = option2Name;
     option2Btn.addEventListener('click', () => {
+        // Remove selected class from all buttons in this judge card
+        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        // Add selected class to this button
+        option2Btn.classList.add('selected');
         recordVote(judgeName, 2, voteType);
         judgeCard.classList.add('voted');
     });
@@ -186,6 +198,12 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         tieBtn.className = 'vote-btn vote-option-tie';
         tieBtn.textContent = 'Tie';
         tieBtn.addEventListener('click', () => {
+            // Remove selected class from all buttons in this judge card
+            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            // Add selected class to this button
+            tieBtn.classList.add('selected');
             recordVote(judgeName, 3, voteType);
             judgeCard.classList.add('voted');
         });
@@ -194,6 +212,12 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         noContestBtn.className = 'vote-btn vote-option-nocontest';
         noContestBtn.textContent = 'No Contest';
         noContestBtn.addEventListener('click', () => {
+            // Remove selected class from all buttons in this judge card
+            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            // Add selected class to this button
+            noContestBtn.classList.add('selected');
             recordVote(judgeName, 4, voteType);
             judgeCard.classList.add('voted');
         });
