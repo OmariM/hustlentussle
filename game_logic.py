@@ -70,16 +70,34 @@ class Game:
         self.round_num += 1
         self.rounds.append(self.current_round)
 
-        # Determine next lead contestants
-        if self.tie_lead_pair:
+        # Check if we have a winner for leads but the game is not finished
+        if self.has_winning_lead and not self.has_winning_follow:
+            # Send the winning lead to the back of the queue
+            self.leads.append(self.winning_lead)
+            self.winning_lead = None
+            
+            # Select the next two leads from the queue
+            lead1 = self.leads.pop(0)
+            lead2 = self.leads.pop(0)
+        # Normal lead selection
+        elif self.tie_lead_pair:
             lead1, lead2 = self.tie_lead_pair
             self.tie_lead_pair = None
         else:
             lead1 = self.winning_lead
             lead2 = self.leads.pop(0)
 
-        # Determine next follow contestants
-        if self.tie_follow_pair:
+        # Check if we have a winner for follows but the game is not finished
+        if self.has_winning_follow and not self.has_winning_lead:
+            # Send the winning follow to the back of the queue
+            self.follows.append(self.winning_follow)
+            self.winning_follow = None
+            
+            # Select the next two follows from the queue
+            follow1 = self.follows.pop(0)
+            follow2 = self.follows.pop(0)
+        # Normal follow selection
+        elif self.tie_follow_pair:
             follow1, follow2 = self.tie_follow_pair
             self.tie_follow_pair = None
         else:
@@ -168,12 +186,15 @@ class Game:
             return None
 
         out = []
+        # Check if the lead has reached the winning score threshold
         if (
             not self.has_winning_lead
             and self.winning_lead.points == self.total_num_leads - 1
         ):
             self.has_winning_lead = True
             out.append(f"{self.winning_lead.name} has won for the leads!")
+        
+        # Check if the follow has reached the winning score threshold
         if (
             not self.has_winning_follow
             and self.winning_follow.points == self.total_num_follows - 1
@@ -181,8 +202,10 @@ class Game:
             self.has_winning_follow = True
             out.append(f"{self.winning_follow.name} has won for the follows!")
 
+        # Only set the game as finished if both leads and follows have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
+        
         return out
 
     def get_game_state(self):
