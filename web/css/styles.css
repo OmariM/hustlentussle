@@ -178,6 +178,12 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    margin-bottom: 20px;
+}
+
+.vote-submission {
+    text-align: center;
+    margin: 20px 0;
 }
 
 .judge-card {
@@ -335,4 +341,22 @@ textarea {
 #new-competition {
     display: block;
     margin: 0 auto;
+}
+
+/* Add these styles for locked judge cards and buttons */
+
+.judge-card.locked {
+    opacity: 0.9;
+    background-color: #f0f4f8;
+    border-left: 4px solid var(--primary-color);
+}
+
+.vote-btn.locked {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.vote-btn.locked:hover {
+    opacity: 0.7;
+    transform: none;
 } 

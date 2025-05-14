@@ -1,8 +1,9 @@
 // Global variables
 let sessionId = null;
 let guestJudges = [];
-let leadVotes = [];
-let followVotes = [];
+let leadVotes = {};  // Changed to an object to easily update votes
+let followVotes = {}; // Changed to an object to easily update votes
+let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 
 // DOM Elements
 const setupScreen = document.getElementById('setup-screen');
@@ -36,6 +37,8 @@ const leadGuestVotes = document.getElementById('lead-guest-votes');
 const leadContestantVotes = document.getElementById('lead-contestant-votes');
 const followGuestVotes = document.getElementById('follow-guest-votes');
 const followContestantVotes = document.getElementById('follow-contestant-votes');
+const determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
+const determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
 
 // Results elements
 const roundResultsSection = document.getElementById('round-results');
@@ -49,6 +52,8 @@ const newCompetitionBtn = document.getElementById('new-competition');
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     startCompetitionBtn.addEventListener('click', startCompetition);
+    determineLeadWinnerBtn.addEventListener('click', submitLeadVotes);
+    determineFollowWinnerBtn.addEventListener('click', submitFollowVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
     newCompetitionBtn.addEventListener('click', resetCompetition);
@@ -115,8 +120,13 @@ function updateRoundUI(data) {
     winMessages.innerHTML = '';
     
     // Reset collected votes
-    leadVotes = [];
-    followVotes = [];
+    leadVotes = {};
+    followVotes = {};
+    votingLocked = { lead: false, follow: false };
+    
+    // Reset determine winner buttons
+    determineLeadWinnerBtn.disabled = false;
+    determineFollowWinnerBtn.disabled = false;
 }
 
 function setupVotingUI() {
@@ -148,6 +158,7 @@ function setupVotingUI() {
 function createJudgeVotingCard(judgeName, isGuest, voteType) {
     const judgeCard = document.createElement('div');
     judgeCard.className = 'judge-card';
+    judgeCard.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
     
     const judgeNameEl = document.createElement('div');
     judgeNameEl.className = 'judge-name';
@@ -164,6 +175,9 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     option1Btn.className = 'vote-btn vote-option-1';
     option1Btn.textContent = option1Name;
     option1Btn.addEventListener('click', () => {
+        // If voting is locked, don't allow changes
+        if (votingLocked[voteType]) return;
+        
         // Remove selected class from all buttons in this judge card
         voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
             btn.classList.remove('selected');
@@ -179,6 +193,9 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     option2Btn.className = 'vote-btn vote-option-2';
     option2Btn.textContent = option2Name;
     option2Btn.addEventListener('click', () => {
+        // If voting is locked, don't allow changes
+        if (votingLocked[voteType]) return;
+        
         // Remove selected class from all buttons in this judge card
         voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
             btn.classList.remove('selected');
@@ -198,6 +215,9 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         tieBtn.className = 'vote-btn vote-option-tie';
         tieBtn.textContent = 'Tie';
         tieBtn.addEventListener('click', () => {
+            // If voting is locked, don't allow changes
+            if (votingLocked[voteType]) return;
+            
             // Remove selected class from all buttons in this judge card
             voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
                 btn.classList.remove('selected');
@@ -212,6 +232,9 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         noContestBtn.className = 'vote-btn vote-option-nocontest';
         noContestBtn.textContent = 'No Contest';
         noContestBtn.addEventListener('click', () => {
+            // If voting is locked, don't allow changes
+            if (votingLocked[voteType]) return;
+            
             // Remove selected class from all buttons in this judge card
             voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
                 btn.classList.remove('selected');
@@ -233,33 +256,58 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
 }
 
 function recordVote(judge, decision, voteType) {
+    // Store the vote in the appropriate object
     if (voteType === 'lead') {
-        leadVotes.push([judge, decision]);
-        
-        // Check if all judges have voted
-        const allJudges = guestJudges.length + contestantJudgesList.textContent.split(', ').length;
-        if (leadVotes.length === allJudges) {
-            submitLeadVotes();
-        }
+        leadVotes[judge] = decision;
     } else {
-        followVotes.push([judge, decision]);
-        
-        // Check if all judges have voted
-        const allJudges = guestJudges.length + contestantJudgesList.textContent.split(', ').length;
-        if (followVotes.length === allJudges) {
-            submitFollowVotes();
-        }
+        followVotes[judge] = decision;
     }
 }
 
+// Lock all voting buttons for a specific vote type (lead or follow)
+function lockVoting(voteType) {
+    votingLocked[voteType] = true;
+    
+    // Get all judge cards for this vote type
+    const container = voteType === 'lead' ? leadJudgesContainer : followJudgesContainer;
+    const judgeCards = container.querySelectorAll('.judge-card');
+    
+    // Add a 'locked' class to all judge cards and vote buttons
+    judgeCards.forEach(card => {
+        card.classList.add('locked');
+        card.querySelectorAll('.vote-btn').forEach(btn => {
+            btn.classList.add('locked');
+        });
+    });
+}
+
 async function submitLeadVotes() {
+    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    const votesArray = [];
+    
+    // Check if all judges have voted
+    const missingVotes = allJudges.filter(judge => !leadVotes[judge]);
+    if (missingVotes.length > 0) {
+        alert(`Waiting for votes from ${missingVotes.length} judge(s).`);
+        return;
+    }
+    
+    // Convert votes object to array format for API
+    for (const judge in leadVotes) {
+        votesArray.push([judge, leadVotes[judge]]);
+    }
+    
+    // Lock voting and disable the button to prevent further changes
+    lockVoting('lead');
+    determineLeadWinnerBtn.disabled = true;
+    
     try {
         const response = await fetch('/api/judge_leads', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
-                votes: leadVotes
+                votes: votesArray
             })
         });
         
@@ -277,17 +325,38 @@ async function submitLeadVotes() {
     } catch (error) {
         console.error('Error submitting lead votes:', error);
         alert('Failed to submit lead votes. Please try again.');
+        votingLocked.lead = false; // Unlock voting if there's an error
+        determineLeadWinnerBtn.disabled = false;
     }
 }
 
 async function submitFollowVotes() {
+    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    const votesArray = [];
+    
+    // Check if all judges have voted
+    const missingVotes = allJudges.filter(judge => !followVotes[judge]);
+    if (missingVotes.length > 0) {
+        alert(`Waiting for votes from ${missingVotes.length} judge(s).`);
+        return;
+    }
+    
+    // Convert votes object to array format for API
+    for (const judge in followVotes) {
+        votesArray.push([judge, followVotes[judge]]);
+    }
+    
+    // Lock voting and disable the button to prevent further changes
+    lockVoting('follow');
+    determineFollowWinnerBtn.disabled = true;
+    
     try {
         const response = await fetch('/api/judge_follows', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
-                votes: followVotes
+                votes: votesArray
             })
         });
         
@@ -315,6 +384,8 @@ async function submitFollowVotes() {
     } catch (error) {
         console.error('Error submitting follow votes:', error);
         alert('Failed to submit follow votes. Please try again.');
+        votingLocked.follow = false; // Unlock voting if there's an error
+        determineFollowWinnerBtn.disabled = false;
     }
 }
 
@@ -381,8 +452,9 @@ function resetCompetition() {
     // Reset all game state
     sessionId = null;
     guestJudges = [];
-    leadVotes = [];
-    followVotes = [];
+    leadVotes = {};
+    followVotes = {};
+    votingLocked = { lead: false, follow: false };
     
     // Reset UI elements
     leadNamesInput.value = '';
@@ -391,6 +463,8 @@ function resetCompetition() {
     
     // Reset UI state
     nextRoundBtn.disabled = false;
+    determineLeadWinnerBtn.disabled = false;
+    determineFollowWinnerBtn.disabled = false;
     
     // Show setup screen
     showScreen(setupScreen);
