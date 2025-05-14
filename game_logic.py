@@ -19,6 +19,7 @@ class Round:
         self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
+        self.win_messages = None  # Will store win messages for this round
 
 
 class Game:
@@ -254,19 +255,41 @@ class Game:
         return {"winner": winner.name, "guest_votes": gv, "contestant_votes": cv}
 
     def check_for_win(self):
-        """Check if any contestant has reached the winning score threshold."""
+        """Generate win messages only for the first contestant to reach the winning threshold."""
         out = []
         
-        # Generate win messages if needed
-        if self.has_winning_lead and self.winning_lead:
-            out.append(f"{self.winning_lead.name} has won for the leads!")
+        # Track if we're generating win messages for the first time
+        # We use the last_lead_winner/last_follow_winner attributes to track this
+        if not hasattr(self, 'last_lead_winner'):
+            self.last_lead_winner = None
+        if not hasattr(self, 'last_follow_winner'):
+            self.last_follow_winner = None
         
-        if self.has_winning_follow and self.winning_follow:
+        # Generate win message for lead winner if it's a new winner
+        # Only show the message if this is the first winner for leads
+        if (self.has_winning_lead and self.winning_lead and 
+            self.winning_lead.points >= self.total_num_leads - 1 and
+            self.last_lead_winner is None):
+            
+            out.append(f"{self.winning_lead.name} has won for the leads!")
+            self.last_lead_winner = self.winning_lead.name
+        
+        # Generate win message for follow winner if it's a new winner
+        # Only show the message if this is the first winner for follows
+        if (self.has_winning_follow and self.winning_follow and 
+            self.winning_follow.points >= self.total_num_follows - 1 and
+            self.last_follow_winner is None):
+            
             out.append(f"{self.winning_follow.name} has won for the follows!")
+            self.last_follow_winner = self.winning_follow.name
 
-        # Set game as finished if both roles have winners
+        # Only set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
+        
+        # Store the win messages with the current round
+        if hasattr(self, 'current_round'):
+            self.current_round.win_messages = out if out else None
         
         return out if out else None
 

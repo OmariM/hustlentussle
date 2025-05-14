@@ -557,10 +557,93 @@ def run_test_cases():
         print(f"Test 13.2 FAIL: Lead {current_lead.name} is not competing. Competitors: {competing_leads}")
         fail_count += 1
 
-    # Summary
-    total = pass_count + fail_count
-    print(f"\nSummary: {pass_count}/{total} tests passed, {fail_count} failed.")
+    # Test 14: Winner messages only for the first contestant to reach the threshold
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 14: Only show winner messages for the first contestant to reach the threshold")
+    
+    # First, make Lead1 almost reach the winning threshold
+    initial_lead = game.pair_1[0]
+    initial_lead.points = game.total_num_leads - 2  # With 5 leads, needs 4 points to win
+    
+    print(f"Test 14 - Initial lead {initial_lead.name} has {initial_lead.points} points, needs {game.total_num_leads - 1} to win")
+    
+    # Make this lead win and reach the threshold
+    lead_pair = (initial_lead, game.pair_2[0])
+    result = game.judge_round(lead_pair[0], lead_pair[1], "lead", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Check for win message - should have one
+    win_messages = game.check_for_win()
+    if win_messages and f"{initial_lead.name} has won for the leads!" in win_messages:
+        print(f"Test 14.1 PASS: Correct win message shown for initial winner: {win_messages}")
+        pass_count += 1
+    else:
+        print(f"Test 14.1 FAIL: Expected win message for initial winner, got: {win_messages}")
+        fail_count += 1
+    
+    # Make sure the lead is marked as winner
+    if game.has_winning_lead:
+        print(f"Test 14 - Lead {initial_lead.name} correctly marked as winner")
+    
+    # Now simulate several more rounds with other leads winning
+    # Move to next round
+    game.next_round()
+    
+    # Get a new lead to win after a role winner is already determined
+    new_lead = game.pair_1[0]
+    other_lead = game.pair_2[0]
+    
+    # Make sure this lead is close to winning threshold
+    new_lead.points = game.total_num_leads - 2  # One point away from winning
+    
+    # Make the new lead win
+    result = game.judge_round(new_lead, other_lead, "lead", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Check for win message - should NOT have one since this role already has a winner
+    win_messages = game.check_for_win()
+    if win_messages is None or f"{new_lead.name} has won for the leads!" not in win_messages:
+        print("Test 14.2 PASS: No win message shown for lead winning after role already has winner")
+        pass_count += 1
+    else:
+        print(f"Test 14.2 FAIL: Incorrectly showed win message: {win_messages}")
+        fail_count += 1
+    
+    # Finally, make a follow reach the win threshold for the first time
+    follow = game.pair_1[1]
+    follow.points = game.total_num_follows - 2  # One point away from winning
+    
+    # Make the follow win and reach threshold
+    result = game.judge_round(follow, game.pair_2[1], "follow", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Check for win message - should have one for the follow
+    win_messages = game.check_for_win()
+    if win_messages and f"{follow.name} has won for the follows!" in win_messages:
+        print(f"Test 14.3 PASS: Correct win message shown for initial follow winner: {win_messages}")
+        pass_count += 1
+    else:
+        print(f"Test 14.3 FAIL: Expected win message for initial follow winner, got: {win_messages}")
+        fail_count += 1
+    
+    # Verify the game is now finished
+    if game.is_finished():
+        print("Test 14.4 PASS: Game correctly marked as finished when both roles have winners")
+        pass_count += 1
+    else:
+        print("Test 14.4 FAIL: Game not marked as finished when both roles have winners")
+        fail_count += 1
+
+    print(f"Tests passed: {pass_count}/{pass_count + fail_count}")
+    return pass_count, fail_count
 
 
-if __name__ == "__main__":
+def run_tests():
+    """Run all tests"""
+    # Run the existing test cases
     run_test_cases()
+    
+if __name__ == "__main__":
+    run_tests()
