@@ -133,6 +133,87 @@ textarea {
     margin-bottom: 30px;
 }
 
+.round-info-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 30px;
+}
+
+.round-info {
+    flex: 3;
+}
+
+.scores-display {
+    flex: 1;
+    min-width: 220px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.scores-display h3 {
+    text-align: center;
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.scores-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+.lead-scores, .follow-scores {
+    flex: 1;
+}
+
+.lead-scores h4, .follow-scores h4 {
+    color: var(--text-color);
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.lead-scores h4 {
+    color: var(--lead-color);
+}
+
+.follow-scores h4 {
+    color: var(--follow-color);
+}
+
+#current-lead-scores, #current-follow-scores {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+#current-lead-scores li, #current-follow-scores li {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border-color);
+    font-size: 14px;
+}
+
+#current-lead-scores li:last-child, #current-follow-scores li:last-child {
+    border-bottom: none;
+}
+
+.score-name {
+    max-width: 65%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.score-points {
+    font-weight: bold;
+}
+
 .matchups {
     display: flex;
     justify-content: space-between;

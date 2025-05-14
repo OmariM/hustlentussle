@@ -37,6 +37,49 @@ def start_game():
         'guest_judges': game.guest_judges
     })
 
+@app.route('/api/get_scores', methods=['GET'])
+def get_scores():
+    session_id = request.args.get('session_id')
+    
+    if session_id not in games:
+        return jsonify({'error': 'Game not found'}), 404
+    
+    game = games[session_id]
+    
+    # Create dictionaries to track unique contestants by name
+    lead_dict = {}
+    follow_dict = {}
+    
+    # Add current pair contestants
+    lead_dict[game.pair_1[0].name] = {'name': game.pair_1[0].name, 'points': game.pair_1[0].points}
+    lead_dict[game.pair_2[0].name] = {'name': game.pair_2[0].name, 'points': game.pair_2[0].points}
+    
+    follow_dict[game.pair_1[1].name] = {'name': game.pair_1[1].name, 'points': game.pair_1[1].points}
+    follow_dict[game.pair_2[1].name] = {'name': game.pair_2[1].name, 'points': game.pair_2[1].points}
+    
+    # Add contestants from the queue (only if not already added)
+    for lead in game.leads:
+        lead_dict[lead.name] = {'name': lead.name, 'points': lead.points}
+    
+    for follow in game.follows:
+        follow_dict[follow.name] = {'name': follow.name, 'points': follow.points}
+    
+    # Check if we have winning lead/follow and add them if they exist and aren't already included
+    if hasattr(game, 'winning_lead') and game.winning_lead:
+        lead_dict[game.winning_lead.name] = {'name': game.winning_lead.name, 'points': game.winning_lead.points}
+    
+    if hasattr(game, 'winning_follow') and game.winning_follow:
+        follow_dict[game.winning_follow.name] = {'name': game.winning_follow.name, 'points': game.winning_follow.points}
+    
+    # Convert dictionaries to lists for the response
+    lead_list = list(lead_dict.values())
+    follow_list = list(follow_dict.values())
+    
+    return jsonify({
+        'leads': lead_list,
+        'follows': follow_list
+    })
+
 @app.route('/api/judge_leads', methods=['POST'])
 def judge_leads():
     data = request.json

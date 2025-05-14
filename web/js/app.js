@@ -4,6 +4,8 @@ let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
 let votingLocked = { lead: false, follow: false }; // Track if voting is locked
+let currentLeads = []; // Store current lead contestants with points
+let currentFollows = []; // Store current follow contestants with points
 
 // DOM Elements
 const setupScreen = document.getElementById('setup-screen');
@@ -23,6 +25,8 @@ const lead2Name = document.getElementById('lead2-name');
 const follow1Name = document.getElementById('follow1-name');
 const follow2Name = document.getElementById('follow2-name');
 const contestantJudgesList = document.getElementById('contestant-judges-list');
+const currentLeadScores = document.getElementById('current-lead-scores');
+const currentFollowScores = document.getElementById('current-follow-scores');
 
 // Voting elements
 const leadVotingSection = document.getElementById('lead-voting');
@@ -89,6 +93,9 @@ async function startCompetition() {
         sessionId = data.session_id;
         guestJudges = data.guest_judges;
         
+        // Get initial scores
+        await fetchScores();
+        
         // Update UI with initial round data
         updateRoundUI(data);
         setupVotingUI();
@@ -99,6 +106,48 @@ async function startCompetition() {
         console.error('Error starting game:', error);
         alert('Failed to start the competition. Please try again.');
     }
+}
+
+async function fetchScores() {
+    try {
+        const response = await fetch(`/api/get_scores?session_id=${sessionId}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        currentLeads = data.leads;
+        currentFollows = data.follows;
+        
+        // Update scores display
+        updateScoresDisplay();
+    } catch (error) {
+        console.error('Error fetching scores:', error);
+    }
+}
+
+function updateScoresDisplay() {
+    // Clear current lists
+    currentLeadScores.innerHTML = '';
+    currentFollowScores.innerHTML = '';
+    
+    // Sort contestants by points (highest first)
+    const sortedLeads = [...currentLeads].sort((a, b) => b.points - a.points);
+    const sortedFollows = [...currentFollows].sort((a, b) => b.points - a.points);
+    
+    // Add leads to the list
+    sortedLeads.forEach(lead => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="score-name">${lead.name}</span><span class="score-points">${lead.points}</span>`;
+        currentLeadScores.appendChild(li);
+    });
+    
+    // Add follows to the list
+    sortedFollows.forEach(follow => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="score-name">${follow.name}</span><span class="score-points">${follow.points}</span>`;
+        currentFollowScores.appendChild(li);
+    });
 }
 
 function updateRoundUI(data) {
@@ -322,6 +371,9 @@ async function submitLeadVotes() {
         
         // Show follow voting section
         followVotingSection.classList.remove('hidden');
+        
+        // Update scores after voting
+        await fetchScores();
     } catch (error) {
         console.error('Error submitting lead votes:', error);
         alert('Failed to submit lead votes. Please try again.');
@@ -381,6 +433,9 @@ async function submitFollowVotes() {
         if (data.game_finished) {
             nextRoundBtn.disabled = true;
         }
+        
+        // Update scores after voting
+        await fetchScores();
     } catch (error) {
         console.error('Error submitting follow votes:', error);
         alert('Failed to submit follow votes. Please try again.');

@@ -32,26 +32,44 @@
 
         <div id="round-screen" class="screen">
             <div class="round-header">
-                <h2>Round <span id="round-number">1</span></h2>
-                <div class="matchups">
-                    <div class="matchup">
-                        <h3>Matchup 1</h3>
-                        <div class="pair">
-                            <span id="lead1-name" class="contestant lead"></span> (Lead) &
-                            <span id="follow1-name" class="contestant follow"></span> (Follow)
+                <div class="round-info-container">
+                    <div class="round-info">
+                        <h2>Round <span id="round-number">1</span></h2>
+                        <div class="matchups">
+                            <div class="matchup">
+                                <h3>Matchup 1</h3>
+                                <div class="pair">
+                                    <span id="lead1-name" class="contestant lead"></span> (Lead) &
+                                    <span id="follow1-name" class="contestant follow"></span> (Follow)
+                                </div>
+                            </div>
+                            <div class="matchup">
+                                <h3>Matchup 2</h3>
+                                <div class="pair">
+                                    <span id="lead2-name" class="contestant lead"></span> (Lead) &
+                                    <span id="follow2-name" class="contestant follow"></span> (Follow)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="judges">
+                            <h3>Contestant Judges:</h3>
+                            <div id="contestant-judges-list"></div>
                         </div>
                     </div>
-                    <div class="matchup">
-                        <h3>Matchup 2</h3>
-                        <div class="pair">
-                            <span id="lead2-name" class="contestant lead"></span> (Lead) &
-                            <span id="follow2-name" class="contestant follow"></span> (Follow)
+                    
+                    <div class="scores-display">
+                        <h3>Current Scores</h3>
+                        <div class="scores-container">
+                            <div class="lead-scores">
+                                <h4>Leads</h4>
+                                <ul id="current-lead-scores"></ul>
+                            </div>
+                            <div class="follow-scores">
+                                <h4>Follows</h4>
+                                <ul id="current-follow-scores"></ul>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="judges">
-                    <h3>Contestant Judges:</h3>
-                    <div id="contestant-judges-list"></div>
                 </div>
             </div>
 
