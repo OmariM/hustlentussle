@@ -457,44 +457,10 @@ async function goToNextRound() {
     }
 }
 
+// End Competition function
 async function endCompetition() {
-    try {
-        const response = await fetch('/api/end_game', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId })
-        });
-        
-        const data = await response.json();
-        
-        // Clear previous leaderboards
-        leadsLeaderboard.innerHTML = '';
-        followsLeaderboard.innerHTML = '';
-        
-        // Populate lead leaderboard
-        data.leads.forEach(lead => {
-            const leadItem = document.createElement('li');
-            leadItem.innerHTML = `${lead.medal ? `<span class="medal">${lead.medal}</span>` : ''} 
-                                 <span>${lead.name}${lead.is_winner ? ' 👑' : ''}</span> 
-                                 <span>${lead.points} points</span>`;
-            leadsLeaderboard.appendChild(leadItem);
-        });
-        
-        // Populate follow leaderboard
-        data.follows.forEach(follow => {
-            const followItem = document.createElement('li');
-            followItem.innerHTML = `${follow.medal ? `<span class="medal">${follow.medal}</span>` : ''} 
-                                   <span>${follow.name}${follow.is_winner ? ' 👑' : ''}</span> 
-                                   <span>${follow.points} points</span>`;
-            followsLeaderboard.appendChild(followItem);
-        });
-        
-        // Show results screen
-        showScreen(resultsScreen);
-    } catch (error) {
-        console.error('Error ending game:', error);
-        alert('Failed to end the competition. Please try again.');
-    }
+    // Call our updated endGame function that works with the new UI components
+    endGame();
 }
 
 function resetCompetition() {
@@ -611,8 +577,12 @@ function endGame() {
     .then(data => {
         // Display final results
         displayResults(data);
+        
+        // Show results screen
+        showScreen(resultsScreen);
     })
     .catch(error => {
         console.error('Error ending game:', error);
+        alert('Failed to end the competition. Please try again.');
     });
 } 
