@@ -67,42 +67,89 @@ class Game:
         return pool[: self.num_contestant_judges]
 
     def next_round(self):
+        """Prepare the game for the next round."""
         self.round_num += 1
         self.rounds.append(self.current_round)
 
-        # Check if we have a winner for leads but the game is not finished
+        # Handle lead selection based on game state
         if self.has_winning_lead and not self.has_winning_follow:
-            # Send the winning lead to the back of the queue
-            self.leads.append(self.winning_lead)
-            self.winning_lead = None
-            
-            # Select the next two leads from the queue
-            lead1 = self.leads.pop(0)
-            lead2 = self.leads.pop(0)
-        # Normal lead selection
+            # Initial winning lead (with flags set) should go to the end of the queue
+            if self.winning_lead and self.winning_lead.points >= self.total_num_leads - 1:
+                self.leads.append(self.winning_lead)
+                self.winning_lead = None
+                
+                # Select the next two leads from the queue
+                lead1 = self.leads.pop(0)
+                lead2 = self.leads.pop(0)
+            elif self.tie_lead_pair:
+                # Use the tied leads
+                lead1, lead2 = self.tie_lead_pair
+                self.tie_lead_pair = None
+            elif self.winning_lead:
+                # Regular round winner (after a role already has a winner)
+                # stays in the competition
+                lead1 = self.winning_lead
+                self.winning_lead = None
+                lead2 = self.leads.pop(0)
+            else:
+                # Regular selection
+                lead1 = self.leads.pop(0)
+                lead2 = self.leads.pop(0)
         elif self.tie_lead_pair:
+            # Use the tied leads
             lead1, lead2 = self.tie_lead_pair
             self.tie_lead_pair = None
         else:
-            lead1 = self.winning_lead
-            lead2 = self.leads.pop(0)
+            # If there's a previous round winner for lead, use them in the next round
+            # BUT only if that role doesn't already have an overall winner
+            if self.winning_lead:
+                lead1 = self.winning_lead
+                self.winning_lead = None
+                lead2 = self.leads.pop(0)
+            else:
+                # Regular selection
+                lead1 = self.leads.pop(0)
+                lead2 = self.leads.pop(0)
 
-        # Check if we have a winner for follows but the game is not finished
+        # Handle follow selection based on game state
         if self.has_winning_follow and not self.has_winning_lead:
-            # Send the winning follow to the back of the queue
-            self.follows.append(self.winning_follow)
-            self.winning_follow = None
-            
-            # Select the next two follows from the queue
-            follow1 = self.follows.pop(0)
-            follow2 = self.follows.pop(0)
-        # Normal follow selection
+            # Initial winning follow (with flags set) should go to the end of the queue
+            if self.winning_follow and self.winning_follow.points >= self.total_num_follows - 1:
+                self.follows.append(self.winning_follow)
+                self.winning_follow = None
+                
+                # Select the next two follows from the queue
+                follow1 = self.follows.pop(0)
+                follow2 = self.follows.pop(0)
+            elif self.tie_follow_pair:
+                # Use the tied follows
+                follow1, follow2 = self.tie_follow_pair
+                self.tie_follow_pair = None
+            elif self.winning_follow:
+                # Regular round winner (after a role already has a winner)
+                # stays in the competition
+                follow1 = self.winning_follow
+                self.winning_follow = None
+                follow2 = self.follows.pop(0)
+            else:
+                # Regular selection
+                follow1 = self.follows.pop(0)
+                follow2 = self.follows.pop(0)
         elif self.tie_follow_pair:
+            # Use the tied follows
             follow1, follow2 = self.tie_follow_pair
             self.tie_follow_pair = None
         else:
-            follow1 = self.follows.pop(0)
-            follow2 = self.winning_follow
+            # If there's a previous round winner for follow, use them in the next round
+            # BUT only if that role doesn't already have an overall winner
+            if self.winning_follow:
+                follow1 = self.winning_follow
+                self.winning_follow = None
+                follow2 = self.follows.pop(0)
+            else:
+                # Regular selection
+                follow1 = self.follows.pop(0)
+                follow2 = self.follows.pop(0)
 
         # Form new Lead vs Follow pairs
         self.pair_1 = (lead1, follow1)
@@ -164,12 +211,37 @@ class Game:
     def process_results(self, c1, c2, s1, s2, role, votes):
         winner, loser = (c1, c2) if s1 >= s2 else (c2, c1)
 
+        # Handle round winner based on role and whether that role already has a winner
         if role == "lead":
-            self.winning_lead = winner
-            self.leads.append(loser)
-        else:
-            self.winning_follow = winner
-            self.follows.append(loser)
+            if self.has_winning_lead:
+                # If lead already has a winner, winner stays in the competition
+                # and loser goes to the end of the queue
+                self.leads.append(loser)
+                # Store the round winner but don't mark as overall winner
+                self.winning_lead = winner
+            else:
+                # Normal case - no winner for leads yet
+                self.winning_lead = winner
+                self.leads.append(loser)
+                
+                # Check if we've reached a win condition
+                if winner.points + 1 >= self.total_num_leads - 1:
+                    self.has_winning_lead = True
+        else:  # Follow
+            if self.has_winning_follow:
+                # If follow already has a winner, winner stays in the competition
+                # and loser goes to the end of the queue
+                self.follows.append(loser)
+                # Store the round winner but don't mark as overall winner
+                self.winning_follow = winner
+            else:
+                # Normal case - no winner for follows yet
+                self.winning_follow = winner
+                self.follows.append(loser)
+                
+                # Check if we've reached a win condition
+                if winner.points + 1 >= self.total_num_follows - 1:
+                    self.has_winning_follow = True
 
         winner.points += 1
 
@@ -182,31 +254,21 @@ class Game:
         return {"winner": winner.name, "guest_votes": gv, "contestant_votes": cv}
 
     def check_for_win(self):
-        if not (self.winning_lead and self.winning_follow):
-            return None
-
+        """Check if any contestant has reached the winning score threshold."""
         out = []
-        # Check if the lead has reached the winning score threshold
-        if (
-            not self.has_winning_lead
-            and self.winning_lead.points == self.total_num_leads - 1
-        ):
-            self.has_winning_lead = True
+        
+        # Generate win messages if needed
+        if self.has_winning_lead and self.winning_lead:
             out.append(f"{self.winning_lead.name} has won for the leads!")
         
-        # Check if the follow has reached the winning score threshold
-        if (
-            not self.has_winning_follow
-            and self.winning_follow.points == self.total_num_follows - 1
-        ):
-            self.has_winning_follow = True
+        if self.has_winning_follow and self.winning_follow:
             out.append(f"{self.winning_follow.name} has won for the follows!")
 
-        # Only set the game as finished if both leads and follows have winners
+        # Set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
         
-        return out
+        return out if out else None
 
     def get_game_state(self):
         return {
@@ -219,6 +281,9 @@ class Game:
         }
 
     def is_finished(self):
+        # The game is finished when both roles have winners and state is set
+        if self.has_winning_lead and self.has_winning_follow:
+            self.state = 1
         return self.state == 1
 
     def finalize_results(self):
@@ -233,3 +298,18 @@ class Game:
         self.follows.sort(key=lambda c: c.points, reverse=True)
 
         return self.leads, self.follows
+
+    def debug_state(self):
+        """Print the current state of the game for debugging."""
+        print("\n--- Game State ---")
+        print(f"Round: {self.round_num}")
+        print(f"Pair 1: {self.pair_1[0].name} (lead) vs {self.pair_1[1].name} (follow)")
+        print(f"Pair 2: {self.pair_2[0].name} (lead) vs {self.pair_2[1].name} (follow)")
+        print(f"Leads in queue: {[lead.name for lead in self.leads]}")
+        print(f"Follows in queue: {[follow.name for follow in self.follows]}")
+        print(f"Winning lead: {self.winning_lead.name if self.winning_lead else None}")
+        print(f"Winning follow: {self.winning_follow.name if self.winning_follow else None}")
+        print(f"Has winning lead: {self.has_winning_lead}")
+        print(f"Has winning follow: {self.has_winning_follow}")
+        print(f"Is finished: {self.is_finished()}")
+        print("------------------\n")

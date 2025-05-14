@@ -167,6 +167,396 @@ def run_test_cases():
         print(f"Test 8 FAIL: top follow not correct, got {follows_sorted[0].name}")
         fail_count += 1
 
+    # Test 9: Lead win condition with follow still competing
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"], 
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"], 
+        ["Judge1", "Judge2"]
+    )
+    
+    # Store initial pairs to track
+    initial_lead_1 = game.pair_1[0]
+    initial_lead_2 = game.pair_2[0]
+    
+    # Print initial state
+    print(f"Test 9 - total_num_leads: {game.total_num_leads}")
+    print(f"Test 9 - Win threshold: {game.total_num_leads - 1} points")
+    
+    # Give winning points to Lead1 (need to win 4 times with 5 total leads)
+    initial_lead_1.points = game.total_num_leads - 2  # With 5 leads, needs 4 points to win
+    print(f"Test 9 - Initial points: {initial_lead_1.points}")
+    
+    # Simulate round where Lead1 wins and reaches winning condition
+    lead_pair = (initial_lead_1, initial_lead_2)
+    result = simulate_round(
+        game, lead_pair, "lead", [("Judge1", 1), ("Judge2", 1)]
+    )
+    print(f"Test 9 - After win, points: {initial_lead_1.points}")
+    print(f"Test 9 - Has winning lead: {game.has_winning_lead}")
+    print(f"Test 9 - Winning lead: {game.winning_lead.name if game.winning_lead else None}")
+    
+    # Check if Lead1 is marked as a winner
+    if game.has_winning_lead and game.winning_lead.name == initial_lead_1.name:
+        print("Test 9.1 PASS: Lead winner correctly identified")
+        pass_count += 1
+    else:
+        print(f"Test 9.1 FAIL: Lead winner not correctly identified. Has winning lead: {game.has_winning_lead}, Winning lead: {game.winning_lead.name if game.winning_lead else None}")
+        fail_count += 1
+    
+    # Move to next round
+    game.next_round()
+    
+    # The winning lead should be sent to the queue, and two new leads should be competing
+    leads_in_queue = [lead.name for lead in game.leads]
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    
+    print(f"Test 9 - Leads in queue: {leads_in_queue}")
+    print(f"Test 9 - Competing leads: {competing_leads}")
+    
+    # Check if the winning lead is in the queue
+    if initial_lead_1.name in leads_in_queue:
+        print("Test 9.2 PASS: Winning lead correctly sent to queue")
+        pass_count += 1
+    else:
+        print(f"Test 9.2 FAIL: Winning lead not in queue. Queue: {leads_in_queue}")
+        fail_count += 1
+    
+    # Check that two different leads are now competing
+    if initial_lead_1.name not in competing_leads:
+        print("Test 9.3 PASS: New leads are competing after lead winner")
+        pass_count += 1
+    else:
+        print(f"Test 9.3 FAIL: Winning lead still competing. Current competitors: {competing_leads}")
+        fail_count += 1
+
+    # Test 10: Follow win condition with lead still competing
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"], 
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"], 
+        ["Judge1", "Judge2"]
+    )
+    
+    # Store initial pairs to track
+    initial_follow_1 = game.pair_1[1]
+    initial_follow_2 = game.pair_2[1]
+    
+    # Print initial state
+    print(f"Test 10 - total_num_follows: {game.total_num_follows}")
+    print(f"Test 10 - Win threshold: {game.total_num_follows - 1} points")
+    
+    # Give winning points to Follow1 (need to win 4 times with 5 total follows)
+    initial_follow_1.points = game.total_num_follows - 2  # With 5 follows, needs 4 points to win
+    print(f"Test 10 - Initial points: {initial_follow_1.points}")
+    
+    # Simulate round where Follow1 wins and reaches winning condition
+    follow_pair = (initial_follow_1, initial_follow_2)
+    result = simulate_round(
+        game, follow_pair, "follow", [("Judge1", 1), ("Judge2", 1)]
+    )
+    print(f"Test 10 - After win, points: {initial_follow_1.points}")
+    print(f"Test 10 - Has winning follow: {game.has_winning_follow}")
+    print(f"Test 10 - Winning follow: {game.winning_follow.name if game.winning_follow else None}")
+    
+    # Check if Follow1 is marked as a winner
+    if game.has_winning_follow and game.winning_follow.name == initial_follow_1.name:
+        print("Test 10.1 PASS: Follow winner correctly identified")
+        pass_count += 1
+    else:
+        print(f"Test 10.1 FAIL: Follow winner not correctly identified. Has winning follow: {game.has_winning_follow}, Winning follow: {game.winning_follow.name if game.winning_follow else None}")
+        fail_count += 1
+    
+    # Move to next round
+    game.next_round()
+    
+    # The winning follow should be sent to the queue, and two new follows should be competing
+    follows_in_queue = [follow.name for follow in game.follows]
+    competing_follows = [game.pair_1[1].name, game.pair_2[1].name]
+    
+    print(f"Test 10 - Follows in queue: {follows_in_queue}")
+    print(f"Test 10 - Competing follows: {competing_follows}")
+    
+    # Check if the winning follow is in the queue
+    if initial_follow_1.name in follows_in_queue:
+        print("Test 10.2 PASS: Winning follow correctly sent to queue")
+        pass_count += 1
+    else:
+        print(f"Test 10.2 FAIL: Winning follow not in queue. Queue: {follows_in_queue}")
+        fail_count += 1
+    
+    # Check that two different follows are now competing
+    if initial_follow_1.name not in competing_follows:
+        print("Test 10.3 PASS: New follows are competing after follow winner")
+        pass_count += 1
+    else:
+        print(f"Test 10.3 FAIL: Winning follow still competing. Current competitors: {competing_follows}")
+        fail_count += 1
+    
+    # Test 11: Game finished only when both roles have winners
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"], 
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"], 
+        ["Judge1", "Judge2"]
+    )
+    
+    print(f"Test 11 - Win thresholds - leads: {game.total_num_leads - 1}, follows: {game.total_num_follows - 1}")
+    
+    # Store initial competitors
+    initial_lead = game.pair_1[0]
+    initial_follow = game.pair_1[1]
+    
+    # Give winning points to lead
+    initial_lead.points = game.total_num_leads - 2  # With 5 leads, needs 4 points to win
+    
+    # Lead wins and reaches winning condition
+    lead_pair = (initial_lead, game.pair_2[0])
+    result = simulate_round(
+        game, lead_pair, "lead", [("Judge1", 1), ("Judge2", 1)]
+    )
+    
+    print(f"Test 11 - After lead win - Has winning lead: {game.has_winning_lead}")
+    print(f"Test 11 - After lead win - Has winning follow: {game.has_winning_follow}")
+    print(f"Test 11 - After lead win - Game finished: {game.is_finished()}")
+    
+    # At this point, only lead has a winner, game should not be finished
+    if not game.is_finished():
+        print("Test 11.1 PASS: Game not finished with only lead winner")
+        pass_count += 1
+    else:
+        print("Test 11.1 FAIL: Game incorrectly marked as finished with only lead winner")
+        fail_count += 1
+    
+    # Give winning points to follow
+    initial_follow.points = game.total_num_follows - 2  # With 5 follows, needs 4 points to win
+    
+    # Follow wins and reaches winning condition
+    follow_pair = (initial_follow, game.pair_2[1])
+    result = simulate_round(
+        game, follow_pair, "follow", [("Judge1", 1), ("Judge2", 1)]
+    )
+    
+    print(f"Test 11 - After follow win - Has winning lead: {game.has_winning_lead}")
+    print(f"Test 11 - After follow win - Has winning follow: {game.has_winning_follow}")
+    print(f"Test 11 - After follow win - Game finished: {game.is_finished()}")
+    
+    # Now the game should be finished with both roles having winners
+    if game.is_finished():
+        print("Test 11.2 PASS: Game finished with both lead and follow winners")
+        pass_count += 1
+    else:
+        print("Test 11.2 FAIL: Game not marked as finished with both winners")
+        fail_count += 1
+
+    # Test 12: Round winners stay in competition if not overall winner
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 12: Round winners stay in competition if not overall winner")
+    game.debug_state()
+    
+    # First, run a normal round where neither contestant reaches win threshold
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    print(f"Test 12 - Initial contestants - Leads: {lead1.name}, {lead2.name}; Follows: {follow1.name}, {follow2.name}")
+    
+    # Lead1 wins
+    result = game.judge_round(lead1, lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Test 12 - Lead round: {lead1.name} wins over {lead2.name}")
+    
+    # Follow1 wins
+    result = game.judge_round(follow1, follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Test 12 - Follow round: {follow1.name} wins over {follow2.name}")
+    
+    # Remember winners
+    winning_lead_name = lead1.name
+    winning_follow_name = follow1.name
+    
+    print("\nTest 12 - State after round:")
+    game.debug_state()
+    
+    # Go to next round
+    print("\nTest 12 - Moving to next round...")
+    game.next_round()
+    
+    # After next_round, the winners should still be competing
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    competing_follows = [game.pair_1[1].name, game.pair_2[1].name]
+    
+    print("\nTest 12 - State in new round:")
+    game.debug_state()
+    
+    # Check if previous round winners are still competing
+    if winning_lead_name in competing_leads:
+        print(f"Test 12.1 PASS: Lead winner {winning_lead_name} still competing in next round")
+        pass_count += 1
+    else:
+        print(f"Test 12.1 FAIL: Lead winner {winning_lead_name} not competing in next round. Current competitors: {competing_leads}")
+        fail_count += 1
+    
+    if winning_follow_name in competing_follows:
+        print(f"Test 12.2 PASS: Follow winner {winning_follow_name} still competing in next round")
+        pass_count += 1
+    else:
+        print(f"Test 12.2 FAIL: Follow winner {winning_follow_name} not competing in next round. Current competitors: {competing_follows}")
+        fail_count += 1
+    
+    # Now test when a lead reaches win threshold
+    # Set up a specific scenario where a lead is one point away from winning
+    print("\nTest 12 - Testing lead win scenario...")
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    initial_lead = game.pair_1[0]
+    initial_lead.points = game.total_num_leads - 2  # With 5 leads, needs 4 points to win
+    
+    print(f"Test 12 - Initial lead {initial_lead.name} has {initial_lead.points} points, needs {game.total_num_leads - 1} to win")
+    
+    # Simulate a round where this lead wins and reaches the winning threshold
+    lead_pair = (initial_lead, game.pair_2[0])
+    result = game.judge_round(lead_pair[0], lead_pair[1], "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Test 12 - Lead {initial_lead.name} now has {initial_lead.points} points")
+    
+    # Verify the lead is marked as a winner
+    if game.has_winning_lead and game.winning_lead.name == initial_lead.name:
+        print("Test 12.3 PASS: Lead correctly marked as winner")
+        pass_count += 1
+    else:
+        print(f"Test 12.3 FAIL: Lead not correctly marked as winner. has_winning_lead: {game.has_winning_lead}, winner: {game.winning_lead.name if game.winning_lead else None}")
+        fail_count += 1
+    
+    # Now check that the game is not finished yet
+    if not game.is_finished():
+        print("Test 12.4 PASS: Game not finished with only lead winner")
+        pass_count += 1
+    else:
+        print("Test 12.4 FAIL: Game incorrectly marked as finished with only lead winner")
+        fail_count += 1
+    
+    print("\nTest 12 - State after lead wins:")
+    game.debug_state()
+    
+    # Move to next round and verify winning lead is sent to queue
+    print("\nTest 12 - Moving to next round after lead winner...")
+    game.next_round()
+    
+    print("\nTest 12 - State after next round:")
+    game.debug_state()
+    
+    # After next_round, the winning lead should be in the queue, not competing
+    leads_in_queue = [lead.name for lead in game.leads]
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    
+    if initial_lead.name in leads_in_queue:
+        print(f"Test 12.5 PASS: Winning lead {initial_lead.name} correctly sent to queue")
+        pass_count += 1
+    else:
+        print(f"Test 12.5 FAIL: Winning lead {initial_lead.name} not in queue. Queue: {leads_in_queue}")
+        fail_count += 1
+
+    # Test 13: After a role has a winner, round winners for that role stay in competition
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 13: After a role has a winner, other contestants stay in competition after winning")
+    
+    # First, make Lead1 the winner for leads
+    initial_lead = game.pair_1[0]
+    initial_lead.points = game.total_num_leads - 2  # With 5 leads, needs 4 points to win
+    
+    # Simulate a round where this lead wins and reaches the winning threshold
+    lead_pair = (initial_lead, game.pair_2[0])
+    result = game.judge_round(lead_pair[0], lead_pair[1], "lead", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Verify the lead is marked as a winner
+    if game.has_winning_lead:
+        print(f"Test 13 - Lead {initial_lead.name} is now the winner for leads")
+    else:
+        print(f"Test 13 - ERROR: Lead not marked as winner")
+    
+    # Also have a follow win (but not reaching winner threshold)
+    follow_pair = (game.pair_1[1], game.pair_2[1])
+    result = game.judge_round(follow_pair[0], follow_pair[1], "follow", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Get the state before moving to next round
+    print("\nTest 13 - State after declaring winner:")
+    game.debug_state()
+    
+    # Move to next round
+    game.next_round()
+    print("\nTest 13 - State after moving to next round:")
+    game.debug_state()
+    
+    # Get the new competing leads after the next_round
+    new_lead1 = game.pair_1[0]
+    new_lead2 = game.pair_2[0]
+    print(f"Test 13 - New leads competing: {new_lead1.name}, {new_lead2.name}")
+    
+    # Have new_lead1 win a round
+    result = game.judge_round(new_lead1, new_lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Test 13 - Lead {new_lead1.name} wins the lead round")
+    
+    # Also have a follow win
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    result = game.judge_round(follow1, follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Get state after round
+    print("\nTest 13 - State after round where a lead wins (post role-winner):")
+    game.debug_state()
+    
+    # Move to next round
+    game.next_round()
+    print("\nTest 13 - State after moving to next round:")
+    game.debug_state()
+    
+    # Verify the winning lead from previous round is still competing
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    if new_lead1.name in competing_leads:
+        print(f"Test 13.1 PASS: Lead winner {new_lead1.name} is still competing after winning a round")
+        pass_count += 1
+    else:
+        print(f"Test 13.1 FAIL: Lead winner {new_lead1.name} is not competing. Competitors: {competing_leads}")
+        fail_count += 1
+    
+    # Have new_lead1 win again
+    if new_lead1.name == game.pair_1[0].name:
+        current_lead = game.pair_1[0]
+        other_lead = game.pair_2[0]
+    else:
+        current_lead = game.pair_2[0]
+        other_lead = game.pair_1[0]
+    
+    result = game.judge_round(current_lead, other_lead, "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Test 13 - Lead {current_lead.name} wins again")
+    
+    # Verify points have been accumulated
+    print(f"Test 13 - Lead {current_lead.name} should now have multiple points: {current_lead.points}")
+    
+    # Move to next round
+    game.next_round()
+    print("\nTest 13 - State after another round:")
+    game.debug_state()
+    
+    # Verify the lead is still competing after winning multiple rounds
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    if current_lead.name in competing_leads:
+        print(f"Test 13.2 PASS: Lead {current_lead.name} is still competing after winning multiple rounds")
+        pass_count += 1
+    else:
+        print(f"Test 13.2 FAIL: Lead {current_lead.name} is not competing. Competitors: {competing_leads}")
+        fail_count += 1
+
     # Summary
     total = pass_count + fail_count
     print(f"\nSummary: {pass_count}/{total} tests passed, {fail_count} failed.")
