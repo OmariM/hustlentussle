@@ -1,6 +1,8 @@
-# Hustle n’ Tussle - Dance Competition CLI
+# Hustle n' Tussle - Dance Competition Application
 
-A command-line application to manage a partner dance competition between **Leads** and **Follows**. The game randomly pairs dancers, uses **Guest Judges** and **Contestant Judges** to vote each round, supports **Ties** and **No Contest**, tracks individual points, and displays final leaderboards.
+A comprehensive application to manage a partner dance competition between **Leads** and **Follows**. The game randomly pairs dancers, uses **Guest Judges** and **Contestant Judges** to vote each round, supports **Ties** and **No Contest**, tracks individual points, and displays final leaderboards.
+
+Now available with both a CLI and Web interface!
 
 ---
 
@@ -25,6 +27,19 @@ A command-line application to manage a partner dance competition between **Leads
 ---
 
 ## 🚀 Usage
+
+### Run the Web Interface (Recommended)
+
+```bash
+python web/app.py
+```
+
+Then open your browser to http://localhost:5000
+
+- **Enter** lead names, follow names, and guest judge names.
+- **Vote** each round for leads and follows through an intuitive interface.
+- **Track** scores in real-time with a visual leaderboard.
+- **View** winners with crown emojis (👑) highlighting champions.
 
 ### Run the Interactive CLI
 
@@ -61,9 +76,11 @@ python simulate_test.py
 - **Guest & Contestant Judges**: Guests can choose Tie or No Contest; contestants must pick a winner.
 - **Tie Handling**: Both tied dancers gain +1 point and continue to the next round with fresh opponents.
 - **No Contest**: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected.
+- **Winner Recognition**: Crown emoji (👑) highlights the first contestant to reach the winning threshold.
 - **Early Exit**: Option to end the battle early and finalize leaderboards based on current points.
 - **Scoring**: Points awarded per win; tracked individually and sorted.
 - **Final Leaderboards**: Displays separate Top Leads and Top Follows sorted by points.
+- **Multiple Interfaces**: Choose between CLI or Web interface depending on your needs.
 
 ---
 
@@ -75,7 +92,13 @@ hustle-n-tussle/
 ├── main.py               # CLI frontend
 ├── test_simulation.py    # Automated tests with PASS/FAIL summary
 ├── simulate_test.py      # Simple round simulation script
-├── requirements.txt      # External dependencies (colorama)
+├── requirements.txt      # External dependencies
+├── web/                  # Web interface files
+│   ├── app.py            # Flask backend API
+│   ├── index.html        # Web UI HTML
+│   ├── css/              # Stylesheets
+│   ├── js/               # JavaScript files
+│   └── README.md         # Web interface documentation
 ├── .gitignore
 └── README.md             # Project documentation
 ```
@@ -88,18 +111,15 @@ Feel free to submit pull requests or open issues on GitHub. All enhancements and
 
 ---
 
-## 📝 TODO
+## 📝 Future Enhancements
 
-1. **Finish game logic**:
-   - Handle tie scenario when battle ends before a contestant smokes
-
-2. **Create web interface** for easier use
-
-3. **Quality of life features**:
+1. **Quality of life features**:
    - Implement save and load states
-   - Allow results to be exported
+   - Allow results to be exported to CSV/PDF
    - Add Spotify integration for music and logging which song was played for the round
    - Battle history page on website
+   - Authentication for judges
+   - Mobile application
 
 ---
 
