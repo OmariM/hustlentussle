@@ -108,22 +108,16 @@ async function startCompetition() {
     }
 }
 
-async function fetchScores() {
-    try {
-        const response = await fetch(`/api/get_scores?session_id=${sessionId}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
+function fetchScores() {
+    fetch(`/api/get_scores?session_id=${sessionId}`)
+        .then(response => response.json())
+        .then(data => {
+            // Update score tables with new data
+            updateScoreTable(data.leads, data.follows);
+        })
+        .catch(error => {
+            console.error('Error fetching scores:', error);
         });
-        
-        const data = await response.json();
-        currentLeads = data.leads;
-        currentFollows = data.follows;
-        
-        // Update scores display
-        updateScoresDisplay();
-    } catch (error) {
-        console.error('Error fetching scores:', error);
-    }
 }
 
 function updateScoresDisplay() {
@@ -138,14 +132,14 @@ function updateScoresDisplay() {
     // Add leads to the list
     sortedLeads.forEach(lead => {
         const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${lead.name}</span><span class="score-points">${lead.points}</span>`;
+        li.innerHTML = `<span class="score-name">${lead.name}${lead.is_winner ? ' 👑' : ''}</span><span class="score-points">${lead.points}</span>`;
         currentLeadScores.appendChild(li);
     });
     
     // Add follows to the list
     sortedFollows.forEach(follow => {
         const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${follow.name}</span><span class="score-points">${follow.points}</span>`;
+        li.innerHTML = `<span class="score-name">${follow.name}${follow.is_winner ? ' 👑' : ''}</span><span class="score-points">${follow.points}</span>`;
         currentFollowScores.appendChild(li);
     });
 }
@@ -481,7 +475,7 @@ async function endCompetition() {
         data.leads.forEach(lead => {
             const leadItem = document.createElement('li');
             leadItem.innerHTML = `${lead.medal ? `<span class="medal">${lead.medal}</span>` : ''} 
-                                 <span>${lead.name}</span> 
+                                 <span>${lead.name}${lead.is_winner ? ' 👑' : ''}</span> 
                                  <span>${lead.points} points</span>`;
             leadsLeaderboard.appendChild(leadItem);
         });
@@ -490,7 +484,7 @@ async function endCompetition() {
         data.follows.forEach(follow => {
             const followItem = document.createElement('li');
             followItem.innerHTML = `${follow.medal ? `<span class="medal">${follow.medal}</span>` : ''} 
-                                   <span>${follow.name}</span> 
+                                   <span>${follow.name}${follow.is_winner ? ' 👑' : ''}</span> 
                                    <span>${follow.points} points</span>`;
             followsLeaderboard.appendChild(followItem);
         });
@@ -523,4 +517,102 @@ function resetCompetition() {
     
     // Show setup screen
     showScreen(setupScreen);
+}
+
+// Update score table with current standings
+function updateScoreTable(leads, follows) {
+    // Clear existing scores
+    const leadScoreBody = document.getElementById('lead-score-body');
+    const followScoreBody = document.getElementById('follow-score-body');
+    leadScoreBody.innerHTML = '';
+    followScoreBody.innerHTML = '';
+
+    // Sort by points in descending order
+    leads.sort((a, b) => b.points - a.points);
+    follows.sort((a, b) => b.points - a.points);
+
+    // Update lead scores
+    leads.forEach(lead => {
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
+        nameCell.textContent = lead.name + (lead.is_winner ? ' 👑' : '');
+        const pointsCell = document.createElement('td');
+        pointsCell.textContent = lead.points;
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        leadScoreBody.appendChild(row);
+    });
+
+    // Update follow scores
+    follows.forEach(follow => {
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
+        nameCell.textContent = follow.name + (follow.is_winner ? ' 👑' : '');
+        const pointsCell = document.createElement('td');
+        pointsCell.textContent = follow.points;
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        followScoreBody.appendChild(row);
+    });
+}
+
+function displayResults(data) {
+    // Hide the round screen and show the results screen
+    document.getElementById('round-screen').style.display = 'none';
+    document.getElementById('results-screen').style.display = 'block';
+
+    // Display lead results
+    const leadResultsBody = document.getElementById('lead-results-body');
+    leadResultsBody.innerHTML = '';
+    data.leads.forEach(lead => {
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
+        nameCell.textContent = `${lead.medal} ${lead.name}${lead.is_winner ? ' 👑' : ''}`;
+        const pointsCell = document.createElement('td');
+        pointsCell.textContent = lead.points;
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        leadResultsBody.appendChild(row);
+    });
+
+    // Display follow results
+    const followResultsBody = document.getElementById('follow-results-body');
+    followResultsBody.innerHTML = '';
+    data.follows.forEach(follow => {
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
+        nameCell.textContent = `${follow.medal} ${follow.name}${follow.is_winner ? ' 👑' : ''}`;
+        const pointsCell = document.createElement('td');
+        pointsCell.textContent = follow.points;
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        followResultsBody.appendChild(row);
+    });
+}
+
+// End game function
+function endGame() {
+    // Disable voting buttons
+    document.querySelectorAll('.vote-button').forEach(button => {
+        button.disabled = true;
+    });
+    
+    // Send request to end game
+    fetch('/api/end_game', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            session_id: sessionId
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Display final results
+        displayResults(data);
+    })
+    .catch(error => {
+        console.error('Error ending game:', error);
+    });
 } 

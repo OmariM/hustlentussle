@@ -26,10 +26,15 @@ def get_vote_input(judge, option1, option2, is_guest):
             print(Fore.RED + "Enter a number.")
 
 
-def format_contestant_with_points(name, contestants):
+def format_contestant_with_points(name, contestants, game=None):
     for c in contestants:
         if c.name == name:
-            return f"{name} ({c.points} pts)"
+            # Add crown emoji for the first winner of each role
+            crown = ""
+            if game and ((game.has_winning_lead and game.last_lead_winner == name) or 
+                        (game.has_winning_follow and game.last_follow_winner == name)):
+                crown = "👑 "
+            return f"{crown}{name} ({c.points} pts)"
     return name
 
 
@@ -46,12 +51,12 @@ if __name__ == "__main__":
         state = game.get_game_state()
         print_header(f"Round {state['round']}")
         print(
-            f"Matchup 1: {format_contestant_with_points(state['pair_1'][0], game.leads+game.follows)} (Lead) & "
-            f"{format_contestant_with_points(state['pair_1'][1], game.leads+game.follows)} (Follow)"
+            f"Matchup 1: {format_contestant_with_points(state['pair_1'][0], game.leads+game.follows, game)} (Lead) & "
+            f"{format_contestant_with_points(state['pair_1'][1], game.leads+game.follows, game)} (Follow)"
         )
         print(
-            f"Matchup 2: {format_contestant_with_points(state['pair_2'][0], game.leads+game.follows)} (Lead) & "
-            f"{format_contestant_with_points(state['pair_2'][1], game.leads+game.follows)} (Follow)"
+            f"Matchup 2: {format_contestant_with_points(state['pair_2'][0], game.leads+game.follows, game)} (Lead) & "
+            f"{format_contestant_with_points(state['pair_2'][1], game.leads+game.follows, game)} (Follow)"
         )
         print(f"Contestant Judges: {', '.join(state['contestant_judges'])}")
 
@@ -106,7 +111,8 @@ if __name__ == "__main__":
     print("🟦" * 20)
     for idx, lead in enumerate(leads_sorted):
         medal = medals[idx] if idx < len(medals) else ""
-        print(f"{medal} {Fore.GREEN}{lead.name} ({lead.points})")
+        crown = "👑 " if game.last_lead_winner == lead.name else ""
+        print(f"{medal} {crown}{Fore.GREEN}{lead.name} ({lead.points})")
 
     # Follows leaderboard
     print("\n" + "🟪" * 20)
@@ -114,4 +120,5 @@ if __name__ == "__main__":
     print("🟪" * 20)
     for idx, follow in enumerate(follows_sorted):
         medal = medals[idx] if idx < len(medals) else ""
-        print(f"{medal} {Fore.CYAN}{follow.name} ({follow.points})")
+        crown = "👑 " if game.last_follow_winner == follow.name else ""
+        print(f"{medal} {crown}{Fore.CYAN}{follow.name} ({follow.points})")

@@ -578,7 +578,7 @@ def run_test_cases():
     
     # Check for win message - should have one
     win_messages = game.check_for_win()
-    if win_messages and f"{initial_lead.name} has won for the leads!" in win_messages:
+    if win_messages and f"👑 {initial_lead.name} has won for the leads!" in win_messages:
         print(f"Test 14.1 PASS: Correct win message shown for initial winner: {win_messages}")
         pass_count += 1
     else:
@@ -605,7 +605,7 @@ def run_test_cases():
     
     # Check for win message - should NOT have one since this role already has a winner
     win_messages = game.check_for_win()
-    if win_messages is None or f"{new_lead.name} has won for the leads!" not in win_messages:
+    if win_messages is None or f"👑 {new_lead.name} has won for the leads!" not in win_messages:
         print("Test 14.2 PASS: No win message shown for lead winning after role already has winner")
         pass_count += 1
     else:
@@ -621,7 +621,7 @@ def run_test_cases():
     
     # Check for win message - should have one for the follow
     win_messages = game.check_for_win()
-    if win_messages and f"{follow.name} has won for the follows!" in win_messages:
+    if win_messages and f"👑 {follow.name} has won for the follows!" in win_messages:
         print(f"Test 14.3 PASS: Correct win message shown for initial follow winner: {win_messages}")
         pass_count += 1
     else:

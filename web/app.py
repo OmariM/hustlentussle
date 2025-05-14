@@ -51,25 +51,59 @@ def get_scores():
     follow_dict = {}
     
     # Add current pair contestants
-    lead_dict[game.pair_1[0].name] = {'name': game.pair_1[0].name, 'points': game.pair_1[0].points}
-    lead_dict[game.pair_2[0].name] = {'name': game.pair_2[0].name, 'points': game.pair_2[0].points}
+    lead_dict[game.pair_1[0].name] = {
+        'name': game.pair_1[0].name, 
+        'points': game.pair_1[0].points,
+        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_1[0].name
+    }
     
-    follow_dict[game.pair_1[1].name] = {'name': game.pair_1[1].name, 'points': game.pair_1[1].points}
-    follow_dict[game.pair_2[1].name] = {'name': game.pair_2[1].name, 'points': game.pair_2[1].points}
+    lead_dict[game.pair_2[0].name] = {
+        'name': game.pair_2[0].name, 
+        'points': game.pair_2[0].points,
+        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_2[0].name
+    }
+    
+    follow_dict[game.pair_1[1].name] = {
+        'name': game.pair_1[1].name, 
+        'points': game.pair_1[1].points,
+        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_1[1].name
+    }
+    
+    follow_dict[game.pair_2[1].name] = {
+        'name': game.pair_2[1].name, 
+        'points': game.pair_2[1].points,
+        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_2[1].name
+    }
     
     # Add contestants from the queue (only if not already added)
     for lead in game.leads:
-        lead_dict[lead.name] = {'name': lead.name, 'points': lead.points}
+        lead_dict[lead.name] = {
+            'name': lead.name, 
+            'points': lead.points,
+            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
+        }
     
     for follow in game.follows:
-        follow_dict[follow.name] = {'name': follow.name, 'points': follow.points}
+        follow_dict[follow.name] = {
+            'name': follow.name, 
+            'points': follow.points,
+            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
+        }
     
     # Check if we have winning lead/follow and add them if they exist and aren't already included
     if hasattr(game, 'winning_lead') and game.winning_lead:
-        lead_dict[game.winning_lead.name] = {'name': game.winning_lead.name, 'points': game.winning_lead.points}
+        lead_dict[game.winning_lead.name] = {
+            'name': game.winning_lead.name, 
+            'points': game.winning_lead.points,
+            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.winning_lead.name
+        }
     
     if hasattr(game, 'winning_follow') and game.winning_follow:
-        follow_dict[game.winning_follow.name] = {'name': game.winning_follow.name, 'points': game.winning_follow.points}
+        follow_dict[game.winning_follow.name] = {
+            'name': game.winning_follow.name, 
+            'points': game.winning_follow.points,
+            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.winning_follow.name
+        }
     
     # Convert dictionaries to lists for the response
     lead_list = list(lead_dict.values())
@@ -155,19 +189,23 @@ def end_game():
     lead_results = []
     for idx, lead in enumerate(leads):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
+        is_winner = hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
         lead_results.append({
             'name': lead.name,
             'points': lead.points,
-            'medal': medal
+            'medal': medal,
+            'is_winner': is_winner
         })
     
     follow_results = []
     for idx, follow in enumerate(follows):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
+        is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
         follow_results.append({
             'name': follow.name,
             'points': follow.points,
-            'medal': medal
+            'medal': medal,
+            'is_winner': is_winner
         })
     
     return jsonify({

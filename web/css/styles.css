@@ -24,7 +24,7 @@ body {
 }
 
 .container {
-    max-width: 1000px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -34,6 +34,7 @@ header {
     margin-bottom: 40px;
     padding-bottom: 20px;
     border-bottom: 2px solid var(--border-color);
+    width: 100%;
 }
 
 h1 {
@@ -131,25 +132,29 @@ textarea {
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 30px;
+    width: 100%;
 }
 
 .round-info-container {
     display: flex;
     justify-content: space-between;
     gap: 30px;
+    flex-wrap: wrap;
 }
 
 .round-info {
-    flex: 3;
+    flex: 4;
+    min-width: 350px;
 }
 
 .scores-display {
-    flex: 1;
-    min-width: 220px;
-    padding: 15px;
+    flex: 2;
+    min-width: 300px;
+    padding: 15px 10px;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    overflow: hidden;
 }
 
 .scores-display h3 {
@@ -218,14 +223,24 @@ textarea {
     display: flex;
     justify-content: space-between;
     margin-bottom: 20px;
+    gap: 20px;
 }
 
 .matchup {
     width: 48%;
-    padding: 15px;
+    padding: 20px;
     background-color: white;
     border-radius: 5px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pair {
+    text-align: center;
+    margin: 10px 0;
+    font-size: 1.1em;
 }
 
 .contestant.lead {
@@ -440,4 +455,110 @@ textarea {
 .vote-btn.locked:hover {
     opacity: 0.7;
     transform: none;
+}
+
+/* Add table styles */
+.score-table, .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    text-align: left;
+    table-layout: fixed;
+}
+
+.score-table th, .results-table th {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.4rem 0.2rem;
+    white-space: nowrap;
+    font-size: 0.95rem;
+}
+
+.score-table td, .results-table td {
+    padding: 0.4rem 0.2rem;
+    border-bottom: 1px solid #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.score-table tr:nth-child(even), .results-table tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+.score-table tr:hover, .results-table tr:hover {
+    background-color: #e6e6e6;
+}
+
+/* Winner crown styling */
+td span.crown {
+    color: gold;
+    margin-left: 5px;
+}
+
+.score-table th:first-child, 
+.results-table th:first-child,
+.score-table td:first-child,
+.results-table td:first-child {
+    width: 75%;
+    padding-right: 8px;
+}
+
+.score-table th:last-child,
+.results-table th:last-child,
+.score-table td:last-child,
+.results-table td:last-child {
+    width: 25%;
+    text-align: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* Media queries for responsive design */
+@media (min-width: 1200px) {
+    .container {
+        max-width: 1400px;
+    }
+    
+    .round-info {
+        flex: 5;
+    }
+    
+    .scores-display {
+        flex: 2;
+    }
+}
+
+@media (max-width: 768px) {
+    .round-info-container {
+        flex-direction: column;
+    }
+    
+    .round-info, .scores-display {
+        width: 100%;
+        min-width: 100%;
+    }
+    
+    .matchups {
+        flex-direction: column;
+    }
+    
+    .matchup {
+        width: 100%;
+        margin-bottom: 15px;
+    }
+}
+
+/* Adjust the width of tables within the scores display */
+.scores-display .score-table {
+    width: 100%;
+}
+
+/* Make column headers more compact */
+.score-table th, .results-table th {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.4rem 0.2rem;
+    white-space: nowrap;
+    font-size: 0.95rem;
 } 
