@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hustle n' Tussle - Dance Competition</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Hustle n' Tussle</h1>
+            <h2>Dance Competition Manager</h2>
+        </header>
+
+        <div id="setup-screen" class="screen active">
+            <h2>Competition Setup</h2>
+            <div class="form-group">
+                <label for="lead-names">Lead Names (comma-separated):</label>
+                <textarea id="lead-names" rows="3" placeholder="e.g., John, Michael, David"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="follow-names">Follow Names (comma-separated):</label>
+                <textarea id="follow-names" rows="3" placeholder="e.g., Sarah, Emily, Jessica"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="judge-names">Guest Judge Names (comma-separated):</label>
+                <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
+            </div>
+            <button id="start-competition" class="btn primary">Start Competition</button>
+        </div>
+
+        <div id="round-screen" class="screen">
+            <div class="round-header">
+                <h2>Round <span id="round-number">1</span></h2>
+                <div class="matchups">
+                    <div class="matchup">
+                        <h3>Matchup 1</h3>
+                        <div class="pair">
+                            <span id="lead1-name" class="contestant lead"></span> (Lead) &
+                            <span id="follow1-name" class="contestant follow"></span> (Follow)
+                        </div>
+                    </div>
+                    <div class="matchup">
+                        <h3>Matchup 2</h3>
+                        <div class="pair">
+                            <span id="lead2-name" class="contestant lead"></span> (Lead) &
+                            <span id="follow2-name" class="contestant follow"></span> (Follow)
+                        </div>
+                    </div>
+                </div>
+                <div class="judges">
+                    <h3>Contestant Judges:</h3>
+                    <div id="contestant-judges-list"></div>
+                </div>
+            </div>
+
+            <div id="lead-voting" class="voting-section">
+                <h2>Voting for Leads</h2>
+                <div id="lead-judges-container" class="judges-container"></div>
+                <div id="lead-results" class="results hidden">
+                    <h3>Lead Winner: <span id="lead-winner"></span></h3>
+                    <div class="votes">
+                        <p>Guest Votes: <span id="lead-guest-votes"></span></p>
+                        <p>Contestant Votes: <span id="lead-contestant-votes"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="follow-voting" class="voting-section hidden">
+                <h2>Voting for Follows</h2>
+                <div id="follow-judges-container" class="judges-container"></div>
+                <div id="follow-results" class="results hidden">
+                    <h3>Follow Winner: <span id="follow-winner"></span></h3>
+                    <div class="votes">
+                        <p>Guest Votes: <span id="follow-guest-votes"></span></p>
+                        <p>Contestant Votes: <span id="follow-contestant-votes"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="round-results" class="hidden">
+                <div id="win-messages"></div>
+                <div class="buttons">
+                    <button id="next-round" class="btn primary">Next Round</button>
+                    <button id="end-battle" class="btn secondary">End Battle</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="results-screen" class="screen">
+            <h2>Final Results</h2>
+            
+            <div class="leaderboard">
+                <div class="leads-board">
+                    <h3>Top Leads</h3>
+                    <ul id="leads-leaderboard"></ul>
+                </div>
+                
+                <div class="follows-board">
+                    <h3>Top Follows</h3>
+                    <ul id="follows-leaderboard"></ul>
+                </div>
+            </div>
+            
+            <button id="new-competition" class="btn primary">New Competition</button>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html> 

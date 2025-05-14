@@ -1,0 +1,304 @@
+/* Base Styles */
+:root {
+    --primary-color: #4361ee;
+    --secondary-color: #3a0ca3;
+    --lead-color: #4cc9f0;
+    --follow-color: #f72585;
+    --background-color: #f8f9fa;
+    --border-color: #e9ecef;
+    --text-color: #212529;
+    --light-text: #6c757d;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: var(--text-color);
+    background-color: var(--background-color);
+}
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+h1 {
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+h2 {
+    margin-bottom: 20px;
+}
+
+h3 {
+    margin-bottom: 15px;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.primary:hover {
+    background-color: #2d46c2;
+}
+
+.secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.secondary:hover {
+    background-color: #5a6268;
+}
+
+/* Screen Management */
+.screen {
+    display: none;
+    animation: fadeIn 0.5s;
+}
+
+.screen.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Setup Screen */
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+}
+
+#start-competition {
+    margin-top: 20px;
+}
+
+/* Round Screen */
+.round-header {
+    background-color: #f1f3f5;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+.matchups {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.matchup {
+    width: 48%;
+    padding: 15px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.contestant.lead {
+    color: var(--lead-color);
+    font-weight: bold;
+}
+
+.contestant.follow {
+    color: var(--follow-color);
+    font-weight: bold;
+}
+
+.judges {
+    margin-top: 20px;
+}
+
+/* Voting Sections */
+.voting-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.hidden {
+    display: none;
+}
+
+.judges-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.judge-card {
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background-color: #f8f9fa;
+}
+
+.judge-name {
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.vote-options {
+    display: flex;
+    gap: 10px;
+}
+
+.vote-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.vote-btn:hover {
+    opacity: 0.9;
+}
+
+.vote-option-1 {
+    background-color: var(--lead-color);
+    color: white;
+}
+
+.vote-option-2 {
+    background-color: var(--follow-color);
+    color: white;
+}
+
+.vote-option-tie {
+    background-color: #ffd166;
+}
+
+.vote-option-nocontest {
+    background-color: #118ab2;
+    color: white;
+}
+
+.results {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #e9ecef;
+    border-radius: 5px;
+}
+
+.votes {
+    margin-top: 10px;
+}
+
+/* Round Results */
+#round-results {
+    margin-top: 30px;
+    text-align: center;
+}
+
+#win-messages {
+    margin-bottom: 20px;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+/* Results Screen */
+.leaderboard {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+}
+
+.leads-board, .follows-board {
+    width: 48%;
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.leads-board h3 {
+    color: var(--lead-color);
+}
+
+.follows-board h3 {
+    color: var(--follow-color);
+}
+
+.leaderboard ul {
+    list-style-type: none;
+}
+
+.leaderboard li {
+    padding: 10px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+}
+
+.leaderboard li:last-child {
+    border-bottom: none;
+}
+
+.medal {
+    margin-right: 10px;
+}
+
+#new-competition {
+    display: block;
+    margin: 0 auto;
+} 
