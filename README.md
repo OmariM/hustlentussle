@@ -4,6 +4,20 @@ A comprehensive application to manage a partner dance competition between **Lead
 
 Now available with both a CLI and Web interface!
 
+## 📸 Interface Screenshots
+
+### Setup Screen
+![Setup Screen](docs/screenshots/setup-screen.png)
+*Competition setup with fields for lead, follow, and judge names*
+
+### Voting Screen
+![Voting Screen](docs/screenshots/voting-screen.mov)
+*Voting interface showing matchups, current scores with crown emojis, and judge voting*
+
+### Results Screen
+![Results Screen](docs/screenshots/results-screen.png)
+*Final results showing leaderboards with medals and crown emojis for winners*
+
 ---
 
 ## 🔧 Installation

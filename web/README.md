@@ -2,6 +2,20 @@
 
 This is a modern web interface for the Hustle n' Tussle Dance Competition Manager, built using HTML, CSS, and JavaScript with a Flask backend.
 
+## 📸 UI Screenshots
+
+### Setup Screen
+![Setup Screen](../docs/screenshots/setup-screen.png)
+*Competition setup with fields for lead, follow, and judge names*
+
+### Voting Screen
+![Voting Screen](../docs/screenshots/voting-screen.mov)
+*Voting interface showing matchups, current scores with crown emojis, and judge voting*
+
+### Results Screen
+![Results Screen](../docs/screenshots/results-screen.png)
+*Final results showing leaderboards with medals and crown emojis for winners*
+
 ## Features
 
 - All the functionality of the CLI version in a user-friendly web interface
