@@ -9,7 +9,22 @@ This directory contains configuration files and instructions for deploying the H
 - Systemd (for service management)
 - Domain name pointed to your server
 
-## Deployment Steps
+## Deployment Scripts
+
+This repository includes two helpful scripts for managing deployment:
+
+1. **`deploy_to_prod.sh`** (run on your development machine)
+   - Merges changes from the main branch to the prod branch
+   - Pushes the updated prod branch to the remote repository
+   - Safely handles branch switching and error checking
+
+2. **`deployment/update_server.sh`** (run on your production server)
+   - Pulls the latest changes from the prod branch
+   - Updates dependencies if requirements have changed
+   - Restarts the application service
+   - Provides status and error information
+
+## Initial Deployment Steps
 
 1. **Clone the production branch**
    ```bash
@@ -49,13 +64,25 @@ This directory contains configuration files and instructions for deploying the H
    sudo systemctl start hustlentussle
    ```
 
-6. **Verify the application is running**
+6. **Prepare the update script**
+   ```bash
+   # Copy the update script to a convenient location
+   cp deployment/update_server.sh ./update.sh
+   
+   # Edit the script to set your actual paths
+   nano update.sh
+   
+   # Make it executable
+   chmod +x update.sh
+   ```
+
+7. **Verify the application is running**
    ```bash
    sudo systemctl status hustlentussle
    curl http://localhost:8080  # Should return the application HTML
    ```
 
-7. **Set up HTTPS with Let's Encrypt** (recommended)
+8. **Set up HTTPS with Let's Encrypt** (recommended)
    ```bash
    sudo apt install certbot python3-certbot-nginx
    sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
@@ -63,7 +90,20 @@ This directory contains configuration files and instructions for deploying the H
 
 ## Updating the Application
 
-When you have changes to deploy:
+### Option 1: Using the update script (recommended)
+
+1. **On your development machine**:
+   ```bash
+   # Make and commit your changes to main
+   ./deploy_to_prod.sh
+   ```
+
+2. **On your production server**:
+   ```bash
+   ./update.sh
+   ```
+
+### Option 2: Manual update
 
 1. **Pull the latest changes**
    ```bash
