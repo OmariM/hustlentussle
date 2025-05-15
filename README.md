@@ -84,6 +84,47 @@ python simulate_test.py
 
 ---
 
+## 🌐 Deployment
+
+### Deploying to Render
+
+Hustle n' Tussle can be easily deployed to [Render](https://render.com) using the included configuration files:
+
+1. **Push your code to GitHub**:
+   Make sure your code is in a GitHub repository.
+
+2. **Create a Render account**:
+   Sign up at [render.com](https://render.com).
+
+3. **Create a new Web Service**:
+   - Click "New" and select "Web Service"
+   - Connect your GitHub repository
+   - Select the repository with Hustle n' Tussle
+
+4. **Configure the service**:
+   - Render will automatically detect the Python application
+   - Set the following:
+     - Name: hustlentussle (or your preferred name)
+     - Build Command: `pip install -r requirements.prod.txt`
+     - Start Command: `gunicorn wsgi:application`
+   - Add environment variables:
+     - `FLASK_ENV`: `production`
+     - `SECRET_KEY`: Generate a secure random string
+
+5. **Deploy the service**:
+   - Click "Create Web Service"
+   - Wait for the build and deployment to complete
+
+6. **Connect your custom domain**:
+   - In your service dashboard, go to "Settings"
+   - Scroll to "Custom Domains"
+   - Click "Add Custom Domain"
+   - Follow the instructions to configure your domain
+
+For more details, see the [Render documentation](https://render.com/docs).
+
+---
+
 ## ⚙️ Features
 
 - **Random Pairing**: Each round pairs one Lead with one Follow.

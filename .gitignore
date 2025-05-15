@@ -49,3 +49,6 @@ Thumbs.db
 # Application specific
 docs/screenshots/*
 !docs/screenshots/README.md
+
+# Render specific
+.render-buildlogs/

@@ -1,0 +1,15 @@
+# Render configuration file
+services:
+  - type: web
+    name: hustlentussle
+    env: python
+    plan: free # or starter
+    buildCommand: pip install -r requirements.prod.txt
+    startCommand: gunicorn wsgi:application
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true # Will generate a random value on first deploy
+    domains:
+      - yourdomain.com # Replace with your actual domain 
