@@ -1,0 +1,14 @@
+[Unit]
+Description=Hustle n' Tussle Web Application
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/hustlentussle
+Environment="FLASK_ENV=production"
+Environment="SECRET_KEY=your-secure-key-here"
+ExecStart=/usr/local/bin/gunicorn --workers 3 --bind 0.0.0.0:8080 wsgi:application
+Restart=always
+
+[Install]
+WantedBy=multi-user.target 

@@ -5,8 +5,13 @@ import os
 # Add parent directory to path to import game_logic
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game, Contestant
+from web.config import get_config
+
+# Get configuration based on environment
+config = get_config()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+app.config.from_object(config)
 games = {}  # Store active games by session ID
 
 @app.route('/')
@@ -214,4 +219,4 @@ def end_game():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
