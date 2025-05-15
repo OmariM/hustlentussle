@@ -11,7 +11,7 @@ Now available with both a CLI and Web interface!
 *Competition setup with fields for lead, follow, and judge names*
 
 ### Voting Screen
-![Voting Screen](docs/screenshots/voting-screen.mov)
+![Voting Screen](docs/screenshots/voting-screen.gif)
 *Voting interface showing matchups, current scores with crown emojis, and judge voting*
 
 ### Results Screen
