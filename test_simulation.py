@@ -636,6 +636,51 @@ def run_test_cases():
         print("Test 14.4 FAIL: Game not marked as finished when both roles have winners")
         fail_count += 1
 
+    # Test 15: No points awarded in case of a tie
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 15: No points awarded in case of a tie")
+    
+    # Get contestants from the first round
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    
+    # Store their initial points (should be 0)
+    initial_lead1_points = lead1.points
+    initial_lead2_points = lead2.points
+    print(f"Test 15 - Initial points: {lead1.name}: {initial_lead1_points}, {lead2.name}: {initial_lead2_points}")
+    
+    # Simulate a tie
+    result = game.judge_round(lead1, lead2, "lead", [("Judge1", 3), ("Judge2", 3)])
+    
+    # Verify the result is a tie
+    if result["winner"].startswith("Tie between"):
+        print(f"Test 15.1 PASS: Tie correctly detected")
+        pass_count += 1
+    else:
+        print(f"Test 15.1 FAIL: Tie not correctly detected, got: {result['winner']}")
+        fail_count += 1
+    
+    # Verify neither contestant got points
+    if lead1.points == initial_lead1_points and lead2.points == initial_lead2_points:
+        print(f"Test 15.2 PASS: No points awarded in tie ({lead1.name}: {lead1.points}, {lead2.name}: {lead2.points})")
+        pass_count += 1
+    else:
+        print(f"Test 15.2 FAIL: Points incorrectly awarded in tie ({lead1.name}: {lead1.points}, {lead2.name}: {lead2.points})")
+        fail_count += 1
+    
+    # Verify both tied contestants are set for next round
+    if game.tie_lead_pair == (lead1, lead2):
+        print("Test 15.3 PASS: Tied contestants correctly set for next round")
+        pass_count += 1
+    else:
+        print(f"Test 15.3 FAIL: Tied contestants not correctly set, got: {game.tie_lead_pair}")
+        fail_count += 1
+
     print(f"Tests passed: {pass_count}/{pass_count + fail_count}")
     return pass_count, fail_count
 

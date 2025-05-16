@@ -174,8 +174,7 @@ class Game:
 
         # Tie: both guests vote 3
         if guest_votes.count(3) == len(self.guest_judges):
-            c1.points += 1
-            c2.points += 1
+            # No points awarded in case of a tie
             if role == "lead":
                 self.tie_lead_pair = (c1, c2)
             else:
@@ -214,6 +213,8 @@ class Game:
         return self.process_results(c1, c2, score1, score2, role, votes)
 
     def process_results(self, c1, c2, s1, s2, role, votes):
+        # Handle tie when scores are equal - first contestant (c1) wins in case of tie
+        # EXCEPT if the tie is due to guest judges voting 3 (which is handled in judge_round)
         winner, loser = (c1, c2) if s1 >= s2 else (c2, c1)
 
         # Handle round winner based on role and whether that role already has a winner
