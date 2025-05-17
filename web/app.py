@@ -639,6 +639,105 @@ def process_uploaded_file():
         # Extract data from relevant sheets
         data = {}
         
+        # Track all contestants and their points from rounds
+        all_contestants = {
+            'leads': {},
+            'follows': {}
+        }
+        
+        # Round History - Process this first to collect all contestant points
+        if "Round History" in wb.sheetnames:
+            round_sheet = wb["Round History"]
+            rounds = []
+            
+            # Get column headers to understand the sheet format
+            headers = {}
+            for col in range(1, round_sheet.max_column + 1):
+                header = round_sheet.cell(row=1, column=col).value
+                if header:
+                    headers[col] = header
+                    
+            # Count how many judges (every 3 columns after column 5)
+            judge_count = (round_sheet.max_column - 5) // 3
+            
+            # Extract round data
+            for row in range(2, round_sheet.max_row + 1):
+                round_num = round_sheet.cell(row=row, column=1).value
+                if round_num:
+                    lead1 = round_sheet.cell(row=row, column=2).value
+                    lead2 = round_sheet.cell(row=row, column=3).value
+                    follow1 = round_sheet.cell(row=row, column=4).value
+                    follow2 = round_sheet.cell(row=row, column=5).value
+                    
+                    # Initialize contestants if they don't exist yet
+                    for lead in [lead1, lead2]:
+                        if lead and lead not in all_contestants['leads']:
+                            all_contestants['leads'][lead] = {'name': lead, 'points': 0, 'is_winner': False}
+                            
+                    for follow in [follow1, follow2]:
+                        if follow and follow not in all_contestants['follows']:
+                            all_contestants['follows'][follow] = {'name': follow, 'points': 0, 'is_winner': False}
+                    
+                    round_data = {
+                        'round_num': round_num,
+                        'pairs': {
+                            'pair_1': {
+                                'lead': lead1,
+                                'follow': follow1
+                            },
+                            'pair_2': {
+                                'lead': lead2,
+                                'follow': follow2
+                            }
+                        },
+                        'lead_votes': {},
+                        'follow_votes': {}
+                    }
+                    
+                    # Extract winner information and award points
+                    lead_winner = None
+                    follow_winner = None
+                    
+                    for col in [2, 3]:  # Lead columns
+                        cell = round_sheet.cell(row=row, column=col)
+                        font_color = cell.font.color
+                        if font_color and font_color.rgb == "FF0000":  # Red color
+                            lead_winner = cell.value
+                            round_data['lead_winner'] = lead_winner
+                            # Award a point to the winner
+                            if lead_winner and lead_winner in all_contestants['leads']:
+                                all_contestants['leads'][lead_winner]['points'] += 1
+                    
+                    for col in [4, 5]:  # Follow columns
+                        cell = round_sheet.cell(row=row, column=col)
+                        font_color = cell.font.color
+                        if font_color and font_color.rgb == "FF0000":  # Red color
+                            follow_winner = cell.value
+                            round_data['follow_winner'] = follow_winner
+                            # Award a point to the winner
+                            if follow_winner and follow_winner in all_contestants['follows']:
+                                all_contestants['follows'][follow_winner]['points'] += 1
+                    
+                    # Extract judge votes
+                    for j in range(judge_count):
+                        judge_col = 6 + j * 3
+                        lead_vote_col = judge_col + 1
+                        follow_vote_col = judge_col + 2
+                        
+                        judge_name = round_sheet.cell(row=row, column=judge_col).value
+                        if judge_name:
+                            lead_vote = round_sheet.cell(row=row, column=lead_vote_col).value
+                            follow_vote = round_sheet.cell(row=row, column=follow_vote_col).value
+                            
+                            if lead_vote:
+                                round_data['lead_votes'][judge_name] = lead_vote
+                            if follow_vote:
+                                round_data['follow_votes'][judge_name] = follow_vote
+                    
+                    rounds.append(round_data)
+            
+            data['rounds'] = rounds
+        
         # Battle Summary
         if "Battle Summary" in wb.sheetnames:
             summary_sheet = wb["Battle Summary"]
@@ -664,7 +763,20 @@ def process_uploaded_file():
                     name = name_text.replace(medal, '').replace("👑", '').strip()
                     
                     # Parse points
-                    points = int(points_text.split(' ')[0]) if isinstance(points_text, str) else points_text
+                    points = 0
+                    try:
+                        if isinstance(points_text, str):
+                            points = int(points_text.split(' ')[0])
+                        elif isinstance(points_text, (int, float)):
+                            points = int(points_text)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['leads']:
+                            points = all_contestants['leads'][name]['points']
+                    
+                    # Mark as winner in our tracking dict
+                    if name in all_contestants['leads'] and is_winner:
+                        all_contestants['leads'][name]['is_winner'] = True
                     
                     top_leads.append({
                         'name': name,
@@ -689,7 +801,20 @@ def process_uploaded_file():
                     name = name_text.replace(medal, '').replace("👑", '').strip()
                     
                     # Parse points
-                    points = int(points_text.split(' ')[0]) if isinstance(points_text, str) else points_text
+                    points = 0
+                    try:
+                        if isinstance(points_text, str):
+                            points = int(points_text.split(' ')[0])
+                        elif isinstance(points_text, (int, float)):
+                            points = int(points_text)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['follows']:
+                            points = all_contestants['follows'][name]['points']
+                    
+                    # Mark as winner in our tracking dict
+                    if name in all_contestants['follows'] and is_winner:
+                        all_contestants['follows'][name]['is_winner'] = True
                     
                     top_follows.append({
                         'name': name,
@@ -703,9 +828,6 @@ def process_uploaded_file():
                 'time': time,
                 'total_rounds': total_rounds
             }
-            
-            data['leads'] = top_leads
-            data['follows'] = top_follows
         
         # Lead and Follow Leaderboards
         if "Lead Leaderboard" in wb.sheetnames:
@@ -713,12 +835,34 @@ def process_uploaded_file():
             leads = []
             for row in range(2, lead_sheet.max_row + 1):
                 name = lead_sheet.cell(row=row, column=1).value
-                points = lead_sheet.cell(row=row, column=2).value
+                points_cell = lead_sheet.cell(row=row, column=2).value
                 if name:
+                    # Try to parse points from the cell
+                    points = 0
+                    try:
+                        if isinstance(points_cell, (int, float)):
+                            points = int(points_cell)
+                        elif isinstance(points_cell, str) and points_cell.isdigit():
+                            points = int(points_cell)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['leads']:
+                            points = all_contestants['leads'][name]['points']
+                            
+                    # Check if this contestant is a winner
+                    is_winner = False
+                    if name in all_contestants['leads']:
+                        is_winner = all_contestants['leads'][name]['is_winner']
+                    
                     leads.append({
                         'name': name,
-                        'points': points
+                        'points': points,
+                        'is_winner': is_winner
                     })
+                    
+                    # Update our tracking dictionary
+                    if name in all_contestants['leads']:
+                        all_contestants['leads'][name]['points'] = max(all_contestants['leads'][name]['points'], points)
             data['all_leads'] = leads
         
         if "Follow Leaderboard" in wb.sheetnames:
@@ -726,84 +870,73 @@ def process_uploaded_file():
             follows = []
             for row in range(2, follow_sheet.max_row + 1):
                 name = follow_sheet.cell(row=row, column=1).value
-                points = follow_sheet.cell(row=row, column=2).value
+                points_cell = follow_sheet.cell(row=row, column=2).value
                 if name:
+                    # Try to parse points from the cell
+                    points = 0
+                    try:
+                        if isinstance(points_cell, (int, float)):
+                            points = int(points_cell)
+                        elif isinstance(points_cell, str) and points_cell.isdigit():
+                            points = int(points_cell)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['follows']:
+                            points = all_contestants['follows'][name]['points']
+                    
+                    # Check if this contestant is a winner
+                    is_winner = False
+                    if name in all_contestants['follows']:
+                        is_winner = all_contestants['follows'][name]['is_winner']
+                    
                     follows.append({
                         'name': name,
-                        'points': points
+                        'points': points,
+                        'is_winner': is_winner
                     })
+                    
+                    # Update our tracking dictionary
+                    if name in all_contestants['follows']:
+                        all_contestants['follows'][name]['points'] = max(all_contestants['follows'][name]['points'], points)
             data['all_follows'] = follows
         
-        # Round History
-        if "Round History" in wb.sheetnames:
-            round_sheet = wb["Round History"]
-            rounds = []
+        # Convert tracking dictionaries to lists and use as final data if not already set
+        if 'leads' not in data or not data['leads']:
+            data['leads'] = list(all_contestants['leads'].values())
+            # Sort by points in descending order
+            data['leads'].sort(key=lambda x: x['points'], reverse=True)
             
-            # Get column headers to understand the sheet format
-            headers = {}
-            for col in range(1, round_sheet.max_column + 1):
-                header = round_sheet.cell(row=1, column=col).value
-                if header:
-                    headers[col] = header
-                    
-            # Count how many judges (every 3 columns after column 5)
-            judge_count = (round_sheet.max_column - 5) // 3
+            # Assign medals to top 3
+            for i, lead in enumerate(data['leads'][:3]):
+                if i == 0:
+                    lead['medal'] = '🥇'
+                elif i == 1:
+                    lead['medal'] = '🥈'
+                elif i == 2:
+                    lead['medal'] = '🥉'
+        
+        if 'follows' not in data or not data['follows']:
+            data['follows'] = list(all_contestants['follows'].values())
+            # Sort by points in descending order
+            data['follows'].sort(key=lambda x: x['points'], reverse=True)
             
-            # Extract round data
-            for row in range(2, round_sheet.max_row + 1):
-                round_num = round_sheet.cell(row=row, column=1).value
-                if round_num:
-                    round_data = {
-                        'round_num': round_num,
-                        'pairs': {
-                            'pair_1': {
-                                'lead': round_sheet.cell(row=row, column=2).value,
-                                'follow': round_sheet.cell(row=row, column=4).value
-                            },
-                            'pair_2': {
-                                'lead': round_sheet.cell(row=row, column=3).value,
-                                'follow': round_sheet.cell(row=row, column=5).value
-                            }
-                        },
-                        'lead_votes': {},
-                        'follow_votes': {}
-                    }
-                    
-                    # Extract winner information
-                    for col in [2, 3]:  # Lead columns
-                        cell = round_sheet.cell(row=row, column=col)
-                        font_color = cell.font.color
-                        if font_color and font_color.rgb == "FF0000":  # Red color
-                            round_data['lead_winner'] = cell.value
-                    
-                    for col in [4, 5]:  # Follow columns
-                        cell = round_sheet.cell(row=row, column=col)
-                        font_color = cell.font.color
-                        if font_color and font_color.rgb == "FF0000":  # Red color
-                            round_data['follow_winner'] = cell.value
-                    
-                    # Extract judge votes
-                    for j in range(judge_count):
-                        judge_col = 6 + j * 3
-                        lead_vote_col = judge_col + 1
-                        follow_vote_col = judge_col + 2
-                        
-                        judge_name = round_sheet.cell(row=row, column=judge_col).value
-                        if judge_name:
-                            lead_vote = round_sheet.cell(row=row, column=lead_vote_col).value
-                            follow_vote = round_sheet.cell(row=row, column=follow_vote_col).value
-                            
-                            if lead_vote:
-                                round_data['lead_votes'][judge_name] = lead_vote
-                            if follow_vote:
-                                round_data['follow_votes'][judge_name] = follow_vote
-                    
-                    rounds.append(round_data)
-            
-            data['rounds'] = rounds
+            # Assign medals to top 3
+            for i, follow in enumerate(data['follows'][:3]):
+                if i == 0:
+                    follow['medal'] = '🥇'
+                elif i == 1:
+                    follow['medal'] = '🥈'
+                elif i == 2:
+                    follow['medal'] = '🥉'
         
         # Clean up
         os.remove(temp_path)
+        
+        # Log data for debugging
+        print("Processed data:", data)
+        if 'leads' in data:
+            for lead in data['leads']:
+                print(f"Lead: {lead['name']}, Points: {lead['points']}, Type: {type(lead['points'])}")
         
         return jsonify(data)
     

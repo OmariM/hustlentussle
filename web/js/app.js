@@ -192,6 +192,8 @@ async function processUploadedFile() {
         uploadBattleDataBtn.disabled = true;
         uploadBattleDataBtn.textContent = 'Processing...';
         
+        console.log(`Uploading file: ${file.name}, Size: ${file.size} bytes`);
+        
         const response = await fetch('/api/process_uploaded_file', {
             method: 'POST',
             body: formData
@@ -202,6 +204,53 @@ async function processUploadedFile() {
         }
         
         const data = await response.json();
+        
+        // Add detailed debug logging
+        console.log("Received data from server:", data);
+        console.log("Data structure:", Object.keys(data));
+        
+        // Check if we have rounds data
+        if (data.rounds) {
+            console.log(`Round data: ${data.rounds.length} rounds`);
+        }
+        
+        // Check leads data
+        if (data.leads) {
+            console.log("Lead data:", data.leads);
+            console.log(`Processing ${data.leads.length} leads:`);
+            data.leads.forEach((lead, i) => {
+                console.log(`Lead ${i}:`, lead, "Points:", lead.points, "Type:", typeof lead.points);
+                // Convert points to number if needed
+                if (lead.points !== undefined && lead.points !== null) {
+                    if (typeof lead.points !== 'number') {
+                        lead.points = parseInt(lead.points, 10) || 0;
+                        console.log(`Converted lead ${lead.name} points to:`, lead.points);
+                    }
+                } else {
+                    lead.points = 0;
+                    console.log(`Set default points (0) for lead ${lead.name}`);
+                }
+            });
+        }
+        
+        // Check follows data
+        if (data.follows) {
+            console.log("Follow data:", data.follows);
+            console.log(`Processing ${data.follows.length} follows:`);
+            data.follows.forEach((follow, i) => {
+                console.log(`Follow ${i}:`, follow, "Points:", follow.points, "Type:", typeof follow.points);
+                // Convert points to number if needed
+                if (follow.points !== undefined && follow.points !== null) {
+                    if (typeof follow.points !== 'number') {
+                        follow.points = parseInt(follow.points, 10) || 0;
+                        console.log(`Converted follow ${follow.name} points to:`, follow.points);
+                    }
+                } else {
+                    follow.points = 0;
+                    console.log(`Set default points (0) for follow ${follow.name}`);
+                }
+            });
+        }
         
         // Display the results (displayResults now calls showScreen internally)
         displayResults(data);
@@ -693,33 +742,83 @@ function displayResults(data) {
     // Use the showScreen function instead of direct style manipulation
     showScreen(resultsScreen);
 
+    console.log("Displaying results with data:", data);
+
     // Display lead results
     const leadResultsBody = document.getElementById('lead-results-body');
     leadResultsBody.innerHTML = '';
-    data.leads.forEach(lead => {
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
-        nameCell.textContent = `${lead.medal} ${lead.name}${lead.is_winner ? ' 👑' : ''}`;
-        const pointsCell = document.createElement('td');
-        pointsCell.textContent = lead.points;
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        leadResultsBody.appendChild(row);
-    });
+    
+    if (data.leads && Array.isArray(data.leads)) {
+        console.log("Processing leads:", data.leads.length);
+        data.leads.forEach((lead, i) => {
+            console.log(`Processing lead ${i}:`, lead);
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
+            
+            const pointsCell = document.createElement('td');
+            // Ensure points is a number and handle potential undefined or null values
+            let points;
+            if (lead.points !== undefined && lead.points !== null) {
+                // Make sure it's a number
+                try {
+                    points = parseInt(lead.points, 10);
+                    if (isNaN(points)) points = 0;
+                } catch (e) {
+                    points = 0;
+                }
+            } else {
+                points = 0;
+            }
+            
+            console.log(`Lead ${lead.name} points:`, points, "Type:", typeof points);
+            pointsCell.textContent = points;
+            
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            leadResultsBody.appendChild(row);
+        });
+    } else {
+        console.error("No leads data available or leads is not an array:", data.leads);
+    }
 
     // Display follow results
     const followResultsBody = document.getElementById('follow-results-body');
     followResultsBody.innerHTML = '';
-    data.follows.forEach(follow => {
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
-        nameCell.textContent = `${follow.medal} ${follow.name}${follow.is_winner ? ' 👑' : ''}`;
-        const pointsCell = document.createElement('td');
-        pointsCell.textContent = follow.points;
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        followResultsBody.appendChild(row);
-    });
+    
+    if (data.follows && Array.isArray(data.follows)) {
+        console.log("Processing follows:", data.follows.length);
+        data.follows.forEach((follow, i) => {
+            console.log(`Processing follow ${i}:`, follow);
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
+            
+            const pointsCell = document.createElement('td');
+            // Ensure points is a number and handle potential undefined or null values
+            let points;
+            if (follow.points !== undefined && follow.points !== null) {
+                // Make sure it's a number
+                try {
+                    points = parseInt(follow.points, 10);
+                    if (isNaN(points)) points = 0;
+                } catch (e) {
+                    points = 0;
+                }
+            } else {
+                points = 0;
+            }
+            
+            console.log(`Follow ${follow.name} points:`, points, "Type:", typeof points);
+            pointsCell.textContent = points;
+            
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            followResultsBody.appendChild(row);
+        });
+    } else {
+        console.error("No follows data available or follows is not an array:", data.follows);
+    }
     
     // Display round history if available
     if (data.rounds && data.rounds.length > 0) {
