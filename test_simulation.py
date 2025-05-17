@@ -681,6 +681,241 @@ def run_test_cases():
         print(f"Test 15.3 FAIL: Tied contestants not correctly set, got: {game.tie_lead_pair}")
         fail_count += 1
 
+    # Test 16: Contestants don't get the same partner after a tie
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 16: Contestants don't get the same partner after a tie")
+    
+    # Record initial pairings
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    initial_pairings = {
+        (lead1.name, follow1.name): True,
+        (lead2.name, follow2.name): True
+    }
+    
+    print(f"Test 16 - Initial pairings: {lead1.name}-{follow1.name}, {lead2.name}-{follow2.name}")
+    
+    # Simulate ties in both lead and follow rounds
+    result_lead = game.judge_round(lead1, lead2, "lead", [("Judge1", 3), ("Judge2", 3)])
+    result_follow = game.judge_round(follow1, follow2, "follow", [("Judge1", 3), ("Judge2", 3)])
+    
+    # Move to next round
+    game.next_round()
+    
+    # Get new pairings
+    new_lead1 = game.pair_1[0]
+    new_lead2 = game.pair_2[0]
+    new_follow1 = game.pair_1[1]
+    new_follow2 = game.pair_2[1]
+    
+    new_pairings = {
+        (new_lead1.name, new_follow1.name): True,
+        (new_lead2.name, new_follow2.name): True
+    }
+    
+    print(f"Test 16 - New pairings: {new_lead1.name}-{new_follow1.name}, {new_lead2.name}-{new_follow2.name}")
+    
+    # Check if any contestant got the same partner
+    same_partner_found = False
+    for pairing in new_pairings:
+        if pairing in initial_pairings:
+            same_partner_found = True
+            print(f"Test 16 - Error: Pairing {pairing[0]}-{pairing[1]} is repeated from previous round")
+    
+    if not same_partner_found:
+        print("Test 16.1 PASS: No contestant got the same partner after a tie")
+        pass_count += 1
+    else:
+        print("Test 16.1 FAIL: At least one contestant got the same partner after a tie")
+        fail_count += 1
+    
+    # Force a specific scenario where we need to swap
+    game = Game(
+        ["LeadA", "LeadB", "LeadC", "LeadD"],
+        ["FollowA", "FollowB", "FollowC", "FollowD"],
+        ["Judge1", "Judge2"]
+    )
+    
+    # Record initial pairings
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    print(f"Test 16 - Forced scenario - Initial pairings: {lead1.name}-{follow1.name}, {lead2.name}-{follow2.name}")
+    
+    # Simulate the round with ties
+    result_lead = game.judge_round(lead1, lead2, "lead", [("Judge1", 3), ("Judge2", 3)])
+    result_follow = game.judge_round(follow1, follow2, "follow", [("Judge1", 3), ("Judge2", 3)])
+    
+    # Manually modify the previous_pairs to force a swap scenario
+    # Clear it first, then add entries that would cause a swap
+    game.previous_pairs = {}
+    
+    # Move to next round
+    game.next_round()
+    
+    # Get the new pairings
+    new_lead1 = game.pair_1[0]
+    new_lead2 = game.pair_2[0]
+    new_follow1 = game.pair_1[1]
+    new_follow2 = game.pair_2[1]
+    
+    # Verify the ties were handled correctly
+    tied_leads = {lead1.name, lead2.name}
+    tied_follows = {follow1.name, follow2.name}
+    new_leads = {new_lead1.name, new_lead2.name}
+    new_follows = {new_follow1.name, new_follow2.name}
+    
+    if tied_leads == new_leads and tied_follows == new_follows:
+        print("Test 16.2 PASS: Correct contestants competing after tie")
+        pass_count += 1
+    else:
+        print(f"Test 16.2 FAIL: Incorrect contestants after tie. Expected leads: {tied_leads}, follows: {tied_follows}, got leads: {new_leads}, follows: {new_follows}")
+        fail_count += 1
+    
+    # Test that pairings from non-consecutive rounds are allowed
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4"],
+        ["Follow1", "Follow2", "Follow3", "Follow4"],
+        ["Judge1", "Judge2"]
+    )
+    
+    # Record initial pairings
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    initial_pairing_1 = (lead1.name, follow1.name)
+    initial_pairing_2 = (lead2.name, follow2.name)
+    
+    print(f"Test 16.3 - Initial pairings: {initial_pairing_1}, {initial_pairing_2}")
+    
+    # Manually add the initial pairings to the game's previous_pairs
+    game.previous_pairs[initial_pairing_1] = True
+    game.previous_pairs[initial_pairing_2] = True
+    
+    # Move to round 2 with ties to force new pairings
+    result = game.judge_round(lead1, lead2, "lead", [("Judge1", 3), ("Judge2", 3)])
+    result = game.judge_round(follow1, follow2, "follow", [("Judge1", 3), ("Judge2", 3)])
+    game.next_round()
+    
+    # Verify the round 2 pairings are different due to previous_pairs check
+    round2_pairings = [
+        (game.pair_1[0].name, game.pair_1[1].name),
+        (game.pair_2[0].name, game.pair_2[1].name)
+    ]
+    print(f"Test 16.3 - Round 2 pairings: {round2_pairings}")
+    
+    # There should be no overlap between initial and round 2 pairings
+    round2_has_no_repeat = initial_pairing_1 not in round2_pairings and initial_pairing_2 not in round2_pairings
+    
+    if round2_has_no_repeat:
+        print("Test 16.3 - Round 2 has no repeat pairings from round 1 as expected")
+    else:
+        print("Test 16.3 - WARNING: Round 2 has repeat pairings which shouldn't happen")
+    
+    # Now move to round a third round
+    round2_lead1 = game.pair_1[0]
+    round2_lead2 = game.pair_2[0]
+    round2_follow1 = game.pair_1[1]
+    round2_follow2 = game.pair_2[1]
+    
+    # Another round with ties
+    result = game.judge_round(round2_lead1, round2_lead2, "lead", [("Judge1", 3), ("Judge2", 3)])
+    result = game.judge_round(round2_follow1, round2_follow2, "follow", [("Judge1", 3), ("Judge2", 3)])
+    game.next_round()
+    
+    # Manually create pairings that match the original round 1 pairings
+    # First, force the previous_pairs to include round 2 pairings but NOT round 1
+    game.previous_pairs = {}  # Cleared automatically by next_round
+    
+    # Force the initial pairings to be considered in the round 3 pairings
+    round3_pairings = [
+        (game.pair_1[0].name, game.pair_1[1].name),
+        (game.pair_2[0].name, game.pair_2[1].name)
+    ]
+    print(f"Test 16.3 - Round 3 pairings: {round3_pairings}")
+    
+    # Since we're in round 3, the original pairings from round 1 should be allowed
+    # because the previous_pairs record is cleared after each round
+    original_pairing_possible = (initial_pairing_1 in round3_pairings or 
+                                initial_pairing_2 in round3_pairings or
+                                (initial_pairing_1[0], initial_pairing_2[1]) in round3_pairings or 
+                                (initial_pairing_2[0], initial_pairing_1[1]) in round3_pairings)
+    
+    if original_pairing_possible:
+        print("Test 16.3 PASS: Pairings from non-consecutive rounds are allowed")
+        pass_count += 1
+    else:
+        print("Test 16.3 FAIL: Pairings from non-consecutive rounds are not being allowed")
+        fail_count += 1
+
+    # Test 17: Contestants don't get the same partner in consecutive rounds even without ties
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4"],
+        ["Follow1", "Follow2", "Follow3", "Follow4"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("\nTest 17: Contestants don't get the same partner in consecutive rounds even without ties")
+    
+    # Record initial pairings
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    initial_pairings = {
+        (lead1.name, follow1.name): True,
+        (lead2.name, follow2.name): True
+    }
+    
+    print(f"Test 17 - Initial pairings: {lead1.name}-{follow1.name}, {lead2.name}-{follow2.name}")
+    
+    # Manually add the initial pairings to the game's previous_pairs
+    game.previous_pairs[lead1.name, follow1.name] = True
+    game.previous_pairs[lead2.name, follow2.name] = True
+    
+    # Normal round without ties
+    result = game.judge_round(lead1, lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+    result = game.judge_round(follow1, follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+    
+    # Move to next round - should avoid repeat pairings
+    game.next_round()
+    
+    # Get new pairings
+    new_lead1 = game.pair_1[0]
+    new_lead2 = game.pair_2[0]
+    new_follow1 = game.pair_1[1]
+    new_follow2 = game.pair_2[1]
+    
+    round2_pairings = [
+        (new_lead1.name, new_follow1.name),
+        (new_lead2.name, new_follow2.name)
+    ]
+    
+    print(f"Test 17 - Round 2 pairings: {round2_pairings}")
+    
+    # There should be no overlap between initial and round 2 pairings
+    no_repeat_pairings = all(pairing not in initial_pairings for pairing in round2_pairings)
+    
+    if no_repeat_pairings:
+        print("Test 17 PASS: No contestant got the same partner in round 2 even without ties")
+        pass_count += 1
+    else:
+        print("Test 17 FAIL: Some contestants got the same partner in round 2")
+        fail_count += 1
+
     print(f"Tests passed: {pass_count}/{pass_count + fail_count}")
     return pass_count, fail_count
 

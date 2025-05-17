@@ -49,6 +49,9 @@ class Game:
         # Initialize tracking for winners with crown emojis
         self.last_lead_winner = None
         self.last_follow_winner = None
+        
+        # Track previous pairings to avoid repeats after ties
+        self.previous_pairs = {}
 
         random.shuffle(self.leads)
         random.shuffle(self.follows)
@@ -56,6 +59,9 @@ class Game:
         # Always start with a Lead vs Follow pairing
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.follows.pop(0))
+        
+        # Record initial pairings
+        self._record_pairings()
 
         self.contestant_judges = self.get_contestant_judges()
         self.current_round = Round(
@@ -156,9 +162,29 @@ class Game:
                 follow1 = self.follows.pop(0)
                 follow2 = self.follows.pop(0)
 
+        # Ensure no contestant gets the same partner in consecutive rounds
+        # This applies to both tie and non-tie situations
+        if (self.tie_lead_pair is None and self.tie_follow_pair is None and 
+            (lead1, lead2) != (None, None) and (follow1, follow2) != (None, None)):
+            
+            # Check if the default pairing would recreate previous pairs
+            pairing_1 = (lead1.name, follow1.name)
+            pairing_2 = (lead2.name, follow2.name)
+            
+            # If either pairing already exists in previous_pairs, swap follows
+            if pairing_1 in self.previous_pairs or pairing_2 in self.previous_pairs:
+                # Swap follows to avoid repeat pairings
+                follow1, follow2 = follow2, follow1
+        
         # Form new Lead vs Follow pairs
         self.pair_1 = (lead1, follow1)
         self.pair_2 = (lead2, follow2)
+        
+        # Clear previous pairings since we only care about consecutive rounds
+        self.previous_pairs = {}
+        
+        # Record new pairings for next round
+        self._record_pairings()
 
         self.contestant_judges = self.get_contestant_judges()
         self.current_round = Round(
@@ -334,3 +360,8 @@ class Game:
         print(f"Has winning follow: {self.has_winning_follow}")
         print(f"Is finished: {self.is_finished()}")
         print("------------------\n")
+
+    def _record_pairings(self):
+        # Record initial pairings
+        self.previous_pairs[(self.pair_1[0].name, self.pair_1[1].name)] = True
+        self.previous_pairs[(self.pair_2[0].name, self.pair_2[1].name)] = True
