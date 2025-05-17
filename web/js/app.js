@@ -8,15 +8,29 @@ let currentLeads = []; // Store current lead contestants with points
 let currentFollows = []; // Store current follow contestants with points
 
 // DOM Elements
+const homeScreen = document.getElementById('home-screen');
+const uploadScreen = document.getElementById('upload-screen');
 const setupScreen = document.getElementById('setup-screen');
 const roundScreen = document.getElementById('round-screen');
 const resultsScreen = document.getElementById('results-screen');
+
+// Home screen elements
+const goToBattleBtn = document.getElementById('go-to-battle');
+const goToUploadBtn = document.getElementById('go-to-upload');
+
+// Upload screen elements
+const battleFileUpload = document.getElementById('battle-file-upload');
+const uploadFileName = document.getElementById('upload-file-name');
+const uploadBattleDataBtn = document.getElementById('upload-battle-data');
+const backToHomeBtn = document.getElementById('back-to-home');
+const uploadError = document.getElementById('upload-error');
 
 // Setup screen elements
 const leadNamesInput = document.getElementById('lead-names');
 const followNamesInput = document.getElementById('follow-names');
 const judgeNamesInput = document.getElementById('judge-names');
 const startCompetitionBtn = document.getElementById('start-competition');
+const setupBackToHomeBtn = document.getElementById('setup-back-to-home');
 
 // Round screen elements
 const roundNumber = document.getElementById('round-number');
@@ -51,25 +65,110 @@ const nextRoundBtn = document.getElementById('next-round');
 const endBattleBtn = document.getElementById('end-battle');
 const leadsLeaderboard = document.getElementById('leads-leaderboard');
 const followsLeaderboard = document.getElementById('follows-leaderboard');
-const newCompetitionBtn = document.getElementById('new-competition');
+const backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
+const downloadBattleDataBtn = document.getElementById('download-battle-data');
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Home screen navigation
+    goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
+    goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    
+    // Upload screen
+    battleFileUpload.addEventListener('change', handleFileSelect);
+    uploadBattleDataBtn.addEventListener('click', processUploadedFile);
+    backToHomeBtn.addEventListener('click', () => showScreen(homeScreen));
+    
+    // Setup screen
+    setupBackToHomeBtn.addEventListener('click', () => showScreen(homeScreen));
     startCompetitionBtn.addEventListener('click', startCompetition);
+    
+    // Battle flow
     determineLeadWinnerBtn.addEventListener('click', submitLeadVotes);
     determineFollowWinnerBtn.addEventListener('click', submitFollowVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
-    newCompetitionBtn.addEventListener('click', resetCompetition);
+    
+    // Results screen
+    backToHomeFromResultsBtn.addEventListener('click', resetAndGoHome);
+    downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 });
 
 // Functions
 function showScreen(screen) {
+    homeScreen.classList.remove('active');
+    uploadScreen.classList.remove('active');
     setupScreen.classList.remove('active');
     roundScreen.classList.remove('active');
     resultsScreen.classList.remove('active');
     
     screen.classList.add('active');
+    
+    // Reset error messages when switching screens
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        uploadFileName.textContent = file.name;
+        uploadError.textContent = '';
+        uploadError.classList.remove('visible');
+    } else {
+        uploadFileName.textContent = '';
+    }
+}
+
+async function processUploadedFile() {
+    const file = battleFileUpload.files[0];
+    if (!file) {
+        showUploadError('Please select a file first.');
+        return;
+    }
+    
+    // Check if the file is an Excel file
+    if (!file.name.endsWith('.xlsx')) {
+        showUploadError('Please upload a valid Excel file (.xlsx)');
+        return;
+    }
+    
+    // Create a FormData object to send the file
+    const formData = new FormData();
+    formData.append('battle_file', file);
+    
+    try {
+        // Start loading indicator
+        uploadBattleDataBtn.disabled = true;
+        uploadBattleDataBtn.textContent = 'Processing...';
+        
+        const response = await fetch('/api/process_uploaded_file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Display the results
+        displayResults(data);
+        showScreen(resultsScreen);
+    } catch (error) {
+        console.error('Error processing file:', error);
+        showUploadError(`Failed to process the file: ${error.message}`);
+    } finally {
+        // Reset the button
+        uploadBattleDataBtn.disabled = false;
+        uploadBattleDataBtn.textContent = 'Upload';
+    }
+}
+
+function showUploadError(message) {
+    uploadError.textContent = message;
+    uploadError.classList.add('visible');
 }
 
 async function startCompetition() {
@@ -467,32 +566,38 @@ async function goToNextRound() {
     }
 }
 
-// End Competition function
 async function endCompetition() {
     // Call our updated endGame function that works with the new UI components
     endGame();
 }
 
+function resetAndGoHome() {
+    resetCompetition();
+    showScreen(homeScreen);
+}
+
 function resetCompetition() {
-    // Reset all game state
+    // Reset global variables
     sessionId = null;
     guestJudges = [];
     leadVotes = {};
     followVotes = {};
     votingLocked = { lead: false, follow: false };
+    currentLeads = [];
+    currentFollows = [];
     
-    // Reset UI elements
+    // Clear form inputs
     leadNamesInput.value = '';
     followNamesInput.value = '';
     judgeNamesInput.value = '';
     
-    // Reset UI state
-    nextRoundBtn.disabled = false;
-    determineLeadWinnerBtn.disabled = false;
-    determineFollowWinnerBtn.disabled = false;
+    // Clear file upload
+    battleFileUpload.value = '';
+    uploadFileName.textContent = '';
     
-    // Show setup screen
-    showScreen(setupScreen);
+    // Reset error messages
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
 }
 
 // Update score table with current standings
@@ -744,6 +849,27 @@ function displayRoundHistory(rounds) {
         // Add the accordion item to the container
         roundsContainer.appendChild(accordionItem);
     });
+}
+
+// Function to download battle data as Excel file
+function downloadBattleData() {
+    if (!sessionId) {
+        console.error('No active session to download data from.');
+        return;
+    }
+    
+    // Create the download URL
+    const downloadURL = `/api/export_battle_data?session_id=${sessionId}`;
+    
+    // Create a temporary link element
+    const tempLink = document.createElement('a');
+    tempLink.href = downloadURL;
+    tempLink.setAttribute('target', '_blank');
+    
+    // Trigger the download
+    document.body.appendChild(tempLink);
+    tempLink.click();
+    document.body.removeChild(tempLink);
 }
 
 // End game function

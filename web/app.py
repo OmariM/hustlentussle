@@ -1,6 +1,12 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import sys
 import os
+import pandas as pd
+import io
+import datetime
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from werkzeug.utils import secure_filename
 
 # Add parent directory to path to import game_logic
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -273,6 +279,539 @@ def end_game():
         'follows': follow_results,
         'rounds': rounds_data
     })
+
+@app.route('/api/export_battle_data', methods=['GET'])
+def export_battle_data():
+    """Export battle data as an Excel file."""
+    session_id = request.args.get('session_id')
+    
+    if session_id not in games:
+        return jsonify({'error': 'Game not found'}), 404
+    
+    game = games[session_id]
+    
+    # Create an in-memory output file
+    output = io.BytesIO()
+    
+    # Create the workbook
+    wb = Workbook()
+    
+    # Add battle summary sheet
+    summary_sheet = wb.active
+    summary_sheet.title = "Battle Summary"
+    
+    # Set fixed column widths for all sheets to avoid MergedCell issues
+    standard_widths = {
+        "A": 15,  # First column (names, rounds, etc.)
+        "B": 20,  # Second column (points, contestants, etc.)
+        "C": 20,  # Third column
+        "D": 20,  # Fourth column
+        "E": 20,  # Fifth column
+        "F": 20,  # Sixth column
+        "G": 20,  # Seventh column
+        "H": 20,  # Eighth column
+        "I": 20,  # Ninth column
+        "J": 20,  # Tenth column
+        "K": 20,  # Eleventh column
+        "L": 20,  # Twelfth column
+        "M": 20,  # Thirteenth column
+        "N": 20,  # Fourteenth column
+        "O": 20,  # Fifteenth column
+    }
+    
+    for sheet in wb.worksheets:
+        # Apply standard widths to each column
+        for col_letter, width in standard_widths.items():
+            if col_letter in sheet.column_dimensions:
+                sheet.column_dimensions[col_letter].width = width
+    
+    # Add battle information
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    
+    # Create title with styling
+    title_cell = summary_sheet['A1'] 
+    title_cell.value = "Hustle n' Tussle Battle Report"
+    title_cell.font = Font(size=16, bold=True)
+    summary_sheet.merge_cells('A1:B1')
+    title_cell.alignment = Alignment(horizontal='center')
+    
+    # Add battle metadata
+    summary_sheet['A3'] = "Date:"
+    summary_sheet['B3'] = date_str
+    summary_sheet['A4'] = "Time:"
+    summary_sheet['B4'] = time_str
+    summary_sheet['A5'] = "Total Rounds:"
+    summary_sheet['B5'] = len(game.rounds) + (1 if game.current_round not in game.rounds else 0)
+    
+    # Add winner information
+    summary_sheet['A7'] = "Final Results"
+    summary_sheet['A7'].font = Font(bold=True)
+    
+    # Lead winners
+    summary_sheet['A9'] = "Lead Winners:"
+    summary_sheet['A9'].font = Font(bold=True)
+    
+    leads, follows = game.finalize_results()
+    
+    for i, lead in enumerate(leads[:3], 1):
+        medal = ["🥇", "🥈", "🥉"][i-1]
+        is_winner = hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
+        crown = " 👑" if is_winner else ""
+        summary_sheet[f'A{9+i}'] = f"{medal} {lead.name}{crown}"
+        summary_sheet[f'B{9+i}'] = f"{lead.points} points"
+    
+    # Follow winners
+    summary_sheet['A14'] = "Follow Winners:"
+    summary_sheet['A14'].font = Font(bold=True)
+    
+    for i, follow in enumerate(follows[:3], 1):
+        medal = ["🥇", "🥈", "🥉"][i-1]
+        is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
+        crown = " 👑" if is_winner else ""
+        summary_sheet[f'A{14+i}'] = f"{medal} {follow.name}{crown}"
+        summary_sheet[f'B{14+i}'] = f"{follow.points} points"
+    
+    # Create lead leaderboard sheet
+    lead_sheet = wb.create_sheet("Lead Leaderboard")
+    lead_sheet['A1'] = "Lead"
+    lead_sheet['B1'] = "Points"
+    lead_sheet['A1'].font = Font(bold=True)
+    lead_sheet['B1'].font = Font(bold=True)
+    
+    for i, lead in enumerate(leads, 2):
+        lead_sheet[f'A{i}'] = lead.name
+        lead_sheet[f'B{i}'] = lead.points
+    
+    # Create follow leaderboard sheet
+    follow_sheet = wb.create_sheet("Follow Leaderboard")
+    follow_sheet['A1'] = "Follow"
+    follow_sheet['B1'] = "Points"
+    follow_sheet['A1'].font = Font(bold=True)
+    follow_sheet['B1'].font = Font(bold=True)
+    
+    for i, follow in enumerate(follows, 2):
+        follow_sheet[f'A{i}'] = follow.name
+        follow_sheet[f'B{i}'] = follow.points
+    
+    # Create round history sheet
+    round_sheet = wb.create_sheet("Round History")
+    
+    # Set column headers - updated with new column layout
+    # We'll have the round number, followed by contestants, then judges' votes
+    base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2"]
+    
+    # Fill round data to determine the max number of judges in any round
+    all_rounds = []
+    all_rounds.extend(game.rounds)
+    
+    if game.current_round not in game.rounds:
+        all_rounds.append(game.current_round)
+    
+    # Determine the maximum number of judges in any round
+    max_judges_count = 0
+    for round_data in all_rounds:
+        all_judges = set()
+        if hasattr(round_data, 'judges'):
+            all_judges.update(round_data.judges)
+        if hasattr(round_data, 'contestant_judges'):
+            all_judges.update(round_data.contestant_judges)
+        max_judges_count = max(max_judges_count, len(all_judges))
+    
+    # Set specific column widths for the Round History sheet after determining max_judges_count
+    def set_round_history_widths(sheet):
+        sheet.column_dimensions["A"].width = 10  # Round number column
+        sheet.column_dimensions["B"].width = 15  # Lead 1
+        sheet.column_dimensions["C"].width = 15  # Lead 2
+        sheet.column_dimensions["D"].width = 15  # Follow 1
+        sheet.column_dimensions["E"].width = 15  # Follow 2
+        
+        # Judge columns and votes
+        for i in range(max_judges_count):
+            # Calculate column letters for judge columns
+            judge_col = chr(ord('F') + i * 3)
+            lead_vote_col = chr(ord('F') + i * 3 + 1)
+            follow_vote_col = chr(ord('F') + i * 3 + 2)
+            
+            # Set widths if these columns exist
+            if judge_col in sheet.column_dimensions:
+                sheet.column_dimensions[judge_col].width = 15  # Judge name
+            if lead_vote_col in sheet.column_dimensions:
+                sheet.column_dimensions[lead_vote_col].width = 18  # Lead vote
+            if follow_vote_col in sheet.column_dimensions:
+                sheet.column_dimensions[follow_vote_col].width = 18  # Follow vote
+    
+    # Create headers for judges columns
+    judge_headers = []
+    for i in range(max_judges_count):
+        judge_headers.append(f"Judge {i+1}")
+        judge_headers.append(f"Lead Vote {i+1}")
+        judge_headers.append(f"Follow Vote {i+1}")
+    
+    # Combine headers
+    headers = base_headers + judge_headers
+    
+    # Add headers to sheet
+    for col, header in enumerate(headers, 1):
+        round_sheet.cell(row=1, column=col).value = header
+        round_sheet.cell(row=1, column=col).font = Font(bold=True)
+    
+    # Fill data row by row
+    for i, round_data in enumerate(all_rounds, 2):
+        # Add round number
+        round_sheet.cell(row=i, column=1).value = round_data.round_num
+        
+        # Add contestants data (columns 2-5)
+        if hasattr(round_data, 'pairs') and round_data.pairs:
+            lead1 = round_data.pairs.get('pair_1', {}).get('lead', '')
+            lead2 = round_data.pairs.get('pair_2', {}).get('lead', '')
+            follow1 = round_data.pairs.get('pair_1', {}).get('follow', '')
+            follow2 = round_data.pairs.get('pair_2', {}).get('follow', '')
+            
+            # Add contestants with winner highlighting
+            lead_winner = round_data.lead_winner if hasattr(round_data, 'lead_winner') else ''
+            follow_winner = round_data.follow_winner if hasattr(round_data, 'follow_winner') else ''
+            
+            # Add lead 1
+            lead1_cell = round_sheet.cell(row=i, column=2, value=lead1)
+            if lead1 == lead_winner:
+                lead1_cell.font = Font(color="FF0000")  # Red text for winner
+            
+            # Add lead 2
+            lead2_cell = round_sheet.cell(row=i, column=3, value=lead2)
+            if lead2 == lead_winner:
+                lead2_cell.font = Font(color="FF0000")  # Red text for winner
+            
+            # Add follow 1
+            follow1_cell = round_sheet.cell(row=i, column=4, value=follow1)
+            if follow1 == follow_winner:
+                follow1_cell.font = Font(color="FF0000")  # Red text for winner
+            
+            # Add follow 2
+            follow2_cell = round_sheet.cell(row=i, column=5, value=follow2)
+            if follow2 == follow_winner:
+                follow2_cell.font = Font(color="FF0000")  # Red text for winner
+            
+            # Get all judges from the round
+            all_judges = list()
+            if hasattr(round_data, 'judges'):
+                all_judges.extend(round_data.judges)
+            if hasattr(round_data, 'contestant_judges'):
+                all_judges.extend(round_data.contestant_judges)
+            
+            # Add judge data
+            for j, judge in enumerate(all_judges):
+                # Calculate column indices for this judge
+                judge_col = 6 + j * 3
+                lead_vote_col = judge_col + 1
+                follow_vote_col = judge_col + 2
+                
+                # Add judge name
+                round_sheet.cell(row=i, column=judge_col).value = judge
+                
+                # Add lead vote
+                lead_vote = round_data.lead_votes.get(judge, '')
+                if lead_vote:
+                    if lead_vote == 1:
+                        vote_text = lead1
+                    elif lead_vote == 2:
+                        vote_text = lead2
+                    elif lead_vote == 3:
+                        vote_text = "Tie"
+                    elif lead_vote == 4:
+                        vote_text = "No Contest"
+                    else:
+                        vote_text = str(lead_vote)
+                    round_sheet.cell(row=i, column=lead_vote_col).value = vote_text
+                
+                # Add follow vote
+                follow_vote = round_data.follow_votes.get(judge, '')
+                if follow_vote:
+                    if follow_vote == 1:
+                        vote_text = follow1
+                    elif follow_vote == 2:
+                        vote_text = follow2
+                    elif follow_vote == 3:
+                        vote_text = "Tie"
+                    elif follow_vote == 4:
+                        vote_text = "No Contest"
+                    else:
+                        vote_text = str(follow_vote)
+                    round_sheet.cell(row=i, column=follow_vote_col).value = vote_text
+    
+    # Add the specific column widths for Round History sheet
+    set_round_history_widths(round_sheet)
+    
+    # Create voting history sheet
+    voting_sheet = wb.create_sheet("Voting History")
+    
+    # Set column headers for voting
+    voting_headers = ["Round", "Judge", "Lead Vote", "Follow Vote"]
+    
+    for col, header in enumerate(voting_headers, 1):
+        voting_sheet.cell(row=1, column=col).value = header
+        voting_sheet.cell(row=1, column=col).font = Font(bold=True)
+    
+    # Fill voting data
+    row_index = 2
+    for round_data in all_rounds:
+        if hasattr(round_data, 'pairs') and round_data.pairs:
+            lead1 = round_data.pairs.get('pair_1', {}).get('lead', '')
+            lead2 = round_data.pairs.get('pair_2', {}).get('lead', '')
+            follow1 = round_data.pairs.get('pair_1', {}).get('follow', '')
+            follow2 = round_data.pairs.get('pair_2', {}).get('follow', '')
+            
+            # Get all judges from the round
+            all_judges = set()
+            all_judges.update(round_data.judges)
+            all_judges.update(round_data.contestant_judges)
+            
+            for judge in all_judges:
+                lead_vote = round_data.lead_votes.get(judge, '')
+                follow_vote = round_data.follow_votes.get(judge, '')
+                
+                # Convert vote numbers to contestant names
+                if lead_vote:
+                    if lead_vote == 1:
+                        lead_vote = lead1
+                    elif lead_vote == 2:
+                        lead_vote = lead2
+                    elif lead_vote == 3:
+                        lead_vote = "Tie"
+                    elif lead_vote == 4:
+                        lead_vote = "No Contest"
+                
+                if follow_vote:
+                    if follow_vote == 1:
+                        follow_vote = follow1
+                    elif follow_vote == 2:
+                        follow_vote = follow2
+                    elif follow_vote == 3:
+                        follow_vote = "Tie"
+                    elif follow_vote == 4:
+                        follow_vote = "No Contest"
+                
+                # Add row to sheet
+                voting_sheet.cell(row=row_index, column=1).value = round_data.round_num
+                voting_sheet.cell(row=row_index, column=2).value = judge
+                voting_sheet.cell(row=row_index, column=3).value = lead_vote
+                voting_sheet.cell(row=row_index, column=4).value = follow_vote
+                
+                row_index += 1
+    
+    # Save the workbook to the BytesIO object
+    wb.save(output)
+    output.seek(0)
+    
+    # Generate a filename with the current date and time
+    filename = f"hustle_n_tussle_battle_{date_str.replace('-', '')}.xlsx"
+    
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/api/process_uploaded_file', methods=['POST'])
+def process_uploaded_file():
+    """Process an uploaded battle history Excel file and return the data for display."""
+    if 'battle_file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+        
+    file = request.files['battle_file']
+    
+    if not file or file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+        
+    if not file.filename.endswith('.xlsx'):
+        return jsonify({'error': 'File must be an Excel (.xlsx) file'}), 400
+        
+    # Save the file temporarily
+    temp_path = os.path.join('/tmp', secure_filename(file.filename))
+    file.save(temp_path)
+    
+    try:
+        # Load the Excel workbook
+        wb = load_workbook(temp_path)
+        
+        # Extract data from relevant sheets
+        data = {}
+        
+        # Battle Summary
+        if "Battle Summary" in wb.sheetnames:
+            summary_sheet = wb["Battle Summary"]
+            
+            # Extract date and time
+            date = summary_sheet['B3'].value if 'B3' in summary_sheet else None
+            time = summary_sheet['B4'].value if 'B4' in summary_sheet else None
+            total_rounds = summary_sheet['B5'].value if 'B5' in summary_sheet else 0
+            
+            # Extract top leads
+            top_leads = []
+            for i in range(10, 13):  # Rows 10-12 for top 3 leads
+                name_cell = f'A{i}'
+                points_cell = f'B{i}'
+                if name_cell in summary_sheet and summary_sheet[name_cell].value:
+                    name_text = summary_sheet[name_cell].value
+                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
+                    
+                    # Parse name and medal
+                    parts = name_text.split(' ')
+                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
+                    is_winner = "👑" in name_text
+                    name = name_text.replace(medal, '').replace("👑", '').strip()
+                    
+                    # Parse points
+                    points = int(points_text.split(' ')[0]) if isinstance(points_text, str) else points_text
+                    
+                    top_leads.append({
+                        'name': name,
+                        'points': points,
+                        'medal': medal,
+                        'is_winner': is_winner
+                    })
+            
+            # Extract top follows
+            top_follows = []
+            for i in range(15, 18):  # Rows 15-17 for top 3 follows
+                name_cell = f'A{i}'
+                points_cell = f'B{i}'
+                if name_cell in summary_sheet and summary_sheet[name_cell].value:
+                    name_text = summary_sheet[name_cell].value
+                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
+                    
+                    # Parse name and medal
+                    parts = name_text.split(' ')
+                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
+                    is_winner = "👑" in name_text
+                    name = name_text.replace(medal, '').replace("👑", '').strip()
+                    
+                    # Parse points
+                    points = int(points_text.split(' ')[0]) if isinstance(points_text, str) else points_text
+                    
+                    top_follows.append({
+                        'name': name,
+                        'points': points,
+                        'medal': medal,
+                        'is_winner': is_winner
+                    })
+            
+            data['summary'] = {
+                'date': date,
+                'time': time,
+                'total_rounds': total_rounds
+            }
+            
+            data['leads'] = top_leads
+            data['follows'] = top_follows
+        
+        # Lead and Follow Leaderboards
+        if "Lead Leaderboard" in wb.sheetnames:
+            lead_sheet = wb["Lead Leaderboard"]
+            leads = []
+            for row in range(2, lead_sheet.max_row + 1):
+                name = lead_sheet.cell(row=row, column=1).value
+                points = lead_sheet.cell(row=row, column=2).value
+                if name:
+                    leads.append({
+                        'name': name,
+                        'points': points
+                    })
+            data['all_leads'] = leads
+        
+        if "Follow Leaderboard" in wb.sheetnames:
+            follow_sheet = wb["Follow Leaderboard"]
+            follows = []
+            for row in range(2, follow_sheet.max_row + 1):
+                name = follow_sheet.cell(row=row, column=1).value
+                points = follow_sheet.cell(row=row, column=2).value
+                if name:
+                    follows.append({
+                        'name': name,
+                        'points': points
+                    })
+            data['all_follows'] = follows
+        
+        # Round History
+        if "Round History" in wb.sheetnames:
+            round_sheet = wb["Round History"]
+            rounds = []
+            
+            # Get column headers to understand the sheet format
+            headers = {}
+            for col in range(1, round_sheet.max_column + 1):
+                header = round_sheet.cell(row=1, column=col).value
+                if header:
+                    headers[col] = header
+                    
+            # Count how many judges (every 3 columns after column 5)
+            judge_count = (round_sheet.max_column - 5) // 3
+            
+            # Extract round data
+            for row in range(2, round_sheet.max_row + 1):
+                round_num = round_sheet.cell(row=row, column=1).value
+                if round_num:
+                    round_data = {
+                        'round_num': round_num,
+                        'pairs': {
+                            'pair_1': {
+                                'lead': round_sheet.cell(row=row, column=2).value,
+                                'follow': round_sheet.cell(row=row, column=4).value
+                            },
+                            'pair_2': {
+                                'lead': round_sheet.cell(row=row, column=3).value,
+                                'follow': round_sheet.cell(row=row, column=5).value
+                            }
+                        },
+                        'lead_votes': {},
+                        'follow_votes': {}
+                    }
+                    
+                    # Extract winner information
+                    for col in [2, 3]:  # Lead columns
+                        cell = round_sheet.cell(row=row, column=col)
+                        font_color = cell.font.color
+                        if font_color and font_color.rgb == "FF0000":  # Red color
+                            round_data['lead_winner'] = cell.value
+                    
+                    for col in [4, 5]:  # Follow columns
+                        cell = round_sheet.cell(row=row, column=col)
+                        font_color = cell.font.color
+                        if font_color and font_color.rgb == "FF0000":  # Red color
+                            round_data['follow_winner'] = cell.value
+                    
+                    # Extract judge votes
+                    for j in range(judge_count):
+                        judge_col = 6 + j * 3
+                        lead_vote_col = judge_col + 1
+                        follow_vote_col = judge_col + 2
+                        
+                        judge_name = round_sheet.cell(row=row, column=judge_col).value
+                        if judge_name:
+                            lead_vote = round_sheet.cell(row=row, column=lead_vote_col).value
+                            follow_vote = round_sheet.cell(row=row, column=follow_vote_col).value
+                            
+                            if lead_vote:
+                                round_data['lead_votes'][judge_name] = lead_vote
+                            if follow_vote:
+                                round_data['follow_votes'][judge_name] = follow_vote
+                    
+                    rounds.append(round_data)
+            
+            data['rounds'] = rounds
+        
+        # Clean up
+        os.remove(temp_path)
+        
+        return jsonify(data)
+    
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        print(f"Error processing Excel file: {str(e)}")
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 

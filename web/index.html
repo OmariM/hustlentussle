@@ -13,7 +13,38 @@
             <h2>Battle Manager</h2>
         </header>
 
-        <div id="setup-screen" class="screen active">
+        <div id="home-screen" class="screen active">
+            <div class="welcome-section">
+                <h2>Welcome to Hustle n' Tussle</h2>
+                <p>The ultimate dance battle management system</p>
+            </div>
+            <div class="home-actions">
+                <button id="go-to-battle" class="btn primary large">Start Battle</button>
+                <button id="go-to-upload" class="btn secondary large">Upload Results</button>
+            </div>
+        </div>
+
+        <div id="upload-screen" class="screen">
+            <h2>Upload Battle Results</h2>
+            <div class="upload-form">
+                <p>Upload a previously downloaded battle results Excel file to view the results.</p>
+                <div class="file-upload-wrapper">
+                    <input type="file" id="battle-file-upload" accept=".xlsx" class="file-upload-input">
+                    <label for="battle-file-upload" class="file-upload-label">
+                        <span class="file-upload-text">Choose file</span>
+                        <span class="file-upload-btn">Browse</span>
+                    </label>
+                </div>
+                <div id="upload-file-name" class="file-name"></div>
+                <div class="upload-actions">
+                    <button id="upload-battle-data" class="btn primary">Upload</button>
+                    <button id="back-to-home" class="btn secondary">Back</button>
+                </div>
+                <div id="upload-error" class="error-message"></div>
+            </div>
+        </div>
+
+        <div id="setup-screen" class="screen">
             <h2>Competition Setup</h2>
             <div class="form-group">
                 <label for="lead-names">Lead Names (comma-separated):</label>
@@ -28,7 +59,10 @@
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
             <p class="validation-message">Note: The number of leads must equal the number of follows.</p>
-            <button id="start-competition" class="btn primary">Start Competition</button>
+            <div class="setup-actions">
+                <button id="start-competition" class="btn primary">Start Competition</button>
+                <button id="setup-back-to-home" class="btn secondary">Back</button>
+            </div>
         </div>
 
         <div id="round-screen" class="screen">
@@ -175,7 +209,10 @@
                 </div>
             </div>
             
-            <button id="new-competition" class="btn primary">New Competition</button>
+            <div class="results-actions">
+                <button id="back-to-home-from-results" class="btn primary">Back to Home</button>
+                <button id="download-battle-data" class="btn secondary">Download Battle Data</button>
+            </div>
         </div>
     </div>
 
