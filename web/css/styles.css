@@ -561,4 +561,137 @@ td span.crown {
     padding: 0.4rem 0.2rem;
     white-space: nowrap;
     font-size: 0.95rem;
+}
+
+.validation-message {
+    color: #e74c3c;
+    font-weight: bold;
+    margin: 10px 0;
+    padding: 5px;
+    border-left: 3px solid #e74c3c;
+    background-color: #fdedeb;
+}
+
+/* Round History Styles */
+.round-history {
+    margin-top: 40px;
+    width: 100%;
+}
+
+.round-history h3 {
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.accordion {
+    width: 100%;
+}
+
+.accordion-item {
+    margin-bottom: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.accordion-header {
+    background-color: #f8f9fa;
+    padding: 15px 20px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s;
+}
+
+.accordion-header:hover {
+    background-color: #e9ecef;
+}
+
+.accordion-header.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.accordion-content {
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.accordion-content.active {
+    padding: 20px;
+    max-height: 500px;
+    overflow: auto;
+}
+
+.round-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.round-participants, .round-voting {
+    flex: 1;
+    min-width: 250px;
+}
+
+.round-participants h4, .round-voting h4 {
+    color: var(--primary-color);
+    margin-bottom: 12px;
+    font-size: 1rem;
+}
+
+.match-pair {
+    margin-bottom: 10px;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.match-pair .lead {
+    color: var(--lead-color);
+    font-weight: bold;
+}
+
+.match-pair .follow {
+    color: var(--follow-color);
+    font-weight: bold;
+}
+
+.winner {
+    color: var(--primary-color);
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.votes-section {
+    margin-top: 15px;
+}
+
+.votes-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.votes-list li {
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--border-color);
+}
+
+.judge-name {
+    font-weight: bold;
+}
+
+.win-message {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #fff3cd;
+    border-left: 4px solid gold;
+    color: #856404;
+    border-radius: 4px;
 } 

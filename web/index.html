@@ -27,6 +27,7 @@
                 <label for="judge-names">Guest Judge Names (comma-separated):</label>
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
+            <p class="validation-message">Note: The number of leads must equal the number of follows.</p>
             <button id="start-competition" class="btn primary">Start Competition</button>
         </div>
 
@@ -164,6 +165,13 @@
                             <!-- Follow results will be inserted here -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+            
+            <div class="round-history">
+                <h3>Round History</h3>
+                <div id="rounds-accordion" class="accordion">
+                    <!-- Round history will be dynamically inserted here -->
                 </div>
             </div>
             

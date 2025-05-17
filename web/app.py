@@ -25,6 +25,17 @@ def start_game():
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
     
+    # Filter out any empty names
+    lead_names = [name.strip() for name in lead_names if name.strip()]
+    follow_names = [name.strip() for name in follow_names if name.strip()]
+    judge_names = [name.strip() for name in judge_names if name.strip()]
+    
+    # Validate equal counts of leads and follows
+    if len(lead_names) != len(follow_names):
+        return jsonify({
+            'error': 'The number of leads must equal the number of follows.'
+        }), 400
+    
     # Create a new game
     session_id = f"game_{len(games) + 1}"
     games[session_id] = Game(lead_names, follow_names, judge_names)
@@ -55,29 +66,38 @@ def get_scores():
     lead_dict = {}
     follow_dict = {}
     
+    # Helper function to determine if a contestant has earned a crown
+    def has_earned_crown(contestant, role):
+        if role == "lead":
+            # A lead earns a crown if they have reached the winning threshold
+            return contestant.points >= game.total_num_leads - 1 and game.has_winning_lead
+        else:  # role == "follow"
+            # A follow earns a crown if they have reached the winning threshold
+            return contestant.points >= game.total_num_follows - 1 and game.has_winning_follow
+    
     # Add current pair contestants
     lead_dict[game.pair_1[0].name] = {
         'name': game.pair_1[0].name, 
         'points': game.pair_1[0].points,
-        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_1[0].name
+        'is_winner': has_earned_crown(game.pair_1[0], "lead")
     }
     
     lead_dict[game.pair_2[0].name] = {
         'name': game.pair_2[0].name, 
         'points': game.pair_2[0].points,
-        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_2[0].name
+        'is_winner': has_earned_crown(game.pair_2[0], "lead")
     }
     
     follow_dict[game.pair_1[1].name] = {
         'name': game.pair_1[1].name, 
         'points': game.pair_1[1].points,
-        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_1[1].name
+        'is_winner': has_earned_crown(game.pair_1[1], "follow")
     }
     
     follow_dict[game.pair_2[1].name] = {
         'name': game.pair_2[1].name, 
         'points': game.pair_2[1].points,
-        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_2[1].name
+        'is_winner': has_earned_crown(game.pair_2[1], "follow")
     }
     
     # Add contestants from the queue (only if not already added)
@@ -85,14 +105,14 @@ def get_scores():
         lead_dict[lead.name] = {
             'name': lead.name, 
             'points': lead.points,
-            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
+            'is_winner': has_earned_crown(lead, "lead")
         }
     
     for follow in game.follows:
         follow_dict[follow.name] = {
             'name': follow.name, 
             'points': follow.points,
-            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
+            'is_winner': has_earned_crown(follow, "follow")
         }
     
     # Check if we have winning lead/follow and add them if they exist and aren't already included
@@ -100,14 +120,14 @@ def get_scores():
         lead_dict[game.winning_lead.name] = {
             'name': game.winning_lead.name, 
             'points': game.winning_lead.points,
-            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.winning_lead.name
+            'is_winner': has_earned_crown(game.winning_lead, "lead")
         }
     
     if hasattr(game, 'winning_follow') and game.winning_follow:
         follow_dict[game.winning_follow.name] = {
             'name': game.winning_follow.name, 
             'points': game.winning_follow.points,
-            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.winning_follow.name
+            'is_winner': has_earned_crown(game.winning_follow, "follow")
         }
     
     # Convert dictionaries to lists for the response
@@ -213,9 +233,45 @@ def end_game():
             'is_winner': is_winner
         })
     
+    # Collect round metadata
+    rounds_data = []
+    
+    # Add all completed rounds
+    for r in game.rounds:
+        round_data = {
+            'round_num': r.round_num,
+            'pairs': r.pairs,
+            'lead_votes': r.lead_votes,
+            'follow_votes': r.follow_votes,
+            'judges': r.judges,
+            'contestant_judges': r.contestant_judges,
+            'win_messages': r.win_messages,
+            'lead_winner': r.lead_winner,
+            'follow_winner': r.follow_winner
+        }
+        
+        rounds_data.append(round_data)
+    
+    # Also include the current round if it exists and is not already in the rounds list
+    if game.current_round and game.current_round not in game.rounds:
+        current_round_data = {
+            'round_num': game.current_round.round_num,
+            'pairs': game.current_round.pairs,
+            'lead_votes': game.current_round.lead_votes,
+            'follow_votes': game.current_round.follow_votes,
+            'judges': game.current_round.judges,
+            'contestant_judges': game.current_round.contestant_judges,
+            'win_messages': game.current_round.win_messages,
+            'lead_winner': game.current_round.lead_winner,
+            'follow_winner': game.current_round.follow_winner
+        }
+        
+        rounds_data.append(current_round_data)
+    
     return jsonify({
         'leads': lead_results,
-        'follows': follow_results
+        'follows': follow_results,
+        'rounds': rounds_data
     })
 
 if __name__ == '__main__':
