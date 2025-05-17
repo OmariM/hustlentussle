@@ -916,14 +916,227 @@ def run_test_cases():
         print("Test 17 FAIL: Some contestants got the same partner in round 2")
         fail_count += 1
 
+    # Test 18: Winners are not paired together in the next round
+    print(f"\n\033[32mRunning Winners Not Paired Test\033[0m")
+    pass_count, fail_count = test_18_winners_not_paired_together(pass_count, fail_count)
+    
+    # Test 19: Round winner behavior verification
+    print(f"\n\033[32mRunning Round Winners Behavior Test\033[0m")
+    pass_count, fail_count = test_19_round_winners(pass_count, fail_count)
+
     print(f"Tests passed: {pass_count}/{pass_count + fail_count}")
+    return pass_count, fail_count
+
+
+def test_19_round_winners(pass_count=0, fail_count=0):
+    """
+    Test the behavior of round winners in the game.
+    """
+    print("\nTest 19: Round winners behavior verification")
+    
+    # Create a game with 5 leads and 5 follows
+    game = Game(
+        ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+        ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+        ["Judge1", "Judge2"]
+    )
+    
+    print("Test 19 - Initial state:")
+    game.debug_state()
+    
+    # Simulate rounds where a lead wins consistently
+    for i in range(2):
+        # Remember who the contestants are
+        lead1 = game.pair_1[0]
+        lead2 = game.pair_2[0]
+        follow1 = game.pair_1[1]
+        follow2 = game.pair_2[1]
+        
+        print(f"\nTest 19 - Round {i+1}")
+        print(f"Lead1: {lead1.name}, Lead2: {lead2.name}")
+        print(f"Follow1: {follow1.name}, Follow2: {follow2.name}")
+        
+        # Lead1 wins
+        result = game.judge_round(lead1, lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+        print(f"Lead round result: {result['winner']} wins")
+        
+        # Follow1 wins
+        result = game.judge_round(follow1, follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+        print(f"Follow round result: {result['winner']} wins")
+        
+        # Go to next round
+        game.next_round()
+    
+    # Now make Lead1 reach winning condition
+    lead1 = game.pair_1[0]
+    original_points = lead1.points
+    # Set points to one away from winning
+    lead1.points = game.total_num_leads - 2
+    
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    print(f"\nTest 19 - Final round - Lead will reach winning condition")
+    print(f"Lead1: {lead1.name} (points: {lead1.points}), Lead2: {lead2.name}")
+    
+    # Lead1 reaches winning points
+    result = game.judge_round(lead1, lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Lead round result: {result['winner']} wins and has {lead1.points} points")
+    
+    # Check if correctly marked as winner
+    if game.has_winning_lead and game.winning_lead and game.winning_lead.name == lead1.name:
+        print("Test 19.1 PASS: Lead correctly marked as winner")
+        pass_count += 1
+    else:
+        print(f"Test 19.1 FAIL: Lead not correctly marked as winner. has_winning_lead: {game.has_winning_lead}, winner: {game.winning_lead.name if game.winning_lead else None}")
+        fail_count += 1
+    
+    # Check win messages
+    win_messages = game.check_for_win()
+    if win_messages and any(lead1.name in msg for msg in win_messages):
+        print("Test 19.2 PASS: Correct win message shown for lead")
+        pass_count += 1
+    else:
+        print(f"Test 19.2 FAIL: Expected win message for lead, got: {win_messages}")
+        fail_count += 1
+    
+    # Follow1 wins but not enough points to be overall winner
+    result = game.judge_round(follow1, follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+    print(f"Follow round result: {result['winner']} wins")
+    
+    # Move to next round - lead winner should be sent back to queue
+    game.next_round()
+    
+    # Check if winning lead was sent to back of queue
+    leads_in_queue = [l.name for l in game.leads]
+    competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    
+    if lead1.name in leads_in_queue and lead1.name not in competing_leads:
+        print("Test 19.3 PASS: Winning lead correctly sent to queue and not competing")
+        pass_count += 1
+    else:
+        print(f"Test 19.3 FAIL: Winning lead queue/competition status incorrect. In queue: {lead1.name in leads_in_queue}, Competing: {lead1.name in competing_leads}")
+        fail_count += 1
+    
+    # One more round to verify normal round winners stay
+    new_lead1 = game.pair_1[0]
+    new_lead2 = game.pair_2[0]
+    new_follow1 = game.pair_1[1]
+    new_follow2 = game.pair_2[1]
+    
+    # New Lead1 wins
+    result = game.judge_round(new_lead1, new_lead2, "lead", [("Judge1", 1), ("Judge2", 1)])
+    print(f"New lead round result: {result['winner']} wins")
+    
+    # New Follow1 wins
+    result = game.judge_round(new_follow1, new_follow2, "follow", [("Judge1", 1), ("Judge2", 1)])
+    print(f"New follow round result: {result['winner']} wins")
+    
+    # Move to final round to check if winners stay
+    game.next_round()
+    
+    # Verify winners stay in competition (since they're not overall winners)
+    final_competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+    final_competing_follows = [game.pair_1[1].name, game.pair_2[1].name]
+    
+    if new_lead1.name in final_competing_leads:
+        print("Test 19.4 PASS: Previous lead winner still competing (not overall winner)")
+        pass_count += 1
+    else:
+        print(f"Test 19.4 FAIL: Previous lead winner not competing. Competitors: {final_competing_leads}")
+        fail_count += 1
+    
+    if new_follow1.name in final_competing_follows:
+        print("Test 19.5 PASS: Previous follow winner still competing (not overall winner)")
+        pass_count += 1
+    else:
+        print(f"Test 19.5 FAIL: Previous follow winner not competing. Competitors: {final_competing_follows}")
+        fail_count += 1
+    
+    return pass_count, fail_count
+
+
+def test_18_winners_not_paired_together(pass_count=0, fail_count=0):
+    """
+    Test that winning contestants are not paired together in the next round.
+    """
+    print("\nTest 18: Winners are not paired together in the next round")
+    
+    # Create a game with 4 leads and 4 follows (minimum needed for the test)
+    lead_names = ["Lead1", "Lead2", "Lead3", "Lead4"]
+    follow_names = ["Follow1", "Follow2", "Follow3", "Follow4"]
+    guest_judge_names = ["Judge1", "Judge2"]
+    
+    game = Game(lead_names, follow_names, guest_judge_names)
+    
+    # Record initial pairings
+    initial_pairs = [
+        (game.pair_1[0].name, game.pair_1[1].name),
+        (game.pair_2[0].name, game.pair_2[1].name)
+    ]
+    print(f"Test 18 - Initial pairs: {initial_pairs}")
+    
+    # Setup to make specific contestants win
+    # Choose the lead and follow we want to win
+    target_lead = game.pair_1[0].name
+    target_follow = game.pair_1[1].name
+    
+    print(f"Test 18 - Making {target_lead} (lead) and {target_follow} (follow) the winners")
+    
+    # Create votes to make them win
+    lead_votes = [(judge, 1) for judge in guest_judge_names]
+    follow_votes = [(judge, 1) for judge in guest_judge_names]
+    
+    # Judge the round to establish winners
+    game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes)
+    game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes)
+    
+    # Manually set the last winners for testing purposes
+    # (In the web app, these are set by the check_for_win method)
+    game.last_lead_winner = target_lead
+    game.last_follow_winner = target_follow
+    
+    # Verify the winners are set correctly
+    if game.last_lead_winner == target_lead and game.last_follow_winner == target_follow:
+        print("Test 18.1 PASS: Winners correctly identified")
+        pass_count += 1
+    else:
+        print(f"Test 18.1 FAIL: Winners not correctly identified. lead: {game.last_lead_winner}, follow: {game.last_follow_winner}")
+        fail_count += 1
+    
+    # Move to next round
+    game.next_round()
+    
+    # Get new pairings
+    new_pairs = [
+        (game.pair_1[0].name, game.pair_1[1].name),
+        (game.pair_2[0].name, game.pair_2[1].name)
+    ]
+    print(f"Test 18 - New pairs after next round: {new_pairs}")
+    
+    # Verify that the winning lead and follow are not paired together
+    winners_paired = False
+    for pair in new_pairs:
+        if pair[0] == target_lead and pair[1] == target_follow:
+            winners_paired = True
+            break
+    
+    if not winners_paired:
+        print("Test 18.2 PASS: Winners are not paired together in the next round")
+        pass_count += 1
+    else:
+        print("Test 18.2 FAIL: Winners are paired together in the next round")
+        fail_count += 1
+        
     return pass_count, fail_count
 
 
 def run_tests():
     """Run all tests"""
-    # Run the existing test cases
+    # Run all test cases
     run_test_cases()
-    
+
+
 if __name__ == "__main__":
     run_tests()

@@ -179,6 +179,16 @@ class Game:
             if pairing_1 in self.previous_pairs or pairing_2 in self.previous_pairs:
                 # Swap follows to avoid repeat pairings
                 follow1, follow2 = follow2, follow1
+            
+            # Prevent pairing two winning contestants together
+            # Check if both lead1 and follow1 were winners in the last round
+            if (self.last_lead_winner == lead1.name and self.last_follow_winner == follow1.name):
+                # Swap follows to prevent winners being paired
+                follow1, follow2 = follow2, follow1
+            # Check if both lead2 and follow2 were winners in the last round
+            elif (self.last_lead_winner == lead2.name and self.last_follow_winner == follow2.name):
+                # Swap follows to prevent winners being paired
+                follow1, follow2 = follow2, follow1
         
         # Form new Lead vs Follow pairs
         self.pair_1 = (lead1, follow1)
