@@ -1147,11 +1147,159 @@ def test_18_winners_not_paired_together(pass_count=0, fail_count=0):
     return pass_count, fail_count
 
 
-def run_tests():
-    """Run all tests"""
-    # Run all test cases
-    run_test_cases()
+def test_20_winner_pairing_prevention(pass_count=0, fail_count=0):
+    """
+    Consolidates verification scripts for winner pairing prevention.
+    Tests that winners from each round don't get paired together in consecutive rounds.
+    """
+    print("\n=== TEST 20: Winner Pairing Prevention ===")
+    
+    # Test 20.1: Basic winner pairing prevention with manually set winners
+    lead_names = ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5", "Lead6", "Lead7", "Lead8"]
+    follow_names = ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5", "Follow6", "Follow7", "Follow8"]
+    guest_judge_names = ["Judge1", "Judge2"]
+    
+    game = Game(lead_names, follow_names, guest_judge_names)
+    
+    # Record Round 1 pairs
+    lead1 = game.pair_1[0]
+    follow1 = game.pair_1[1]
+    
+    # Make pair 1 the winners
+    lead_votes = [(judge, 1) for judge in guest_judge_names]
+    follow_votes = [(judge, 1) for judge in guest_judge_names]
+    
+    game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes)
+    game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes)
+    
+    # Set last winners manually for old test style
+    winning_pair = (lead1.name, follow1.name)
+    
+    # Advance to next round
+    game.next_round()
+    
+    # Check that winners aren't paired together
+    next_pairings = [
+        (game.pair_1[0].name, game.pair_1[1].name),
+        (game.pair_2[0].name, game.pair_2[1].name)
+    ]
+    
+    winners_paired = winning_pair in next_pairings
+    
+    if not winners_paired:
+        print("Test 20.1 PASS: Winners are not paired together in the next round")
+        pass_count += 1
+    else:
+        print("Test 20.1 FAIL: Winners are paired together in the next round")
+        fail_count += 1
+    
+    # Test 20.2: Web flow simulation - winners properly identified and not paired
+    game = Game(lead_names, follow_names, guest_judge_names)
+    
+    # Round 1
+    lead1 = game.pair_1[0]
+    lead2 = game.pair_2[0]
+    follow1 = game.pair_1[1]
+    follow2 = game.pair_2[1]
+    
+    # Judge the leads (pair 1 wins)
+    lead_votes = [(judge, 1) for judge in guest_judge_names]
+    game.judge_round(lead1, lead2, "lead", lead_votes)
+    
+    # Judge the follows (pair 1 wins) 
+    follow_votes = [(judge, 1) for judge in guest_judge_names]
+    game.judge_round(follow1, follow2, "follow", follow_votes)
+    
+    # Call check_for_win which might set last_winner values in some scenarios
+    game.check_for_win()
+    
+    # Verify winners are set correctly
+    if game.last_lead_winner == lead1.name and game.last_follow_winner == follow1.name:
+        print("Test 20.2 PASS: Web flow correctly identifies winners")
+        pass_count += 1
+    else:
+        print(f"Test 20.2 FAIL: Web flow winners not correctly set: {game.last_lead_winner}, {game.last_follow_winner}")
+        fail_count += 1
+    
+    # Move to next round
+    game.next_round()
+    
+    # Check if the previous winners are paired together
+    winners_paired = False
+    if ((game.pair_1[0].name == lead1.name and game.pair_1[1].name == follow1.name) or
+        (game.pair_2[0].name == lead1.name and game.pair_2[1].name == follow1.name)):
+        winners_paired = True
+    
+    if not winners_paired:
+        print("Test 20.3 PASS: Web flow winners not paired in next round")
+        pass_count += 1
+    else:
+        print("Test 20.3 FAIL: Web flow winners paired in next round")
+        fail_count += 1
+    
+    # Test 20.4: Multiple rounds test
+    game = Game(lead_names, follow_names, guest_judge_names)
+    
+    multiple_rounds_pass = True
+    for round_num in range(1, 4):  # Test 3 rounds
+        # Record current pairs
+        lead_winner = game.pair_1[0]
+        follow_winner = game.pair_1[1]
+        
+        # Judge rounds to make pair 1 winners
+        lead_votes = [(judge, 1) for judge in guest_judge_names]
+        follow_votes = [(judge, 1) for judge in guest_judge_names]
+        
+        game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes)
+        game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes)
+        
+        # Record the winning pair
+        winning_pair = (lead_winner.name, follow_winner.name)
+        
+        # Go to next round
+        game.next_round()
+        
+        # Check if winners are paired in next round
+        next_pairings = [
+            (game.pair_1[0].name, game.pair_1[1].name),
+            (game.pair_2[0].name, game.pair_2[1].name)
+        ]
+        
+        if winning_pair in next_pairings:
+            multiple_rounds_pass = False
+            break
+    
+    if multiple_rounds_pass:
+        print("Test 20.4 PASS: Winners not paired across multiple rounds")
+        pass_count += 1
+    else:
+        print(f"Test 20.4 FAIL: Winners paired in round {round_num+1}")
+        fail_count += 1
+    
+    return pass_count, fail_count
 
+def run_tests():
+    pass_count = 0
+    fail_count = 0
+    
+    print("Running general simulation tests...")
+    pass_count, fail_count = run_test_cases()
+
+    print("\nRunning round-winners test...")
+    pass_count, fail_count = test_19_round_winners(pass_count, fail_count)
+    
+    print("\nRunning winners-not-paired test...")
+    pass_count, fail_count = test_18_winners_not_paired_together(pass_count, fail_count)
+    
+    print("\nRunning winner-pairing-prevention test...")
+    pass_count, fail_count = test_20_winner_pairing_prevention(pass_count, fail_count)
+    
+    print(f"\nTest results: {pass_count} passed, {fail_count} failed")
+    
+    if fail_count == 0:
+        print("All tests passed!")
+    else:
+        print(f"WARNING: {fail_count} tests failed!")
 
 if __name__ == "__main__":
     run_tests()
