@@ -42,6 +42,10 @@ class Game:
         self.follows = [Contestant(n.strip()) for n in follow_names]
         self.guest_judges = [n.strip() for n in guest_judge_names]
 
+        # Validate that we have equal numbers of leads and follows
+        if len(self.leads) != len(self.follows):
+            raise ValueError("Number of leads must equal number of follows")
+            
         # Track totals for win condition
         self.total_num_leads = len(self.leads)
         self.total_num_follows = len(self.follows)

@@ -561,4 +561,13 @@ td span.crown {
     padding: 0.4rem 0.2rem;
     white-space: nowrap;
     font-size: 0.95rem;
+}
+
+.validation-message {
+    color: #e74c3c;
+    font-weight: bold;
+    margin: 10px 0;
+    padding: 5px;
+    border-left: 3px solid #e74c3c;
+    background-color: #fdedeb;
 } 

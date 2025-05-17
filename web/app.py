@@ -25,6 +25,17 @@ def start_game():
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
     
+    # Filter out any empty names
+    lead_names = [name.strip() for name in lead_names if name.strip()]
+    follow_names = [name.strip() for name in follow_names if name.strip()]
+    judge_names = [name.strip() for name in judge_names if name.strip()]
+    
+    # Validate equal counts of leads and follows
+    if len(lead_names) != len(follow_names):
+        return jsonify({
+            'error': 'The number of leads must equal the number of follows.'
+        }), 400
+    
     # Create a new game
     session_id = f"game_{len(games) + 1}"
     games[session_id] = Game(lead_names, follow_names, judge_names)
