@@ -273,6 +273,10 @@ class Game:
                 # Check if we've reached a win condition
                 if winner.points + 1 >= self.total_num_leads - 1:
                     self.has_winning_lead = True
+            
+            # Track the lead winner for this round to prevent pairing with follow winner
+            self.last_lead_winner = winner.name
+            
         else:  # Follow
             if self.has_winning_follow:
                 # If follow already has a winner, winner stays in the competition
@@ -288,6 +292,9 @@ class Game:
                 # Check if we've reached a win condition
                 if winner.points + 1 >= self.total_num_follows - 1:
                     self.has_winning_follow = True
+            
+            # Track the follow winner for this round to prevent pairing with lead winner
+            self.last_follow_winner = winner.name
 
         winner.points += 1
 
@@ -303,23 +310,31 @@ class Game:
         """Generate win messages only for the first contestant to reach the winning threshold."""
         out = []
         
-        # Generate win message for lead winner if it's a new winner
+        # Generate win message for lead winner if they've reached the winning threshold
         # Only show the message if this is the first winner for leads
         if (self.has_winning_lead and self.winning_lead and 
-            self.winning_lead.points >= self.total_num_leads - 1 and
-            self.last_lead_winner is None):
+            self.winning_lead.points >= self.total_num_leads - 1):
             
-            out.append(f"👑 {self.winning_lead.name} has won for the leads!")
-            self.last_lead_winner = self.winning_lead.name
+            # Only add crown message if we haven't already shown a crown message for this role
+            win_message = f"👑 {self.winning_lead.name} has won for the leads!"
+            
+            # Check if this contestant already has a crown (from a previous round)
+            if not any(self.winning_lead.name in msg and "👑" in msg for msg in 
+                      [m for r in self.rounds for m in (r.win_messages or [])]):
+                out.append(win_message)
         
-        # Generate win message for follow winner if it's a new winner
+        # Generate win message for follow winner if they've reached the winning threshold
         # Only show the message if this is the first winner for follows
         if (self.has_winning_follow and self.winning_follow and 
-            self.winning_follow.points >= self.total_num_follows - 1 and
-            self.last_follow_winner is None):
+            self.winning_follow.points >= self.total_num_follows - 1):
             
-            out.append(f"👑 {self.winning_follow.name} has won for the follows!")
-            self.last_follow_winner = self.winning_follow.name
+            # Only add crown message if we haven't already shown a crown message for this role
+            win_message = f"👑 {self.winning_follow.name} has won for the follows!"
+            
+            # Check if this contestant already has a crown (from a previous round)
+            if not any(self.winning_follow.name in msg and "👑" in msg for msg in 
+                      [m for r in self.rounds for m in (r.win_messages or [])]):
+                out.append(win_message)
 
         # Only set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
