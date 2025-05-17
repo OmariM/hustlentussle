@@ -7,69 +7,107 @@ let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 let currentLeads = []; // Store current lead contestants with points
 let currentFollows = []; // Store current follow contestants with points
 
-// DOM Elements
-const homeScreen = document.getElementById('home-screen');
-const uploadScreen = document.getElementById('upload-screen');
-const setupScreen = document.getElementById('setup-screen');
-const roundScreen = document.getElementById('round-screen');
-const resultsScreen = document.getElementById('results-screen');
-
-// Home screen elements
-const goToBattleBtn = document.getElementById('go-to-battle');
-const goToUploadBtn = document.getElementById('go-to-upload');
-
-// Upload screen elements
-const battleFileUpload = document.getElementById('battle-file-upload');
-const uploadFileName = document.getElementById('upload-file-name');
-const uploadBattleDataBtn = document.getElementById('upload-battle-data');
-const backToHomeBtn = document.getElementById('back-to-home');
-const uploadError = document.getElementById('upload-error');
-
-// Setup screen elements
-const leadNamesInput = document.getElementById('lead-names');
-const followNamesInput = document.getElementById('follow-names');
-const judgeNamesInput = document.getElementById('judge-names');
-const startCompetitionBtn = document.getElementById('start-competition');
-const setupBackToHomeBtn = document.getElementById('setup-back-to-home');
-
-// Round screen elements
-const roundNumber = document.getElementById('round-number');
-const lead1Name = document.getElementById('lead1-name');
-const lead2Name = document.getElementById('lead2-name');
-const follow1Name = document.getElementById('follow1-name');
-const follow2Name = document.getElementById('follow2-name');
-const contestantJudgesList = document.getElementById('contestant-judges-list');
-const currentLeadScores = document.getElementById('current-lead-scores');
-const currentFollowScores = document.getElementById('current-follow-scores');
-
-// Voting elements
-const leadVotingSection = document.getElementById('lead-voting');
-const followVotingSection = document.getElementById('follow-voting');
-const leadJudgesContainer = document.getElementById('lead-judges-container');
-const followJudgesContainer = document.getElementById('follow-judges-container');
-const leadResults = document.getElementById('lead-results');
-const followResults = document.getElementById('follow-results');
-const leadWinner = document.getElementById('lead-winner');
-const followWinner = document.getElementById('follow-winner');
-const leadGuestVotes = document.getElementById('lead-guest-votes');
-const leadContestantVotes = document.getElementById('lead-contestant-votes');
-const followGuestVotes = document.getElementById('follow-guest-votes');
-const followContestantVotes = document.getElementById('follow-contestant-votes');
-const determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
-const determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
-
-// Results elements
-const roundResultsSection = document.getElementById('round-results');
-const winMessages = document.getElementById('win-messages');
-const nextRoundBtn = document.getElementById('next-round');
-const endBattleBtn = document.getElementById('end-battle');
-const leadsLeaderboard = document.getElementById('leads-leaderboard');
-const followsLeaderboard = document.getElementById('follows-leaderboard');
-const backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
-const downloadBattleDataBtn = document.getElementById('download-battle-data');
+// DOM Elements (initialized in the DOMContentLoaded event)
+let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
+let goToBattleBtn, goToUploadBtn;
+let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
+let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
+let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList;
+let currentLeadScores, currentFollowScores;
+let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
+let leadResults, followResults, leadWinner, followWinner;
+let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
+let determineLeadWinnerBtn, determineFollowWinnerBtn;
+let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
+let leadsLeaderboard, followsLeaderboard;
+let backToHomeFromResultsBtn, downloadBattleDataBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded');
+    
+    // Initialize DOM elements
+    homeScreen = document.getElementById('home-screen');
+    uploadScreen = document.getElementById('upload-screen');
+    setupScreen = document.getElementById('setup-screen');
+    roundScreen = document.getElementById('round-screen');
+    resultsScreen = document.getElementById('results-screen');
+    
+    // Home screen elements
+    goToBattleBtn = document.getElementById('go-to-battle');
+    goToUploadBtn = document.getElementById('go-to-upload');
+    
+    // Upload screen elements
+    battleFileUpload = document.getElementById('battle-file-upload');
+    uploadFileName = document.getElementById('upload-file-name');
+    uploadBattleDataBtn = document.getElementById('upload-battle-data');
+    backToHomeBtn = document.getElementById('back-to-home');
+    uploadError = document.getElementById('upload-error');
+    
+    // Setup screen elements
+    leadNamesInput = document.getElementById('lead-names');
+    followNamesInput = document.getElementById('follow-names');
+    judgeNamesInput = document.getElementById('judge-names');
+    startCompetitionBtn = document.getElementById('start-competition');
+    setupBackToHomeBtn = document.getElementById('setup-back-to-home');
+    
+    // Round screen elements
+    roundNumber = document.getElementById('round-number');
+    lead1Name = document.getElementById('lead1-name');
+    lead2Name = document.getElementById('lead2-name');
+    follow1Name = document.getElementById('follow1-name');
+    follow2Name = document.getElementById('follow2-name');
+    contestantJudgesList = document.getElementById('contestant-judges-list');
+    currentLeadScores = document.getElementById('current-lead-scores');
+    currentFollowScores = document.getElementById('current-follow-scores');
+    
+    // Voting elements
+    leadVotingSection = document.getElementById('lead-voting');
+    followVotingSection = document.getElementById('follow-voting');
+    leadJudgesContainer = document.getElementById('lead-judges-container');
+    followJudgesContainer = document.getElementById('follow-judges-container');
+    leadResults = document.getElementById('lead-results');
+    followResults = document.getElementById('follow-results');
+    leadWinner = document.getElementById('lead-winner');
+    followWinner = document.getElementById('follow-winner');
+    leadGuestVotes = document.getElementById('lead-guest-votes');
+    leadContestantVotes = document.getElementById('lead-contestant-votes');
+    followGuestVotes = document.getElementById('follow-guest-votes');
+    followContestantVotes = document.getElementById('follow-contestant-votes');
+    determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
+    determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
+    
+    // Results elements
+    roundResultsSection = document.getElementById('round-results');
+    winMessages = document.getElementById('win-messages');
+    nextRoundBtn = document.getElementById('next-round');
+    endBattleBtn = document.getElementById('end-battle');
+    leadsLeaderboard = document.getElementById('leads-leaderboard');
+    followsLeaderboard = document.getElementById('follows-leaderboard');
+    backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
+    downloadBattleDataBtn = document.getElementById('download-battle-data');
+    
+    // Check if elements exist
+    console.log('Checking elements:');
+    console.log('homeScreen:', homeScreen);
+    console.log('uploadScreen:', uploadScreen);
+    console.log('setupScreen:', setupScreen);
+    console.log('resultsScreen:', resultsScreen);
+    console.log('backToHomeBtn:', backToHomeBtn);
+    console.log('setupBackToHomeBtn:', setupBackToHomeBtn);
+    console.log('backToHomeFromResultsBtn:', backToHomeFromResultsBtn);
+    
+    // Create direct handler functions for better debugging
+    function goToHome() {
+        console.log('Go to home clicked');
+        showScreen(homeScreen);
+    }
+    
+    function setupBackToHomeHandler() {
+        console.log('Setup back to home clicked');
+        showScreen(homeScreen);
+    }
+    
     // Home screen navigation
     goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
     goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
@@ -77,10 +115,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Upload screen
     battleFileUpload.addEventListener('change', handleFileSelect);
     uploadBattleDataBtn.addEventListener('click', processUploadedFile);
-    backToHomeBtn.addEventListener('click', () => showScreen(homeScreen));
+    backToHomeBtn.addEventListener('click', goToHome);
     
     // Setup screen
-    setupBackToHomeBtn.addEventListener('click', () => showScreen(homeScreen));
+    setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
     startCompetitionBtn.addEventListener('click', startCompetition);
     
     // Battle flow
@@ -90,7 +128,19 @@ document.addEventListener('DOMContentLoaded', () => {
     endBattleBtn.addEventListener('click', endCompetition);
     
     // Results screen
-    backToHomeFromResultsBtn.addEventListener('click', resetAndGoHome);
+    console.log('Adding click handler to backToHomeFromResultsBtn');
+    if (backToHomeFromResultsBtn) {
+        backToHomeFromResultsBtn.addEventListener('click', resetAndGoHome);
+        console.log('Event listener added successfully');
+        // Add direct onclick handler as backup
+        backToHomeFromResultsBtn.onclick = function() {
+            console.log('Back to home from results clicked via onclick');
+            resetAndGoHome();
+        };
+    } else {
+        console.error('backToHomeFromResultsBtn is null or undefined!');
+    }
+    
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 });
 
@@ -153,9 +203,8 @@ async function processUploadedFile() {
         
         const data = await response.json();
         
-        // Display the results
+        // Display the results (displayResults now calls showScreen internally)
         displayResults(data);
-        showScreen(resultsScreen);
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
@@ -572,8 +621,11 @@ async function endCompetition() {
 }
 
 function resetAndGoHome() {
+    console.log('resetAndGoHome called');
     resetCompetition();
+    console.log('resetCompetition completed, showing home screen');
     showScreen(homeScreen);
+    console.log('Home screen should now be visible');
 }
 
 function resetCompetition() {
@@ -638,9 +690,8 @@ function updateScoreTable(leads, follows) {
 }
 
 function displayResults(data) {
-    // Hide the round screen and show the results screen
-    document.getElementById('round-screen').style.display = 'none';
-    document.getElementById('results-screen').style.display = 'block';
+    // Use the showScreen function instead of direct style manipulation
+    showScreen(resultsScreen);
 
     // Display lead results
     const leadResultsBody = document.getElementById('lead-results-body');
@@ -891,11 +942,8 @@ function endGame() {
     })
     .then(response => response.json())
     .then(data => {
-        // Display final results
+        // Display final results (displayResults now handles showing the screen)
         displayResults(data);
-        
-        // Show results screen
-        showScreen(resultsScreen);
     })
     .catch(error => {
         console.error('Error ending game:', error);
