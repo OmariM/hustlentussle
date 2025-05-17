@@ -66,29 +66,38 @@ def get_scores():
     lead_dict = {}
     follow_dict = {}
     
+    # Helper function to determine if a contestant has earned a crown
+    def has_earned_crown(contestant, role):
+        if role == "lead":
+            # A lead earns a crown if they have reached the winning threshold
+            return contestant.points >= game.total_num_leads - 1 and game.has_winning_lead
+        else:  # role == "follow"
+            # A follow earns a crown if they have reached the winning threshold
+            return contestant.points >= game.total_num_follows - 1 and game.has_winning_follow
+    
     # Add current pair contestants
     lead_dict[game.pair_1[0].name] = {
         'name': game.pair_1[0].name, 
         'points': game.pair_1[0].points,
-        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_1[0].name
+        'is_winner': has_earned_crown(game.pair_1[0], "lead")
     }
     
     lead_dict[game.pair_2[0].name] = {
         'name': game.pair_2[0].name, 
         'points': game.pair_2[0].points,
-        'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.pair_2[0].name
+        'is_winner': has_earned_crown(game.pair_2[0], "lead")
     }
     
     follow_dict[game.pair_1[1].name] = {
         'name': game.pair_1[1].name, 
         'points': game.pair_1[1].points,
-        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_1[1].name
+        'is_winner': has_earned_crown(game.pair_1[1], "follow")
     }
     
     follow_dict[game.pair_2[1].name] = {
         'name': game.pair_2[1].name, 
         'points': game.pair_2[1].points,
-        'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.pair_2[1].name
+        'is_winner': has_earned_crown(game.pair_2[1], "follow")
     }
     
     # Add contestants from the queue (only if not already added)
@@ -96,14 +105,14 @@ def get_scores():
         lead_dict[lead.name] = {
             'name': lead.name, 
             'points': lead.points,
-            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
+            'is_winner': has_earned_crown(lead, "lead")
         }
     
     for follow in game.follows:
         follow_dict[follow.name] = {
             'name': follow.name, 
             'points': follow.points,
-            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
+            'is_winner': has_earned_crown(follow, "follow")
         }
     
     # Check if we have winning lead/follow and add them if they exist and aren't already included
@@ -111,14 +120,14 @@ def get_scores():
         lead_dict[game.winning_lead.name] = {
             'name': game.winning_lead.name, 
             'points': game.winning_lead.points,
-            'is_winner': hasattr(game, 'last_lead_winner') and game.last_lead_winner == game.winning_lead.name
+            'is_winner': has_earned_crown(game.winning_lead, "lead")
         }
     
     if hasattr(game, 'winning_follow') and game.winning_follow:
         follow_dict[game.winning_follow.name] = {
             'name': game.winning_follow.name, 
             'points': game.winning_follow.points,
-            'is_winner': hasattr(game, 'last_follow_winner') and game.last_follow_winner == game.winning_follow.name
+            'is_winner': has_earned_crown(game.winning_follow, "follow")
         }
     
     # Convert dictionaries to lists for the response
