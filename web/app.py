@@ -233,9 +233,45 @@ def end_game():
             'is_winner': is_winner
         })
     
+    # Collect round metadata
+    rounds_data = []
+    
+    # Add all completed rounds
+    for r in game.rounds:
+        round_data = {
+            'round_num': r.round_num,
+            'pairs': r.pairs,
+            'lead_votes': r.lead_votes,
+            'follow_votes': r.follow_votes,
+            'judges': r.judges,
+            'contestant_judges': r.contestant_judges,
+            'win_messages': r.win_messages,
+            'lead_winner': r.lead_winner,
+            'follow_winner': r.follow_winner
+        }
+        
+        rounds_data.append(round_data)
+    
+    # Also include the current round if it exists and is not already in the rounds list
+    if game.current_round and game.current_round not in game.rounds:
+        current_round_data = {
+            'round_num': game.current_round.round_num,
+            'pairs': game.current_round.pairs,
+            'lead_votes': game.current_round.lead_votes,
+            'follow_votes': game.current_round.follow_votes,
+            'judges': game.current_round.judges,
+            'contestant_judges': game.current_round.contestant_judges,
+            'win_messages': game.current_round.win_messages,
+            'lead_winner': game.current_round.lead_winner,
+            'follow_winner': game.current_round.follow_winner
+        }
+        
+        rounds_data.append(current_round_data)
+    
     return jsonify({
         'leads': lead_results,
-        'follows': follow_results
+        'follows': follow_results,
+        'rounds': rounds_data
     })
 
 if __name__ == '__main__':

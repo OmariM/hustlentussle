@@ -20,6 +20,9 @@ class Round:
         self.judges = judges
         self.contestant_judges = contestant_judges
         self.win_messages = None  # Will store win messages for this round
+        self.pairs = {}  # Will store the pairs for this round
+        self.lead_winner = None  # Will store the name of the lead winner
+        self.follow_winner = None  # Will store the name of the follow winner
 
 
 class Game:
@@ -75,6 +78,18 @@ class Game:
             self.guest_judges,
             [j.name for j in self.contestant_judges],
         )
+        
+        # Store the pairs for this round
+        self.current_round.pairs = {
+            "pair_1": {
+                "lead": self.pair_1[0].name,
+                "follow": self.pair_1[1].name
+            },
+            "pair_2": {
+                "lead": self.pair_2[0].name,
+                "follow": self.pair_2[1].name
+            }
+        }
 
     def get_contestant_judges(self):
         pool = self.leads + self.follows
@@ -208,9 +223,31 @@ class Game:
             self.guest_judges,
             [j.name for j in self.contestant_judges],
         )
+        
+        # Store the pairs for this round
+        self.current_round.pairs = {
+            "pair_1": {
+                "lead": self.pair_1[0].name,
+                "follow": self.pair_1[1].name
+            },
+            "pair_2": {
+                "lead": self.pair_2[0].name,
+                "follow": self.pair_2[1].name
+            }
+        }
 
     def judge_round(self, c1, c2, role, votes):
         guest_votes = [d for (v, d) in votes if v in self.guest_judges]
+
+        # Store votes in the current round
+        vote_dict = {}
+        for voter, decision in votes:
+            vote_dict[voter] = decision
+            
+        if role == "lead":
+            self.current_round.lead_votes = vote_dict
+        else:
+            self.current_round.follow_votes = vote_dict
 
         # Tie: both guests vote 3
         if guest_votes.count(3) == len(self.guest_judges):
@@ -276,6 +313,8 @@ class Game:
             
             # Track the lead winner for this round to prevent pairing with follow winner
             self.last_lead_winner = winner.name
+            # Also store the lead winner in the current round
+            self.current_round.lead_winner = winner.name
             
         else:  # Follow
             if self.has_winning_follow:
@@ -295,7 +334,9 @@ class Game:
             
             # Track the follow winner for this round to prevent pairing with lead winner
             self.last_follow_winner = winner.name
-
+            # Also store the follow winner in the current round
+            self.current_round.follow_winner = winner.name
+        
         winner.points += 1
 
         gv = []
@@ -318,9 +359,14 @@ class Game:
             # Only add crown message if we haven't already shown a crown message for this role
             win_message = f"👑 {self.winning_lead.name} has won for the leads!"
             
-            # Check if this contestant already has a crown (from a previous round)
-            if not any(self.winning_lead.name in msg and "👑" in msg for msg in 
-                      [m for r in self.rounds for m in (r.win_messages or [])]):
+            # Check if we've seen this message in any previous rounds
+            is_new_crown = True
+            for r in self.rounds:
+                if r.win_messages and any("👑" in msg and "leads" in msg for msg in r.win_messages):
+                    is_new_crown = False
+                    break
+                    
+            if is_new_crown:
                 out.append(win_message)
         
         # Generate win message for follow winner if they've reached the winning threshold
@@ -331,18 +377,23 @@ class Game:
             # Only add crown message if we haven't already shown a crown message for this role
             win_message = f"👑 {self.winning_follow.name} has won for the follows!"
             
-            # Check if this contestant already has a crown (from a previous round)
-            if not any(self.winning_follow.name in msg and "👑" in msg for msg in 
-                      [m for r in self.rounds for m in (r.win_messages or [])]):
+            # Check if we've seen this message in any previous rounds
+            is_new_crown = True
+            for r in self.rounds:
+                if r.win_messages and any("👑" in msg and "follows" in msg for msg in r.win_messages):
+                    is_new_crown = False
+                    break
+                    
+            if is_new_crown:
                 out.append(win_message)
-
+        
         # Only set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
         
-        # Store the win messages with the current round
-        if hasattr(self, 'current_round'):
-            self.current_round.win_messages = out if out else None
+        # Store win messages in the current round
+        if out:
+            self.current_round.win_messages = out
         
         return out if out else None
 

@@ -564,6 +564,186 @@ function displayResults(data) {
         row.appendChild(pointsCell);
         followResultsBody.appendChild(row);
     });
+    
+    // Display round history if available
+    if (data.rounds && data.rounds.length > 0) {
+        displayRoundHistory(data.rounds);
+    }
+}
+
+// Function to display round history
+function displayRoundHistory(rounds) {
+    const roundsContainer = document.getElementById('rounds-accordion');
+    roundsContainer.innerHTML = '';
+    
+    // Sort rounds by round number
+    rounds.sort((a, b) => a.round_num - b.round_num);
+    
+    // Create an accordion item for each round
+    rounds.forEach(round => {
+        const accordionItem = document.createElement('div');
+        accordionItem.className = 'accordion-item';
+        
+        // Create the header
+        const header = document.createElement('div');
+        header.className = 'accordion-header';
+        header.innerHTML = `<span>Round ${round.round_num}</span><span>+</span>`;
+        
+        // Create the content
+        const content = document.createElement('div');
+        content.className = 'accordion-content';
+        
+        // Add round details
+        const details = document.createElement('div');
+        details.className = 'round-details';
+        
+        // Participants section
+        const participants = document.createElement('div');
+        participants.className = 'round-participants';
+        
+        let participantsHTML = '<h4>Participants</h4>';
+        
+        if (round.pairs && Object.keys(round.pairs).length > 0) {
+            // First pair
+            participantsHTML += `
+                <div class="match-pair">
+                    <div>Couple 1:</div>
+                    <div><span class="lead">${round.pairs.pair_1.lead}</span> (Lead) & 
+                    <span class="follow">${round.pairs.pair_1.follow}</span> (Follow)</div>
+                </div>
+                <div class="match-pair">
+                    <div>Couple 2:</div>
+                    <div><span class="lead">${round.pairs.pair_2.lead}</span> (Lead) & 
+                    <span class="follow">${round.pairs.pair_2.follow}</span> (Follow)</div>
+                </div>
+            `;
+            
+            // Add winners if available
+            if (round.lead_winner) {
+                participantsHTML += `<div class="winner">Lead Winner: ${round.lead_winner}</div>`;
+            }
+            
+            if (round.follow_winner) {
+                participantsHTML += `<div class="winner">Follow Winner: ${round.follow_winner}</div>`;
+            }
+        } else {
+            participantsHTML += '<p>No participant data available for this round.</p>';
+        }
+        
+        participants.innerHTML = participantsHTML;
+        
+        // Voting section
+        const voting = document.createElement('div');
+        voting.className = 'round-voting';
+        
+        let votingHTML = '<h4>Voting Results</h4>';
+        
+        // Lead votes
+        votingHTML += `<div class="votes-section">
+            <h5>Lead Votes</h5>
+        `;
+        
+        if (round.lead_votes && Object.keys(round.lead_votes).length > 0) {
+            votingHTML += '<ul class="votes-list">';
+            for (const judge in round.lead_votes) {
+                const voteValue = round.lead_votes[judge];
+                let voteText = '';
+                
+                // Get the contestant names from the pairs
+                const lead1 = round.pairs?.pair_1?.lead;
+                const lead2 = round.pairs?.pair_2?.lead;
+                
+                // Convert numeric vote to meaningful text
+                if (parseInt(voteValue) === 1) {
+                    voteText = lead1 || 'Contestant 1';
+                } else if (parseInt(voteValue) === 2) {
+                    voteText = lead2 || 'Contestant 2';
+                } else if (parseInt(voteValue) === 3) {
+                    voteText = 'Tie';
+                } else if (parseInt(voteValue) === 4) {
+                    voteText = 'No Contest';
+                } else {
+                    voteText = voteValue;
+                }
+                
+                votingHTML += `<li><span class="judge-name">${judge}</span>: ${voteText}</li>`;
+            }
+            votingHTML += '</ul>';
+        } else {
+            votingHTML += '<p>No lead voting data available.</p>';
+        }
+        
+        // Follow votes
+        votingHTML += `</div><div class="votes-section">
+            <h5>Follow Votes</h5>
+        `;
+        
+        if (round.follow_votes && Object.keys(round.follow_votes).length > 0) {
+            votingHTML += '<ul class="votes-list">';
+            for (const judge in round.follow_votes) {
+                const voteValue = round.follow_votes[judge];
+                let voteText = '';
+                
+                // Get the contestant names from the pairs
+                const follow1 = round.pairs?.pair_1?.follow;
+                const follow2 = round.pairs?.pair_2?.follow;
+                
+                // Convert numeric vote to meaningful text
+                if (parseInt(voteValue) === 1) {
+                    voteText = follow1 || 'Contestant 1';
+                } else if (parseInt(voteValue) === 2) {
+                    voteText = follow2 || 'Contestant 2';
+                } else if (parseInt(voteValue) === 3) {
+                    voteText = 'Tie';
+                } else if (parseInt(voteValue) === 4) {
+                    voteText = 'No Contest';
+                } else {
+                    voteText = voteValue;
+                }
+                
+                votingHTML += `<li><span class="judge-name">${judge}</span>: ${voteText}</li>`;
+            }
+            votingHTML += '</ul>';
+        } else {
+            votingHTML += '<p>No follow voting data available.</p>';
+        }
+        
+        votingHTML += '</div>';
+        
+        // Win messages
+        if (round.win_messages && round.win_messages.length > 0) {
+            votingHTML += '<div class="win-message">';
+            round.win_messages.forEach(message => {
+                votingHTML += `<p>${message}</p>`;
+            });
+            votingHTML += '</div>';
+        }
+        
+        voting.innerHTML = votingHTML;
+        
+        // Add the sections to the details
+        details.appendChild(participants);
+        details.appendChild(voting);
+        
+        // Add the details to the content
+        content.appendChild(details);
+        
+        // Add event listener to the header to toggle the content
+        header.addEventListener('click', function() {
+            this.classList.toggle('active');
+            const content = this.nextElementSibling;
+            content.classList.toggle('active');
+            this.querySelector('span:last-child').textContent = 
+                this.classList.contains('active') ? '-' : '+';
+        });
+        
+        // Add header and content to the accordion item
+        accordionItem.appendChild(header);
+        accordionItem.appendChild(content);
+        
+        // Add the accordion item to the container
+        roundsContainer.appendChild(accordionItem);
+    });
 }
 
 // End game function
