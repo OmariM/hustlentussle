@@ -767,24 +767,19 @@ function displayResults(data) {
     // Clear previous results
     const leadResultsBody = document.getElementById('lead-results-body');
     const followResultsBody = document.getElementById('follow-results-body');
-    
-    if (!leadResultsBody || !followResultsBody) {
-        console.error('Could not find results body elements');
-        return;
-    }
-    
-    leadResultsBody.innerHTML = '';
-    followResultsBody.innerHTML = '';
-    
-    // Display initial order
+    const roundsContainer = document.getElementById('rounds-accordion');
     const leadsInitialOrder = document.getElementById('leads-initial-order');
     const followsInitialOrder = document.getElementById('follows-initial-order');
     
-    if (!leadsInitialOrder || !followsInitialOrder) {
-        console.error('Could not find initial order elements');
+    if (!leadResultsBody || !followResultsBody || !roundsContainer || !leadsInitialOrder || !followsInitialOrder) {
+        console.error('Could not find required elements for results display');
         return;
     }
     
+    // Clear all previous data
+    leadResultsBody.innerHTML = '';
+    followResultsBody.innerHTML = '';
+    roundsContainer.innerHTML = '';
     leadsInitialOrder.innerHTML = '';
     followsInitialOrder.innerHTML = '';
     

@@ -42,6 +42,11 @@ class Game:
     has_winning_follow = False
 
     def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
+        # Store initial order
+        self.initial_leads = [Contestant(n.strip()) for n in lead_names]
+        self.initial_follows = [Contestant(n.strip()) for n in follow_names]
+        
+        # Create active contestant lists
         self.leads = [Contestant(n.strip()) for n in lead_names]
         self.follows = [Contestant(n.strip()) for n in follow_names]
         self.guest_judges = [n.strip() for n in guest_judge_names]

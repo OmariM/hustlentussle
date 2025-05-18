@@ -349,29 +349,10 @@ def export_battle_data():
     summary_sheet['A9'] = "Leads:"
     summary_sheet['A9'].font = Font(bold=True)
     
-    # Get the initial order from the first round's pairs
-    initial_leads = []
-    initial_follows = []
-    
-    # Add the first pair's contestants
-    if game.rounds:
-        first_round = game.rounds[0]
-        initial_leads.extend([
-            first_round.pairs['pair_1']['lead'],
-            first_round.pairs['pair_2']['lead']
-        ])
-        initial_follows.extend([
-            first_round.pairs['pair_1']['follow'],
-            first_round.pairs['pair_2']['follow']
-        ])
-    
-    # Add remaining contestants from the initial state
-    for lead in game.leads:
-        if lead.name not in initial_leads:
-            initial_leads.append(lead.name)
-    for follow in game.follows:
-        if follow.name not in initial_follows:
-            initial_follows.append(follow.name)
+    # Get the initial order from the game object
+    # Use the original order from the game's initial_leads and initial_follows lists
+    initial_leads = [lead.name for lead in game.initial_leads]
+    initial_follows = [follow.name for follow in game.initial_follows]
     
     # Write the initial leads order
     for i, lead in enumerate(initial_leads, 1):
