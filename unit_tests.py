@@ -7,6 +7,203 @@ from web.app import app, games
 from game_logic import Game
 from web.config import get_config
 
+class TestGameLogic(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Set up test environment once for all tests."""
+        # Get test configuration
+        config = get_config()
+        config.PORT = 5001  # Use a different port for testing
+        config.DEBUG = True
+        config.TESTING = True
+        
+        # Configure the app
+        app.config.from_object(config)
+    
+    def setUp(self):
+        """Set up test environment before each test."""
+        self.app_context = app.app_context()
+        self.app_context.push()
+        self.client = app.test_client()
+        
+        # Clear any existing games
+        games.clear()
+        
+        # Create test data
+        self.lead_names = ["Lead1", "Lead2", "Lead3", "Lead4"]
+        self.follow_names = ["Follow1", "Follow2", "Follow3", "Follow4"]
+        self.judge_names = ["Judge1", "Judge2"]
+        
+        # Create a test game
+        self.game = Game(self.lead_names, self.follow_names, self.judge_names)
+    
+    def tearDown(self):
+        """Clean up after each test."""
+        try:
+            self.app_context.pop()
+            games.clear()
+        except Exception as e:
+            print(f"Error in tearDown: {str(e)}")
+    
+    def simulate_round(self, pair, role, votes):
+        """Helper method to simulate a round."""
+        return self.game.judge_round(pair[0], pair[1], role, votes)
+    
+    def test_tie_on_leads(self):
+        """Test that a tie is correctly handled for leads."""
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        result = self.simulate_round(
+            lead_pair, "lead", 
+            [("Judge1", 3), ("Judge2", 3), ("Lead3", 1), ("Lead4", 2)]
+        )
+        self.assertTrue(
+            result["winner"].startswith("Tie between"),
+            f"Expected tie, got: {result['winner']}"
+        )
+    
+    def test_no_contest_on_follows(self):
+        """Test that a no contest is correctly handled for follows."""
+        follow_pair = (self.game.pair_1[1], self.game.pair_2[1])
+        result = self.simulate_round(
+            follow_pair, "follow",
+            [("Judge1", 4), ("Judge2", 4), ("Follow3", 1), ("Follow4", 2)]
+        )
+        self.assertEqual(
+            result["winner"], "No Contest",
+            f"Expected 'No Contest', got: {result['winner']}"
+        )
+    
+    def test_split_vote_on_leads(self):
+        """Test that split votes are correctly handled for leads."""
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        result = self.simulate_round(
+            lead_pair, "lead",
+            [("Judge1", 1), ("Judge2", 2), ("Lead3", 1), ("Lead4", 2)]
+        )
+        self.assertEqual(
+            result["winner"], lead_pair[0].name,
+            f"Expected {lead_pair[0].name}, got: {result['winner']}"
+        )
+    
+    def test_sweep_on_follows(self):
+        """Test that a sweep vote is correctly handled for follows."""
+        follow_pair = (self.game.pair_1[1], self.game.pair_2[1])
+        result = self.simulate_round(
+            follow_pair, "follow",
+            [("Judge1", 1), ("Judge2", 1), ("Follow3", 1), ("Follow4", 1)]
+        )
+        self.assertEqual(
+            result["winner"], follow_pair[0].name,
+            f"Expected {follow_pair[0].name}, got: {result['winner']}"
+        )
+    
+    def test_double_tie_on_leads(self):
+        """Test that double ties are correctly handled for leads."""
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        # First tie
+        result = self.simulate_round(
+            lead_pair, "lead",
+            [("Judge1", 3), ("Judge2", 3), ("Lead3", 1), ("Lead4", 2)]
+        )
+        self.assertTrue(
+            result["winner"].startswith("Tie between"),
+            f"Expected tie, got: {result['winner']}"
+        )
+        
+        # Move to next round and verify tied leads are re-paired
+        self.game.next_round()
+        tied_names = {lead_pair[0].name, lead_pair[1].name}
+        next_leads = {self.game.pair_1[0].name, self.game.pair_2[0].name}
+        self.assertEqual(
+            tied_names, next_leads,
+            f"Expected re-paired leads {tied_names}, got {next_leads}"
+        )
+    
+    def test_no_contest_queue_placement(self):
+        """Test that no contest contestants are placed at the end of the queue."""
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        self.simulate_round(
+            lead_pair, "lead",
+            [("Judge1", 4), ("Judge2", 4), ("Lead3", 1), ("Lead4", 2)]
+        )
+        after_leads = [c.name for c in self.game.leads]
+        expected_end = [lead_pair[0].name, lead_pair[1].name]
+        self.assertEqual(
+            after_leads[-2:], expected_end,
+            f"Expected end {expected_end}, got {after_leads[-2:]}"
+        )
+    
+    def test_early_exit_finalization(self):
+        """Test that early exit correctly finalizes and sorts results."""
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        follow_pair = (self.game.pair_1[1], self.game.pair_2[1])
+        
+        # Simulate one round of clear wins
+        self.simulate_round(
+            lead_pair, "lead",
+            [("Judge1", 1), ("Judge2", 1), ("Lead3", 1), ("Lead4", 1)]
+        )
+        self.simulate_round(
+            follow_pair, "follow",
+            [("Judge1", 1), ("Judge2", 1), ("Follow3", 1), ("Follow4", 1)]
+        )
+        
+        # Early exit
+        leads_sorted, follows_sorted = self.game.finalize_results()
+        self.assertGreater(
+            leads_sorted[0].points, leads_sorted[1].points,
+            "Top lead not correctly sorted"
+        )
+        self.assertGreater(
+            follows_sorted[0].points, follows_sorted[1].points,
+            "Top follow not correctly sorted"
+        )
+    
+    def test_lead_win_condition(self):
+        """Test that lead win condition is correctly handled."""
+        game = Game(
+            ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+            ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+            ["Judge1", "Judge2"]
+        )
+        
+        initial_lead_1 = game.pair_1[0]
+        initial_lead_2 = game.pair_2[0]
+        
+        # Give winning points to Lead1
+        initial_lead_1.points = game.total_num_leads - 2
+        
+        # Simulate round where Lead1 wins
+        lead_pair = (initial_lead_1, initial_lead_2)
+        result = game.judge_round(
+            lead_pair[0], lead_pair[1], "lead",
+            [("Judge1", 1), ("Judge2", 1)]
+        )
+        
+        # Check if Lead1 is marked as a winner
+        self.assertTrue(
+            game.has_winning_lead and game.winning_lead.name == initial_lead_1.name,
+            f"Lead winner not correctly identified. Has winning lead: {game.has_winning_lead}, "
+            f"Winning lead: {game.winning_lead.name if game.winning_lead else None}"
+        )
+        
+        # Move to next round
+        game.next_round()
+        
+        # Check if the winning lead is in the queue
+        leads_in_queue = [lead.name for lead in game.leads]
+        self.assertIn(
+            initial_lead_1.name, leads_in_queue,
+            f"Winning lead not in queue. Queue: {leads_in_queue}"
+        )
+        
+        # Check that two different leads are now competing
+        competing_leads = [game.pair_1[0].name, game.pair_2[0].name]
+        self.assertNotIn(
+            initial_lead_1.name, competing_leads,
+            f"Winning lead still competing. Current competitors: {competing_leads}"
+        )
+
 class TestExportBattleData(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
