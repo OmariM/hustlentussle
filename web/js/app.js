@@ -190,14 +190,18 @@ async function processUploadedFile() {
     formData.append('battle_file', file);
     
     try {
+        console.log('Uploading file:', file.name);
         const response = await fetch('/api/process_uploaded_file', {
             method: 'POST',
             body: formData
         });
         
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Received data:', data);
         
         if (data.error) {
+            console.error('Error in response:', data.error);
             uploadError.textContent = data.error;
             uploadError.classList.add('visible');
             return;
@@ -248,7 +252,7 @@ async function processUploadedFile() {
             });
         }
         
-        // Display the results (displayResults now calls showScreen internally)
+        // Display the results
         displayResults(data);
     } catch (error) {
         console.error('Error processing file:', error);
@@ -755,126 +759,110 @@ function updateScoreTable(leads, follows) {
 }
 
 function displayResults(data) {
-    // Use the showScreen function instead of direct style manipulation
-    showScreen(resultsScreen);
-
-    console.log("Displaying results with data:", data);
-
-    // Display lead results
-    const leadResultsContainer = document.getElementById('lead-results-body').parentElement;
-    const leadResultsBody = document.getElementById('lead-results-body');
+    console.log('Displaying results with data:', data);
     
-    // Remove any existing initial order section
-    const existingLeadOrder = leadResultsContainer.querySelector('.initial-order');
-    if (existingLeadOrder) {
-        existingLeadOrder.remove();
+    // Use the showScreen function with the correct screen element
+    showScreen(resultsScreen);
+    
+    // Clear previous results
+    const leadResultsBody = document.getElementById('lead-results-body');
+    const followResultsBody = document.getElementById('follow-results-body');
+    
+    if (!leadResultsBody || !followResultsBody) {
+        console.error('Could not find results body elements');
+        return;
     }
     
     leadResultsBody.innerHTML = '';
-    
-    // Add initial order section for leads
-    const leadInitialOrder = document.createElement('div');
-    leadInitialOrder.className = 'initial-order';
-    leadInitialOrder.innerHTML = '<h4>Starting Order</h4><ul>';
-    initialLeads.forEach((lead, index) => {
-        leadInitialOrder.innerHTML += `<li>${index + 1}. ${lead}</li>`;
-    });
-    leadInitialOrder.innerHTML += '</ul>';
-    leadResultsContainer.insertBefore(leadInitialOrder, leadResultsBody);
-    
-    if (data.leads && Array.isArray(data.leads)) {
-        console.log("Processing leads:", data.leads.length);
-        data.leads.forEach((lead, i) => {
-            console.log(`Processing lead ${i}:`, lead);
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
-            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
-            
-        const pointsCell = document.createElement('td');
-            // Ensure points is a number and handle potential undefined or null values
-            let points;
-            if (lead.points !== undefined && lead.points !== null) {
-                // Make sure it's a number
-                try {
-                    points = parseInt(lead.points, 10);
-                    if (isNaN(points)) points = 0;
-                } catch (e) {
-                    points = 0;
-                }
-            } else {
-                points = 0;
-            }
-            
-            console.log(`Lead ${lead.name} points:`, points, "Type:", typeof points);
-            pointsCell.textContent = points;
-            
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        leadResultsBody.appendChild(row);
-    });
-    } else {
-        console.error("No leads data available or leads is not an array:", data.leads);
-    }
-
-    // Display follow results
-    const followResultsContainer = document.getElementById('follow-results-body').parentElement;
-    const followResultsBody = document.getElementById('follow-results-body');
-    
-    // Remove any existing initial order section
-    const existingFollowOrder = followResultsContainer.querySelector('.initial-order');
-    if (existingFollowOrder) {
-        existingFollowOrder.remove();
-    }
-    
     followResultsBody.innerHTML = '';
     
-    // Add initial order section for follows
-    const followInitialOrder = document.createElement('div');
-    followInitialOrder.className = 'initial-order';
-    followInitialOrder.innerHTML = '<h4>Starting Order</h4><ul>';
-    initialFollows.forEach((follow, index) => {
-        followInitialOrder.innerHTML += `<li>${index + 1}. ${follow}</li>`;
-    });
-    followInitialOrder.innerHTML += '</ul>';
-    followResultsContainer.insertBefore(followInitialOrder, followResultsBody);
+    // Display initial order
+    const leadsInitialOrder = document.getElementById('leads-initial-order');
+    const followsInitialOrder = document.getElementById('follows-initial-order');
     
+    if (!leadsInitialOrder || !followsInitialOrder) {
+        console.error('Could not find initial order elements');
+        return;
+    }
+    
+    leadsInitialOrder.innerHTML = '';
+    followsInitialOrder.innerHTML = '';
+    
+    // Use stored initial order if not in data
+    const initialLeadsData = data.initial_leads || initialLeads;
+    const initialFollowsData = data.initial_follows || initialFollows;
+    
+    console.log('Using initial leads:', initialLeadsData);
+    console.log('Using initial follows:', initialFollowsData);
+    
+    // Add leads to initial order
+    if (initialLeadsData && Array.isArray(initialLeadsData)) {
+        initialLeadsData.forEach((lead, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${index + 1}.</span><span>${lead}</span>`;
+            leadsInitialOrder.appendChild(li);
+        });
+    } else {
+        console.warn('No initial leads data available');
+    }
+    
+    // Add follows to initial order
+    if (initialFollowsData && Array.isArray(initialFollowsData)) {
+        initialFollowsData.forEach((follow, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${index + 1}.</span><span>${follow}</span>`;
+            followsInitialOrder.appendChild(li);
+        });
+    } else {
+        console.warn('No initial follows data available');
+    }
+    
+    console.log('Lead results:', data.leads);
+    console.log('Follow results:', data.follows);
+    
+    // Display lead results
+    if (data.leads && Array.isArray(data.leads)) {
+        data.leads.forEach(lead => {
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
+            
+            const pointsCell = document.createElement('td');
+            pointsCell.textContent = lead.points;
+            
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            leadResultsBody.appendChild(row);
+        });
+    } else {
+        console.warn('No lead results data available');
+    }
+    
+    // Display follow results
     if (data.follows && Array.isArray(data.follows)) {
-        console.log("Processing follows:", data.follows.length);
-        data.follows.forEach((follow, i) => {
-            console.log(`Processing follow ${i}:`, follow);
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
+        data.follows.forEach(follow => {
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
             nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
             
-        const pointsCell = document.createElement('td');
-            // Ensure points is a number and handle potential undefined or null values
-            let points;
-            if (follow.points !== undefined && follow.points !== null) {
-                // Make sure it's a number
-                try {
-                    points = parseInt(follow.points, 10);
-                    if (isNaN(points)) points = 0;
-                } catch (e) {
-                    points = 0;
-                }
-            } else {
-                points = 0;
-            }
+            const pointsCell = document.createElement('td');
+            pointsCell.textContent = follow.points;
             
-            console.log(`Follow ${follow.name} points:`, points, "Type:", typeof points);
-            pointsCell.textContent = points;
-            
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        followResultsBody.appendChild(row);
-    });
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            followResultsBody.appendChild(row);
+        });
     } else {
-        console.error("No follows data available or follows is not an array:", data.follows);
+        console.warn('No follow results data available');
     }
+    
+    console.log('Round history:', data.rounds);
     
     // Display round history if available
     if (data.rounds && data.rounds.length > 0) {
         displayRoundHistory(data.rounds);
+    } else {
+        console.warn('No round history data available');
     }
 }
 
@@ -1112,6 +1100,8 @@ function endGame() {
         button.disabled = true;
     });
     
+    console.log('Ending game with session ID:', sessionId);
+    
     // Send request to end game
     fetch('/api/end_game', {
         method: 'POST',
@@ -1124,7 +1114,16 @@ function endGame() {
     })
     .then(response => response.json())
     .then(data => {
-        // Display final results (displayResults now handles showing the screen)
+        console.log('Received end game data:', data);
+        
+        // Ensure we have the initial order data
+        if (!data.initial_leads || !data.initial_follows) {
+            console.log('Using stored initial order data');
+            data.initial_leads = initialLeads;
+            data.initial_follows = initialFollows;
+        }
+        
+        // Display final results
         displayResults(data);
     })
     .catch(error => {
