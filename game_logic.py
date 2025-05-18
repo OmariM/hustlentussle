@@ -413,9 +413,9 @@ class Game:
 
     def finalize_results(self):
         # Ensure final winners are in the lists
-        if self.winning_lead not in self.leads:
+        if self.winning_lead and self.winning_lead not in self.leads:
             self.leads.append(self.winning_lead)
-        if self.winning_follow not in self.follows:
+        if self.winning_follow and self.winning_follow not in self.follows:
             self.follows.append(self.winning_follow)
 
         # Sort each separately

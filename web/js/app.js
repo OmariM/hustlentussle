@@ -788,12 +788,12 @@ function displayResults(data) {
     leadsInitialOrder.innerHTML = '';
     followsInitialOrder.innerHTML = '';
     
-    // Use stored initial order if not in data
-    const initialLeadsData = data.initial_leads || initialLeads;
-    const initialFollowsData = data.initial_follows || initialFollows;
+    // Always use the initial order from the server response
+    const initialLeadsData = data.initial_leads;
+    const initialFollowsData = data.initial_follows;
     
-    console.log('Using initial leads:', initialLeadsData);
-    console.log('Using initial follows:', initialFollowsData);
+    console.log('Using initial leads from server:', initialLeadsData);
+    console.log('Using initial follows from server:', initialFollowsData);
     
     // Add leads to initial order
     if (initialLeadsData && Array.isArray(initialLeadsData)) {
@@ -803,7 +803,7 @@ function displayResults(data) {
             leadsInitialOrder.appendChild(li);
         });
     } else {
-        console.warn('No initial leads data available');
+        console.warn('No initial leads data available from server');
     }
     
     // Add follows to initial order
@@ -814,7 +814,7 @@ function displayResults(data) {
             followsInitialOrder.appendChild(li);
         });
     } else {
-        console.warn('No initial follows data available');
+        console.warn('No initial follows data available from server');
     }
     
     console.log('Lead results:', data.leads);

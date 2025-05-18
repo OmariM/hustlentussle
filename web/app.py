@@ -317,54 +317,23 @@ def export_battle_data():
     
     game = games[session_id]
     
-    # Create an in-memory output file
-    output = io.BytesIO()
-    
-    # Create the workbook
+    # Create a new Excel workbook
     wb = Workbook()
     
-    # Add battle summary sheet
+    # Create Battle Summary sheet
     summary_sheet = wb.active
     summary_sheet.title = "Battle Summary"
     
-    # Set fixed column widths for all sheets to avoid MergedCell issues
-    standard_widths = {
-        "A": 15,  # First column (names, rounds, etc.)
-        "B": 20,  # Second column (points, contestants, etc.)
-        "C": 20,  # Third column
-        "D": 20,  # Fourth column
-        "E": 20,  # Fifth column
-        "F": 20,  # Sixth column
-        "G": 20,  # Seventh column
-        "H": 20,  # Eighth column
-        "I": 20,  # Ninth column
-        "J": 20,  # Tenth column
-        "K": 20,  # Eleventh column
-        "L": 20,  # Twelfth column
-        "M": 20,  # Thirteenth column
-        "N": 20,  # Fourteenth column
-        "O": 20,  # Fifteenth column
-    }
+    # Add headers
+    summary_sheet['A1'] = "Battle Summary"
+    summary_sheet['A1'].font = Font(bold=True, size=14)
     
-    for sheet in wb.worksheets:
-        # Apply standard widths to each column
-        for col_letter, width in standard_widths.items():
-            if col_letter in sheet.column_dimensions:
-                sheet.column_dimensions[col_letter].width = width
-    
-    # Add battle information
-    now = datetime.datetime.now()
+    # Add date and time
+    from datetime import datetime
+    now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S")
     
-    # Create title with styling
-    title_cell = summary_sheet['A1'] 
-    title_cell.value = "Hustle n' Tussle Battle Report"
-    title_cell.font = Font(size=16, bold=True)
-    summary_sheet.merge_cells('A1:B1')
-    title_cell.alignment = Alignment(horizontal='center')
-    
-    # Add battle metadata
     summary_sheet['A3'] = "Date:"
     summary_sheet['B3'] = date_str
     summary_sheet['A4'] = "Time:"
@@ -379,18 +348,46 @@ def export_battle_data():
     # Add leads initial order
     summary_sheet['A9'] = "Leads:"
     summary_sheet['A9'].font = Font(bold=True)
-    for i, lead in enumerate(game.leads, 1):
-        summary_sheet[f'A{9+i}'] = f"{i}. {lead.name}"
+    
+    # Get the initial order from the first round's pairs
+    initial_leads = []
+    initial_follows = []
+    
+    # Add the first pair's contestants
+    if game.rounds:
+        first_round = game.rounds[0]
+        initial_leads.extend([
+            first_round.pairs['pair_1']['lead'],
+            first_round.pairs['pair_2']['lead']
+        ])
+        initial_follows.extend([
+            first_round.pairs['pair_1']['follow'],
+            first_round.pairs['pair_2']['follow']
+        ])
+    
+    # Add remaining contestants from the initial state
+    for lead in game.leads:
+        if lead.name not in initial_leads:
+            initial_leads.append(lead.name)
+    for follow in game.follows:
+        if follow.name not in initial_follows:
+            initial_follows.append(follow.name)
+    
+    # Write the initial leads order
+    for i, lead in enumerate(initial_leads, 1):
+        summary_sheet[f'A{9+i}'] = f"{i}. {lead}"
     
     # Add follows initial order
-    follow_start_row = 9 + len(game.leads) + 2
+    follow_start_row = 9 + len(initial_leads) + 2
     summary_sheet[f'A{follow_start_row}'] = "Follows:"
     summary_sheet[f'A{follow_start_row}'].font = Font(bold=True)
-    for i, follow in enumerate(game.follows, 1):
-        summary_sheet[f'A{follow_start_row+i}'] = f"{i}. {follow.name}"
+    
+    # Write the initial follows order
+    for i, follow in enumerate(initial_follows, 1):
+        summary_sheet[f'A{follow_start_row+i}'] = f"{i}. {follow}"
     
     # Add winner information
-    results_start_row = follow_start_row + len(game.follows) + 2
+    results_start_row = follow_start_row + len(initial_follows) + 2
     summary_sheet[f'A{results_start_row}'] = "Final Results"
     summary_sheet[f'A{results_start_row}'].font = Font(bold=True)
     
@@ -657,6 +654,7 @@ def export_battle_data():
                 row_index += 1
     
     # Save the workbook to the BytesIO object
+    output = io.BytesIO()
     wb.save(output)
     output.seek(0)
     
