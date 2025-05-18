@@ -849,4 +849,30 @@ td span.crown {
     display: flex;
     justify-content: space-between;
     margin-top: 20px;
+}
+
+.initial-order {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.initial-order h4 {
+    margin: 0 0 10px 0;
+    color: #495057;
+    font-size: 1.1em;
+}
+
+.initial-order ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.initial-order li {
+    padding: 5px 0;
+    color: #6c757d;
+    font-size: 0.95em;
 } 

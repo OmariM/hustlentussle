@@ -60,9 +60,6 @@ class Game:
         # Track previous pairings to avoid repeats after ties
         self.previous_pairs = {}
 
-        random.shuffle(self.leads)
-        random.shuffle(self.follows)
-
         # Always start with a Lead vs Follow pairing
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.follows.pop(0))

@@ -7,6 +7,7 @@ import datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from werkzeug.utils import secure_filename
+import random
 
 # Add parent directory to path to import game_logic
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,7 +43,11 @@ def start_game():
             'error': 'The number of leads must equal the number of follows.'
         }), 400
     
-    # Create a new game
+    # Randomize the order of leads and follows
+    random.shuffle(lead_names)
+    random.shuffle(follow_names)
+    
+    # Create a new game with the randomized order
     session_id = f"game_{len(games) + 1}"
     games[session_id] = Game(lead_names, follow_names, judge_names)
     
@@ -56,7 +61,9 @@ def start_game():
         'pair_1': state['pair_1'],
         'pair_2': state['pair_2'],
         'contestant_judges': state['contestant_judges'],
-        'guest_judges': game.guest_judges
+        'guest_judges': game.guest_judges,
+        'initial_leads': lead_names,  # Now contains the randomized order
+        'initial_follows': follow_names  # Now contains the randomized order
     })
 
 @app.route('/api/get_scores', methods=['GET'])
@@ -345,13 +352,31 @@ def export_battle_data():
     summary_sheet['A5'] = "Total Rounds:"
     summary_sheet['B5'] = len(game.rounds) + (1 if game.current_round not in game.rounds else 0)
     
-    # Add winner information
-    summary_sheet['A7'] = "Final Results"
+    # Add initial order information
+    summary_sheet['A7'] = "Initial Order"
     summary_sheet['A7'].font = Font(bold=True)
     
-    # Lead winners
-    summary_sheet['A9'] = "Lead Winners:"
+    # Add leads initial order
+    summary_sheet['A9'] = "Leads:"
     summary_sheet['A9'].font = Font(bold=True)
+    for i, lead in enumerate(game.leads, 1):
+        summary_sheet[f'A{9+i}'] = f"{i}. {lead.name}"
+    
+    # Add follows initial order
+    follow_start_row = 9 + len(game.leads) + 2
+    summary_sheet[f'A{follow_start_row}'] = "Follows:"
+    summary_sheet[f'A{follow_start_row}'].font = Font(bold=True)
+    for i, follow in enumerate(game.follows, 1):
+        summary_sheet[f'A{follow_start_row+i}'] = f"{i}. {follow.name}"
+    
+    # Add winner information
+    results_start_row = follow_start_row + len(game.follows) + 2
+    summary_sheet[f'A{results_start_row}'] = "Final Results"
+    summary_sheet[f'A{results_start_row}'].font = Font(bold=True)
+    
+    # Lead winners
+    summary_sheet[f'A{results_start_row+2}'] = "Lead Winners:"
+    summary_sheet[f'A{results_start_row+2}'].font = Font(bold=True)
     
     leads, follows = game.finalize_results()
     
@@ -359,19 +384,20 @@ def export_battle_data():
         medal = ["🥇", "🥈", "🥉"][i-1]
         is_winner = hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
         crown = " 👑" if is_winner else ""
-        summary_sheet[f'A{9+i}'] = f"{medal} {lead.name}{crown}"
-        summary_sheet[f'B{9+i}'] = f"{lead.points} points"
+        summary_sheet[f'A{results_start_row+2+i}'] = f"{medal} {lead.name}{crown}"
+        summary_sheet[f'B{results_start_row+2+i}'] = f"{lead.points} points"
     
     # Follow winners
-    summary_sheet['A14'] = "Follow Winners:"
-    summary_sheet['A14'].font = Font(bold=True)
+    follow_winners_start = results_start_row + 2 + len(leads[:3]) + 2
+    summary_sheet[f'A{follow_winners_start}'] = "Follow Winners:"
+    summary_sheet[f'A{follow_winners_start}'].font = Font(bold=True)
     
     for i, follow in enumerate(follows[:3], 1):
         medal = ["🥇", "🥈", "🥉"][i-1]
         is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
         crown = " 👑" if is_winner else ""
-        summary_sheet[f'A{14+i}'] = f"{medal} {follow.name}{crown}"
-        summary_sheet[f'B{14+i}'] = f"{follow.points} points"
+        summary_sheet[f'A{follow_winners_start+i}'] = f"{medal} {follow.name}{crown}"
+        summary_sheet[f'B{follow_winners_start+i}'] = f"{follow.points} points"
     
     # Create lead leaderboard sheet
     lead_sheet = wb.create_sheet("Lead Leaderboard")
@@ -645,6 +671,169 @@ def process_uploaded_file():
             'follows': {}
         }
         
+        # Battle Summary - Process this first to get initial order
+        if "Battle Summary" in wb.sheetnames:
+            summary_sheet = wb["Battle Summary"]
+            
+            # Extract date and time
+            date = summary_sheet['B3'].value if 'B3' in summary_sheet else None
+            time = summary_sheet['B4'].value if 'B4' in summary_sheet else None
+            total_rounds = summary_sheet['B5'].value if 'B5' in summary_sheet else 0
+            
+            print("Processing Battle Summary sheet...")
+            print(f"Date: {date}, Time: {time}, Total Rounds: {total_rounds}")
+            
+            # Extract initial order
+            initial_leads = []
+            initial_follows = []
+            
+            # Find the initial order section
+            current_row = 7  # Start after "Initial Order" header
+            found_initial_order = False
+            
+            # First, find the "Initial Order" section
+            while current_row < summary_sheet.max_row:
+                cell_value = summary_sheet[f'A{current_row}'].value
+                print(f"Checking row {current_row}: {cell_value}")
+                if cell_value == "Initial Order":
+                    found_initial_order = True
+                    print("Found Initial Order section")
+                    current_row += 2  # Skip the header and move to content
+                    break
+                current_row += 1
+            
+            if found_initial_order:
+                print("Processing initial order section...")
+                # Process leads
+                while current_row < summary_sheet.max_row:
+                    cell_value = summary_sheet[f'A{current_row}'].value
+                    print(f"Processing row {current_row}: {cell_value}")
+                    if cell_value == "Leads:":
+                        print("Found Leads section")
+                        current_row += 1
+                        while current_row < summary_sheet.max_row:
+                            lead_entry = summary_sheet[f'A{current_row}'].value
+                            print(f"Processing lead entry: {lead_entry}")
+                            if not lead_entry or lead_entry == "Follows:":
+                                break
+                            # Extract name from "1. Name" format
+                            if isinstance(lead_entry, str) and '. ' in lead_entry:
+                                lead_name = lead_entry.split('. ', 1)[1]
+                                print(f"Added lead: {lead_name}")
+                                initial_leads.append(lead_name)
+                            current_row += 1
+                    elif cell_value == "Follows:":
+                        print("Found Follows section")
+                        current_row += 1
+                        while current_row < summary_sheet.max_row:
+                            follow_entry = summary_sheet[f'A{current_row}'].value
+                            print(f"Processing follow entry: {follow_entry}")
+                            if not follow_entry or follow_entry == "Final Results":
+                                break
+                            # Extract name from "1. Name" format
+                            if isinstance(follow_entry, str) and '. ' in follow_entry:
+                                follow_name = follow_entry.split('. ', 1)[1]
+                                print(f"Added follow: {follow_name}")
+                                initial_follows.append(follow_name)
+                            current_row += 1
+                    elif cell_value == "Final Results":
+                        print("Found Final Results section")
+                        break
+                    current_row += 1
+            
+            print(f"Final initial leads: {initial_leads}")
+            print(f"Final initial follows: {initial_follows}")
+            
+            # Store initial order in data
+            data['initial_leads'] = initial_leads
+            data['initial_follows'] = initial_follows
+            
+            # Calculate row numbers for results sections
+            results_start_row = current_row  # This is where "Final Results" was found
+            follow_winners_start = results_start_row + 2 + len(initial_leads) + 2  # Add 2 for headers and spacing
+            
+            # Extract top leads
+            top_leads = []
+            for i in range(results_start_row + 2, results_start_row + 5):  # Rows for top 3 leads
+                name_cell = f'A{i}'
+                points_cell = f'B{i}'
+                if name_cell in summary_sheet and summary_sheet[name_cell].value:
+                    name_text = summary_sheet[name_cell].value
+                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
+                    
+                    # Parse name and medal
+                    parts = name_text.split(' ')
+                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
+                    is_winner = "👑" in name_text
+                    name = name_text.replace(medal, '').replace("👑", '').strip()
+                    
+                    # Parse points
+                    points = 0
+                    try:
+                        if isinstance(points_text, str):
+                            points = int(points_text.split(' ')[0])
+                        elif isinstance(points_text, (int, float)):
+                            points = int(points_text)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['leads']:
+                            points = all_contestants['leads'][name]['points']
+                    
+                    # Mark as winner in our tracking dict
+                    if name in all_contestants['leads'] and is_winner:
+                        all_contestants['leads'][name]['is_winner'] = True
+                    
+                    top_leads.append({
+                        'name': name,
+                        'points': points,
+                        'medal': medal,
+                        'is_winner': is_winner
+                    })
+            
+            # Extract top follows
+            top_follows = []
+            for i in range(follow_winners_start + 1, follow_winners_start + 4):  # Rows for top 3 follows
+                name_cell = f'A{i}'
+                points_cell = f'B{i}'
+                if name_cell in summary_sheet and summary_sheet[name_cell].value:
+                    name_text = summary_sheet[name_cell].value
+                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
+                    
+                    # Parse name and medal
+                    parts = name_text.split(' ')
+                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
+                    is_winner = "👑" in name_text
+                    name = name_text.replace(medal, '').replace("👑", '').strip()
+                    
+                    # Parse points
+                    points = 0
+                    try:
+                        if isinstance(points_text, str):
+                            points = int(points_text.split(' ')[0])
+                        elif isinstance(points_text, (int, float)):
+                            points = int(points_text)
+                    except (ValueError, TypeError):
+                        # If parsing fails, try to get points from our calculated data
+                        if name in all_contestants['follows']:
+                            points = all_contestants['follows'][name]['points']
+                    
+                    # Mark as winner in our tracking dict
+                    if name in all_contestants['follows'] and is_winner:
+                        all_contestants['follows'][name]['is_winner'] = True
+                    
+                    top_follows.append({
+                        'name': name,
+                        'points': points,
+                        'medal': medal,
+                        'is_winner': is_winner
+                    })
+            
+            data['summary'] = {
+                'date': date,
+                'time': time,
+                'total_rounds': total_rounds
+            }
+        
         # Round History - Process this first to collect all contestant points
         if "Round History" in wb.sheetnames:
             round_sheet = wb["Round History"]
@@ -737,97 +926,6 @@ def process_uploaded_file():
                     rounds.append(round_data)
             
             data['rounds'] = rounds
-        
-        # Battle Summary
-        if "Battle Summary" in wb.sheetnames:
-            summary_sheet = wb["Battle Summary"]
-            
-            # Extract date and time
-            date = summary_sheet['B3'].value if 'B3' in summary_sheet else None
-            time = summary_sheet['B4'].value if 'B4' in summary_sheet else None
-            total_rounds = summary_sheet['B5'].value if 'B5' in summary_sheet else 0
-            
-            # Extract top leads
-            top_leads = []
-            for i in range(10, 13):  # Rows 10-12 for top 3 leads
-                name_cell = f'A{i}'
-                points_cell = f'B{i}'
-                if name_cell in summary_sheet and summary_sheet[name_cell].value:
-                    name_text = summary_sheet[name_cell].value
-                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
-                    
-                    # Parse name and medal
-                    parts = name_text.split(' ')
-                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
-                    is_winner = "👑" in name_text
-                    name = name_text.replace(medal, '').replace("👑", '').strip()
-                    
-                    # Parse points
-                    points = 0
-                    try:
-                        if isinstance(points_text, str):
-                            points = int(points_text.split(' ')[0])
-                        elif isinstance(points_text, (int, float)):
-                            points = int(points_text)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants['leads']:
-                            points = all_contestants['leads'][name]['points']
-                    
-                    # Mark as winner in our tracking dict
-                    if name in all_contestants['leads'] and is_winner:
-                        all_contestants['leads'][name]['is_winner'] = True
-                    
-                    top_leads.append({
-                        'name': name,
-                        'points': points,
-                        'medal': medal,
-                        'is_winner': is_winner
-                    })
-            
-            # Extract top follows
-            top_follows = []
-            for i in range(15, 18):  # Rows 15-17 for top 3 follows
-                name_cell = f'A{i}'
-                points_cell = f'B{i}'
-                if name_cell in summary_sheet and summary_sheet[name_cell].value:
-                    name_text = summary_sheet[name_cell].value
-                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
-                    
-                    # Parse name and medal
-                    parts = name_text.split(' ')
-                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
-                    is_winner = "👑" in name_text
-                    name = name_text.replace(medal, '').replace("👑", '').strip()
-                    
-                    # Parse points
-                    points = 0
-                    try:
-                        if isinstance(points_text, str):
-                            points = int(points_text.split(' ')[0])
-                        elif isinstance(points_text, (int, float)):
-                            points = int(points_text)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants['follows']:
-                            points = all_contestants['follows'][name]['points']
-                    
-                    # Mark as winner in our tracking dict
-                    if name in all_contestants['follows'] and is_winner:
-                        all_contestants['follows'][name]['is_winner'] = True
-                    
-                    top_follows.append({
-                        'name': name,
-                        'points': points,
-                        'medal': medal,
-                        'is_winner': is_winner
-                    })
-            
-            data['summary'] = {
-                'date': date,
-                'time': time,
-                'total_rounds': total_rounds
-            }
         
         # Lead and Follow Leaderboards
         if "Lead Leaderboard" in wb.sheetnames:

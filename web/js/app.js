@@ -6,6 +6,8 @@ let followVotes = {}; // Changed to an object to easily update votes
 let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 let currentLeads = []; // Store current lead contestants with points
 let currentFollows = []; // Store current follow contestants with points
+let initialLeads = []; // Store initial order of leads
+let initialFollows = []; // Store initial order of follows
 
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
@@ -172,47 +174,41 @@ function handleFileSelect(event) {
 
 async function processUploadedFile() {
     const file = battleFileUpload.files[0];
+    
     if (!file) {
-        showUploadError('Please select a file first.');
+        uploadError.textContent = 'Please select a file to upload.';
+        uploadError.classList.add('visible');
         return;
     }
     
-    // Check if the file is an Excel file
-    if (!file.name.endsWith('.xlsx')) {
-        showUploadError('Please upload a valid Excel file (.xlsx)');
-        return;
-    }
+    // Clear any previous error messages
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
     
-    // Create a FormData object to send the file
+    // Create FormData object
     const formData = new FormData();
     formData.append('battle_file', file);
     
     try {
-        // Start loading indicator
-        uploadBattleDataBtn.disabled = true;
-        uploadBattleDataBtn.textContent = 'Processing...';
-        
-        console.log(`Uploading file: ${file.name}, Size: ${file.size} bytes`);
-        
         const response = await fetch('/api/process_uploaded_file', {
             method: 'POST',
             body: formData
         });
         
-        if (!response.ok) {
-            throw new Error(`Error: ${response.status} ${response.statusText}`);
-        }
-        
         const data = await response.json();
         
-        // Add detailed debug logging
-        console.log("Received data from server:", data);
-        console.log("Data structure:", Object.keys(data));
-        
-        // Check if we have rounds data
-        if (data.rounds) {
-            console.log(`Round data: ${data.rounds.length} rounds`);
+        if (data.error) {
+            uploadError.textContent = data.error;
+            uploadError.classList.add('visible');
+            return;
         }
+        
+        // Store initial order data
+        initialLeads = data.initial_leads || [];
+        initialFollows = data.initial_follows || [];
+        
+        console.log("Initial leads:", initialLeads);
+        console.log("Initial follows:", initialFollows);
         
         // Check leads data
         if (data.leads) {
@@ -257,10 +253,6 @@ async function processUploadedFile() {
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
-    } finally {
-        // Reset the button
-        uploadBattleDataBtn.disabled = false;
-        uploadBattleDataBtn.textContent = 'Upload';
     }
 }
 
@@ -299,6 +291,8 @@ async function startCompetition() {
         const data = await response.json();
         sessionId = data.session_id;
         guestJudges = data.guest_judges;
+        initialLeads = data.initial_leads;  // Store initial order
+        initialFollows = data.initial_follows;  // Store initial order
         
         // Get initial scores
         await fetchScores();
@@ -745,8 +739,26 @@ function displayResults(data) {
     console.log("Displaying results with data:", data);
 
     // Display lead results
+    const leadResultsContainer = document.getElementById('lead-results-body').parentElement;
     const leadResultsBody = document.getElementById('lead-results-body');
+    
+    // Remove any existing initial order section
+    const existingLeadOrder = leadResultsContainer.querySelector('.initial-order');
+    if (existingLeadOrder) {
+        existingLeadOrder.remove();
+    }
+    
     leadResultsBody.innerHTML = '';
+    
+    // Add initial order section for leads
+    const leadInitialOrder = document.createElement('div');
+    leadInitialOrder.className = 'initial-order';
+    leadInitialOrder.innerHTML = '<h4>Starting Order</h4><ul>';
+    initialLeads.forEach((lead, index) => {
+        leadInitialOrder.innerHTML += `<li>${index + 1}. ${lead}</li>`;
+    });
+    leadInitialOrder.innerHTML += '</ul>';
+    leadResultsContainer.insertBefore(leadInitialOrder, leadResultsBody);
     
     if (data.leads && Array.isArray(data.leads)) {
         console.log("Processing leads:", data.leads.length);
@@ -783,8 +795,26 @@ function displayResults(data) {
     }
 
     // Display follow results
+    const followResultsContainer = document.getElementById('follow-results-body').parentElement;
     const followResultsBody = document.getElementById('follow-results-body');
+    
+    // Remove any existing initial order section
+    const existingFollowOrder = followResultsContainer.querySelector('.initial-order');
+    if (existingFollowOrder) {
+        existingFollowOrder.remove();
+    }
+    
     followResultsBody.innerHTML = '';
+    
+    // Add initial order section for follows
+    const followInitialOrder = document.createElement('div');
+    followInitialOrder.className = 'initial-order';
+    followInitialOrder.innerHTML = '<h4>Starting Order</h4><ul>';
+    initialFollows.forEach((follow, index) => {
+        followInitialOrder.innerHTML += `<li>${index + 1}. ${follow}</li>`;
+    });
+    followInitialOrder.innerHTML += '</ul>';
+    followResultsContainer.insertBefore(followInitialOrder, followResultsBody);
     
     if (data.follows && Array.isArray(data.follows)) {
         console.log("Processing follows:", data.follows.length);
