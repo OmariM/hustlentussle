@@ -445,8 +445,8 @@ def export_battle_data():
     round_sheet = wb.create_sheet("Round History")
     
     # Set column headers - updated with new column layout
-    # We'll have the round number, followed by contestants, then judges' votes
-    base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2"]
+    # We'll have the round number, followed by contestants, then judges' votes, and song information
+    base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2", "Song Title", "Artist", "Spotify Link"]
     
     # Fill round data to determine the max number of judges in any round
     all_rounds = []
@@ -472,13 +472,16 @@ def export_battle_data():
         sheet.column_dimensions["C"].width = 15  # Lead 2
         sheet.column_dimensions["D"].width = 15  # Follow 1
         sheet.column_dimensions["E"].width = 15  # Follow 2
+        sheet.column_dimensions["F"].width = 30  # Song Title
+        sheet.column_dimensions["G"].width = 25  # Artist
+        sheet.column_dimensions["H"].width = 40  # Spotify Link
         
         # Judge columns and votes
         for i in range(max_judges_count):
             # Calculate column letters for judge columns
-            judge_col = chr(ord('F') + i * 3)
-            lead_vote_col = chr(ord('F') + i * 3 + 1)
-            follow_vote_col = chr(ord('F') + i * 3 + 2)
+            judge_col = chr(ord('I') + i * 3)  # Start after song info columns
+            lead_vote_col = chr(ord('I') + i * 3 + 1)
+            follow_vote_col = chr(ord('I') + i * 3 + 2)
             
             # Set widths if these columns exist
             if judge_col in sheet.column_dimensions:
@@ -539,6 +542,13 @@ def export_battle_data():
             if follow2 == follow_winner:
                 follow2_cell.font = Font(color="FF0000")  # Red text for winner
             
+            # Add song information if available
+            if hasattr(round_data, 'song_info') and round_data.song_info:
+                song_info = round_data.song_info
+                round_sheet.cell(row=i, column=6).value = song_info.get('title', '')
+                round_sheet.cell(row=i, column=7).value = song_info.get('artist', '')
+                round_sheet.cell(row=i, column=8).value = song_info.get('spotify_url', '')
+            
             # Get all judges from the round
             all_judges = list()
             if hasattr(round_data, 'judges'):
@@ -548,8 +558,8 @@ def export_battle_data():
             
             # Add judge data
             for j, judge in enumerate(all_judges):
-                # Calculate column indices for this judge
-                judge_col = 6 + j * 3
+                # Calculate column indices for this judge (starting after song info columns)
+                judge_col = 9 + j * 3
                 lead_vote_col = judge_col + 1
                 follow_vote_col = judge_col + 2
                 
@@ -902,6 +912,18 @@ def process_uploaded_file():
                         'lead_votes': {},
                         'follow_votes': {}
                     }
+                    
+                    # Extract song information if available
+                    song_title = round_sheet.cell(row=row, column=6).value
+                    artist = round_sheet.cell(row=row, column=7).value
+                    spotify_url = round_sheet.cell(row=row, column=8).value
+                    
+                    if song_title or artist or spotify_url:
+                        round_data['song_info'] = {
+                            'title': song_title or '',
+                            'artist': artist or '',
+                            'spotify_url': spotify_url or ''
+                        }
                     
                     # Extract winner information and award points
                     lead_winner = None
