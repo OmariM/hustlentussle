@@ -154,14 +154,23 @@ def get_scores():
 
 @app.route('/api/judge_leads', methods=['POST'])
 def judge_leads():
-    data = request.json
+    data = request.get_json()
     session_id = data.get('session_id')
     votes = data.get('votes', [])
+    song_info = data.get('song_info', {})  # Add song info handling
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id or not votes:
+        return jsonify({'error': 'Missing session_id or votes'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Store song info in the current round
+    if song_info:
+        game.current_round.song_info = song_info
+    
+    # Process votes and determine winner
     result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
     
     return jsonify({
@@ -172,14 +181,23 @@ def judge_leads():
 
 @app.route('/api/judge_follows', methods=['POST'])
 def judge_follows():
-    data = request.json
+    data = request.get_json()
     session_id = data.get('session_id')
     votes = data.get('votes', [])
+    song_info = data.get('song_info', {})  # Add song info handling
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id or not votes:
+        return jsonify({'error': 'Missing session_id or votes'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Update song info in the current round if not already set
+    if song_info and not hasattr(game.current_round, 'song_info'):
+        game.current_round.song_info = song_info
+    
+    # Process votes and determine winner
     result = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", votes)
     
     # Check for win condition
@@ -260,7 +278,8 @@ def end_game():
             'contestant_judges': r.contestant_judges,
             'win_messages': r.win_messages,
             'lead_winner': r.lead_winner,
-            'follow_winner': r.follow_winner
+            'follow_winner': r.follow_winner,
+            'song_info': r.song_info if hasattr(r, 'song_info') else None
         }
         
         rounds_data.append(round_data)
@@ -276,7 +295,8 @@ def end_game():
             'contestant_judges': game.current_round.contestant_judges,
             'win_messages': game.current_round.win_messages,
             'lead_winner': game.current_round.lead_winner,
-            'follow_winner': game.current_round.follow_winner
+            'follow_winner': game.current_round.follow_winner,
+            'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
         }
         
         rounds_data.append(current_round_data)

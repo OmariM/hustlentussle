@@ -45,15 +45,15 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadBattleDataBtn = document.getElementById('upload-battle-data');
     backToHomeBtn = document.getElementById('back-to-home');
     uploadError = document.getElementById('upload-error');
-    
-    // Setup screen elements
+
+// Setup screen elements
     leadNamesInput = document.getElementById('lead-names');
     followNamesInput = document.getElementById('follow-names');
     judgeNamesInput = document.getElementById('judge-names');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
-    
-    // Round screen elements
+
+// Round screen elements
     roundNumber = document.getElementById('round-number');
     lead1Name = document.getElementById('lead1-name');
     lead2Name = document.getElementById('lead2-name');
@@ -62,8 +62,8 @@ document.addEventListener('DOMContentLoaded', () => {
     contestantJudgesList = document.getElementById('contestant-judges-list');
     currentLeadScores = document.getElementById('current-lead-scores');
     currentFollowScores = document.getElementById('current-follow-scores');
-    
-    // Voting elements
+
+// Voting elements
     leadVotingSection = document.getElementById('lead-voting');
     followVotingSection = document.getElementById('follow-voting');
     leadJudgesContainer = document.getElementById('lead-judges-container');
@@ -78,8 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
     followContestantVotes = document.getElementById('follow-contestant-votes');
     determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
     determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
-    
-    // Results elements
+
+// Results elements
     roundResultsSection = document.getElementById('round-results');
     winMessages = document.getElementById('win-messages');
     nextRoundBtn = document.getElementById('next-round');
@@ -371,6 +371,9 @@ function updateRoundUI(data) {
     // Reset determine winner buttons
     determineLeadWinnerBtn.disabled = false;
     determineFollowWinnerBtn.disabled = false;
+    
+    // Reset song input
+    document.getElementById('song-input').value = '';
 }
 
 function setupVotingUI() {
@@ -541,6 +544,24 @@ async function submitLeadVotes() {
         votesArray.push([judge, leadVotes[judge]]);
     }
     
+    // Get song information
+    const songInput = document.getElementById('song-input');
+    const songInfo = {};
+    if (songInput.value) {
+        try {
+            const spotifyUrl = new URL(songInput.value);
+            if (spotifyUrl.hostname === 'open.spotify.com') {
+                songInfo.spotify_url = songInput.value;
+                // Extract track ID from URL
+                const trackId = spotifyUrl.pathname.split('/').pop();
+                // You might want to add Spotify API integration here to get song details
+                // For now, we'll just store the URL
+            }
+        } catch (e) {
+            console.error('Invalid Spotify URL:', e);
+        }
+    }
+    
     // Lock voting and disable the button to prevent further changes
     lockVoting('lead');
     determineLeadWinnerBtn.disabled = true;
@@ -551,7 +572,8 @@ async function submitLeadVotes() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
-                votes: votesArray
+                votes: votesArray,
+                song_info: songInfo
             })
         });
         
@@ -764,11 +786,11 @@ function displayResults(data) {
         console.log("Processing leads:", data.leads.length);
         data.leads.forEach((lead, i) => {
             console.log(`Processing lead ${i}:`, lead);
-            const row = document.createElement('tr');
-            const nameCell = document.createElement('td');
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
             nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
             
-            const pointsCell = document.createElement('td');
+        const pointsCell = document.createElement('td');
             // Ensure points is a number and handle potential undefined or null values
             let points;
             if (lead.points !== undefined && lead.points !== null) {
@@ -786,10 +808,10 @@ function displayResults(data) {
             console.log(`Lead ${lead.name} points:`, points, "Type:", typeof points);
             pointsCell.textContent = points;
             
-            row.appendChild(nameCell);
-            row.appendChild(pointsCell);
-            leadResultsBody.appendChild(row);
-        });
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        leadResultsBody.appendChild(row);
+    });
     } else {
         console.error("No leads data available or leads is not an array:", data.leads);
     }
@@ -820,11 +842,11 @@ function displayResults(data) {
         console.log("Processing follows:", data.follows.length);
         data.follows.forEach((follow, i) => {
             console.log(`Processing follow ${i}:`, follow);
-            const row = document.createElement('tr');
-            const nameCell = document.createElement('td');
+        const row = document.createElement('tr');
+        const nameCell = document.createElement('td');
             nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
             
-            const pointsCell = document.createElement('td');
+        const pointsCell = document.createElement('td');
             // Ensure points is a number and handle potential undefined or null values
             let points;
             if (follow.points !== undefined && follow.points !== null) {
@@ -842,10 +864,10 @@ function displayResults(data) {
             console.log(`Follow ${follow.name} points:`, points, "Type:", typeof points);
             pointsCell.textContent = points;
             
-            row.appendChild(nameCell);
-            row.appendChild(pointsCell);
-            followResultsBody.appendChild(row);
-        });
+        row.appendChild(nameCell);
+        row.appendChild(pointsCell);
+        followResultsBody.appendChild(row);
+    });
     } else {
         console.error("No follows data available or follows is not an array:", data.follows);
     }
@@ -881,6 +903,37 @@ function displayRoundHistory(rounds) {
         // Add round details
         const details = document.createElement('div');
         details.className = 'round-details';
+        
+        // Add song information if available
+        if (round.song_info) {
+            const songSection = document.createElement('div');
+            songSection.className = 'round-song';
+            let songHTML = '<h4>Song</h4>';
+            
+            if (round.song_info.spotify_url) {
+                try {
+                    const spotifyUrl = new URL(round.song_info.spotify_url);
+                    const trackId = spotifyUrl.pathname.split('/').pop();
+                    if (trackId) {
+                        songHTML += `
+                            <iframe 
+                                src="https://open.spotify.com/embed/track/${trackId}" 
+                                width="100%" 
+                                height="80" 
+                                frameborder="0" 
+                                allowtransparency="true" 
+                                allow="encrypted-media"
+                                class="spotify-embed">
+                            </iframe>`;
+                    }
+                } catch (e) {
+                    console.error('Invalid Spotify URL:', e);
+                }
+            }
+            
+            songSection.innerHTML = songHTML;
+            details.appendChild(songSection);
+        }
         
         // Participants section
         const participants = document.createElement('div');

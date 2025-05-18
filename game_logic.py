@@ -23,6 +23,7 @@ class Round:
         self.pairs = {}  # Will store the pairs for this round
         self.lead_winner = None  # Will store the name of the lead winner
         self.follow_winner = None  # Will store the name of the follow winner
+        self.song_info = None  # Will store song information for this round
 
 
 class Game:

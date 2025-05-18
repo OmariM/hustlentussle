@@ -60,7 +60,7 @@
             </div>
             <p class="validation-message">Note: The number of leads must equal the number of follows.</p>
             <div class="setup-actions">
-                <button id="start-competition" class="btn primary">Start Competition</button>
+            <button id="start-competition" class="btn primary">Start Competition</button>
                 <button id="setup-back-to-home" class="btn secondary">Back</button>
             </div>
         </div>
@@ -70,6 +70,10 @@
                 <div class="round-info-container">
                     <div class="round-info">
                         <h2>Round <span id="round-number">1</span></h2>
+                        <div class="song-input-container">
+                            <label for="song-input">Spotify Song Link:</label>
+                            <input type="url" id="song-input" placeholder="https://open.spotify.com/track/..." />
+                        </div>
                         <div class="matchups">
                             <div class="matchup">
                                 <h3>Couple 1</h3>
