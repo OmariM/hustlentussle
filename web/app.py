@@ -588,44 +588,20 @@ def export_battle_data():
                 all_judges.extend(round_data['contestant_judges'])
             
             # Add judge data
-            for j, judge in enumerate(all_judges):
-                # Calculate column indices for this judge (starting after song info columns)
-                judge_col = 9 + j * 3
+            for j in range(judge_count):
+                judge_col = 9 + j * 3  # Start after song info columns (6-8)
                 lead_vote_col = judge_col + 1
                 follow_vote_col = judge_col + 2
                 
-                # Add judge name
-                round_sheet.cell(row=i, column=judge_col).value = judge
-                
-                # Add lead vote
-                lead_vote = round_data['lead_votes'].get(judge, '')
-                if lead_vote:
-                    if lead_vote == 1:
-                        vote_text = lead1
-                    elif lead_vote == 2:
-                        vote_text = lead2
-                    elif lead_vote == 3:
-                        vote_text = "Tie"
-                    elif lead_vote == 4:
-                        vote_text = "No Contest"
-                    else:
-                        vote_text = str(lead_vote)
-                    round_sheet.cell(row=i, column=lead_vote_col).value = vote_text
-                
-                # Add follow vote
-                follow_vote = round_data['follow_votes'].get(judge, '')
-                if follow_vote:
-                    if follow_vote == 1:
-                        vote_text = follow1
-                    elif follow_vote == 2:
-                        vote_text = follow2
-                    elif follow_vote == 3:
-                        vote_text = "Tie"
-                    elif follow_vote == 4:
-                        vote_text = "No Contest"
-                    else:
-                        vote_text = str(follow_vote)
-                    round_sheet.cell(row=i, column=follow_vote_col).value = vote_text
+                judge_name = round_data['judges'][j] if j < len(round_data['judges']) else ""
+                if judge_name:
+                    lead_vote = round_data['lead_votes'].get(judge_name, '')
+                    follow_vote = round_data['follow_votes'].get(judge_name, '')
+                    
+                    if lead_vote:
+                        round_data['lead_votes'][judge_name] = lead_vote
+                    if follow_vote:
+                        round_data['follow_votes'][judge_name] = follow_vote
     
     # Add the specific column widths for Round History sheet
     set_round_history_widths(round_sheet)
@@ -985,7 +961,7 @@ def process_uploaded_file():
                     
                     # Extract judge votes
                     for j in range(judge_count):
-                        judge_col = 6 + j * 3
+                        judge_col = 9 + j * 3  # Start after song info columns (6-8)
                         lead_vote_col = judge_col + 1
                         follow_vote_col = judge_col + 2
                         
