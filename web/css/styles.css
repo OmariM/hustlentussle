@@ -844,6 +844,45 @@ td span.crown {
     color: var(--light-text);
 }
 
+.format-guide {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.format-guide h3 {
+    color: var(--primary-color);
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.format-guide ul {
+    list-style-type: disc;
+    padding-left: 20px;
+    margin: 10px 0;
+}
+
+.format-guide ul ul {
+    list-style-type: circle;
+    margin: 5px 0;
+}
+
+.format-guide li {
+    margin: 5px 0;
+    color: var(--light-text);
+}
+
+.format-guide .note {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    color: #856404;
+    font-style: italic;
+}
+
 .file-upload-wrapper {
     position: relative;
     width: 100%;

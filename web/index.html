@@ -28,6 +28,26 @@
             <h2>Upload Battle Results</h2>
             <div class="upload-form">
                 <p>Upload a previously downloaded battle results Excel file to view the results.</p>
+                <div class="format-guide">
+                    <h3>Expected File Format</h3>
+                    <p>The Excel file should contain the following sheets:</p>
+                    <ul>
+                        <li><strong>Battle Summary</strong> - Contains:
+                            <ul>
+                                <li>Initial Order section with numbered lists of leads and follows</li>
+                                <li>Final Results section with top performers and their points</li>
+                            </ul>
+                        </li>
+                        <li><strong>Round History</strong> - Contains:
+                            <ul>
+                                <li>Round number and date</li>
+                                <li>Lead and follow pairs for each round</li>
+                                <li>Judge votes and winners</li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p class="note">Note: The file must be in .xlsx format and should be generated using the "Download Battle Data" feature from a previous battle.</p>
+                </div>
                 <div class="file-upload-wrapper">
                     <input type="file" id="battle-file-upload" accept=".xlsx" class="file-upload-input">
                     <label for="battle-file-upload" class="file-upload-label">

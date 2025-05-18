@@ -556,10 +556,6 @@ async function submitLeadVotes() {
             const spotifyUrl = new URL(songInput.value);
             if (spotifyUrl.hostname === 'open.spotify.com') {
                 songInfo.spotify_url = songInput.value;
-                // Extract track ID from URL
-                const trackId = spotifyUrl.pathname.split('/').pop();
-                // You might want to add Spotify API integration here to get song details
-                // For now, we'll just store the URL
             }
         } catch (e) {
             console.error('Invalid Spotify URL:', e);
@@ -1067,25 +1063,111 @@ function displayRoundHistory(rounds) {
     });
 }
 
-// Function to download battle data as Excel file
-function downloadBattleData() {
+async function downloadBattleData() {
     if (!sessionId) {
         console.error('No active session to download data from.');
         return;
     }
     
-    // Create the download URL
-    const downloadURL = `/api/export_battle_data?session_id=${sessionId}`;
-    
-    // Create a temporary link element
-    const tempLink = document.createElement('a');
-    tempLink.href = downloadURL;
-    tempLink.setAttribute('target', '_blank');
-    
-    // Trigger the download
-    document.body.appendChild(tempLink);
-    tempLink.click();
-    document.body.removeChild(tempLink);
+    try {
+        // First get the battle data to find all Spotify URLs
+        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=json`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch battle data: ${response.status}`);
+        }
+        
+        // Get the battle data as JSON first
+        const battleData = await response.json();
+        
+        // Get Spotify access token
+        const tokenResponse = await fetch('/api/get_spotify_token');
+        if (!tokenResponse.ok) {
+            throw new Error('Failed to get Spotify access token');
+        }
+        const { access_token } = await tokenResponse.json();
+        
+        // Fetch metadata for all Spotify URLs
+        const rounds = battleData.rounds || [];
+        for (const round of rounds) {
+            if (round.song_info && round.song_info.spotify_url) {
+                try {
+                    // Extract track ID from Spotify URL
+                    const spotifyUrl = new URL(round.song_info.spotify_url);
+                    const trackId = spotifyUrl.pathname.split('/').pop();
+                    
+                    if (trackId) {
+                        // Use the Spotify Web API to get track details
+                        const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                            headers: {
+                                'Authorization': `Bearer ${access_token}`
+                            }
+                        });
+                        if (metadataResponse.ok) {
+                            const metadata = await metadataResponse.json();
+                            // Update song info with data from the Web API
+                            round.song_info.title = metadata.name;
+                            round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                            console.log('Updated song info:', round.song_info); // Debug log
+                        } else {
+                            console.error(`Failed to fetch metadata for ${round.song_info.spotify_url}: ${metadataResponse.status}`);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                }
+            }
+        }
+        
+        // Now get the Excel file with updated metadata
+        const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                rounds: rounds
+            })
+        });
+        
+        if (!excelResponse.ok) {
+            throw new Error(`Failed to fetch Excel file: ${excelResponse.status}`);
+        }
+        
+        // Check if the response is actually an Excel file
+        const contentType = excelResponse.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+            throw new Error('Invalid response format from server');
+        }
+        
+        // Get the filename from the Content-Disposition header or use a default
+        const contentDisposition = excelResponse.headers.get('content-disposition');
+        let filename = 'battle_data.xlsx';
+        if (contentDisposition) {
+            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+        
+        // Create a temporary link element
+        const blob = await excelResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const tempLink = document.createElement('a');
+        tempLink.href = url;
+        tempLink.setAttribute('download', filename);
+        
+        // Trigger the download
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        
+        // Clean up
+        document.body.removeChild(tempLink);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error downloading battle data:', error);
+        alert('Failed to download battle data. Please try again.');
+    }
 }
 
 // End game function
