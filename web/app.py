@@ -587,21 +587,48 @@ def export_battle_data():
             if 'contestant_judges' in round_data:
                 all_judges.extend(round_data['contestant_judges'])
             
+            # Get contestant names for this round
+            lead1 = round_data['pairs'].get('pair_1', {}).get('lead', '')
+            lead2 = round_data['pairs'].get('pair_2', {}).get('lead', '')
+            follow1 = round_data['pairs'].get('pair_1', {}).get('follow', '')
+            follow2 = round_data['pairs'].get('pair_2', {}).get('follow', '')
+            
             # Add judge data
-            for j in range(judge_count):
+            for j in range(max_judges_count):
                 judge_col = 9 + j * 3  # Start after song info columns (6-8)
                 lead_vote_col = judge_col + 1
                 follow_vote_col = judge_col + 2
                 
-                judge_name = round_data['judges'][j] if j < len(round_data['judges']) else ""
+                judge_name = all_judges[j] if j < len(all_judges) else ""
                 if judge_name:
                     lead_vote = round_data['lead_votes'].get(judge_name, '')
                     follow_vote = round_data['follow_votes'].get(judge_name, '')
                     
+                    # Convert vote numbers to contestant names
                     if lead_vote:
-                        round_data['lead_votes'][judge_name] = lead_vote
+                        if lead_vote == 1:
+                            lead_vote = lead1
+                        elif lead_vote == 2:
+                            lead_vote = lead2
+                        elif lead_vote == 3:
+                            lead_vote = "Tie"
+                        elif lead_vote == 4:
+                            lead_vote = "No Contest"
+                    
                     if follow_vote:
-                        round_data['follow_votes'][judge_name] = follow_vote
+                        if follow_vote == 1:
+                            follow_vote = follow1
+                        elif follow_vote == 2:
+                            follow_vote = follow2
+                        elif follow_vote == 3:
+                            follow_vote = "Tie"
+                        elif follow_vote == 4:
+                            follow_vote = "No Contest"
+                    
+                    # Write judge name and votes to Excel
+                    round_sheet.cell(row=i, column=judge_col).value = judge_name
+                    round_sheet.cell(row=i, column=lead_vote_col).value = lead_vote
+                    round_sheet.cell(row=i, column=follow_vote_col).value = follow_vote
     
     # Add the specific column widths for Round History sheet
     set_round_history_widths(round_sheet)
