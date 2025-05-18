@@ -13,7 +13,58 @@
             <h2>Battle Manager</h2>
         </header>
 
-        <div id="setup-screen" class="screen active">
+        <div id="home-screen" class="screen active">
+            <div class="welcome-section">
+                <h2>Welcome to Hustle n' Tussle</h2>
+                <p>The ultimate dance battle management system</p>
+            </div>
+            <div class="home-actions">
+                <button id="go-to-battle" class="btn primary large">Start Battle</button>
+                <button id="go-to-upload" class="btn secondary large">Upload Results</button>
+            </div>
+        </div>
+
+        <div id="upload-screen" class="screen">
+            <h2>Upload Battle Results</h2>
+            <div class="upload-form">
+                <p>Upload a previously downloaded battle results Excel file to view the results.</p>
+                <div class="format-guide">
+                    <h3>Expected File Format</h3>
+                    <p>The Excel file should contain the following sheets:</p>
+                    <ul>
+                        <li><strong>Battle Summary</strong> - Contains:
+                            <ul>
+                                <li>Initial Order section with numbered lists of leads and follows</li>
+                                <li>Final Results section with top performers and their points</li>
+                            </ul>
+                        </li>
+                        <li><strong>Round History</strong> - Contains:
+                            <ul>
+                                <li>Round number and date</li>
+                                <li>Lead and follow pairs for each round</li>
+                                <li>Judge votes and winners</li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p class="note">Note: The file must be in .xlsx format and should be generated using the "Download Battle Data" feature from a previous battle.</p>
+                </div>
+                <div class="file-upload-wrapper">
+                    <input type="file" id="battle-file-upload" accept=".xlsx" class="file-upload-input">
+                    <label for="battle-file-upload" class="file-upload-label">
+                        <span class="file-upload-text">Choose file</span>
+                        <span class="file-upload-btn">Browse</span>
+                    </label>
+                </div>
+                <div id="upload-file-name" class="file-name"></div>
+                <div class="upload-actions">
+                    <button id="upload-battle-data" class="btn primary">Upload</button>
+                    <button id="back-to-home" class="btn secondary">Back</button>
+                </div>
+                <div id="upload-error" class="error-message"></div>
+            </div>
+        </div>
+
+        <div id="setup-screen" class="screen">
             <h2>Competition Setup</h2>
             <div class="form-group">
                 <label for="lead-names">Lead Names (comma-separated):</label>
@@ -28,7 +79,10 @@
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
             <p class="validation-message">Note: The number of leads must equal the number of follows.</p>
+            <div class="setup-actions">
             <button id="start-competition" class="btn primary">Start Competition</button>
+                <button id="setup-back-to-home" class="btn secondary">Back</button>
+            </div>
         </div>
 
         <div id="round-screen" class="screen">
@@ -36,6 +90,10 @@
                 <div class="round-info-container">
                     <div class="round-info">
                         <h2>Round <span id="round-number">1</span></h2>
+                        <div class="song-input-container">
+                            <label for="song-input">Spotify Song Link:</label>
+                            <input type="url" id="song-input" placeholder="https://open.spotify.com/track/..." />
+                        </div>
                         <div class="matchups">
                             <div class="matchup">
                                 <h3>Couple 1</h3>
@@ -136,6 +194,20 @@
         <div id="results-screen" class="screen">
             <h2>Final Results</h2>
             
+            <div class="starting-order-section">
+                <h3>Starting Order</h3>
+                <div class="starting-order-container">
+                    <div class="leads-order">
+                        <h4>Leads</h4>
+                        <ul id="leads-initial-order"></ul>
+                    </div>
+                    <div class="follows-order">
+                        <h4>Follows</h4>
+                        <ul id="follows-initial-order"></ul>
+                    </div>
+                </div>
+            </div>
+            
             <div class="leaderboard">
                 <div class="leads-board">
                     <h3>Top Leads</h3>
@@ -175,7 +247,10 @@
                 </div>
             </div>
             
-            <button id="new-competition" class="btn primary">New Competition</button>
+            <div class="results-actions">
+                <button id="back-to-home-from-results" class="btn primary">Back to Home</button>
+                <button id="download-battle-data" class="btn secondary">Download Battle Data</button>
+            </div>
         </div>
     </div>
 

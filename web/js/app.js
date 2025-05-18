@@ -6,70 +6,263 @@ let followVotes = {}; // Changed to an object to easily update votes
 let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 let currentLeads = []; // Store current lead contestants with points
 let currentFollows = []; // Store current follow contestants with points
+let initialLeads = []; // Store initial order of leads
+let initialFollows = []; // Store initial order of follows
 
-// DOM Elements
-const setupScreen = document.getElementById('setup-screen');
-const roundScreen = document.getElementById('round-screen');
-const resultsScreen = document.getElementById('results-screen');
-
-// Setup screen elements
-const leadNamesInput = document.getElementById('lead-names');
-const followNamesInput = document.getElementById('follow-names');
-const judgeNamesInput = document.getElementById('judge-names');
-const startCompetitionBtn = document.getElementById('start-competition');
-
-// Round screen elements
-const roundNumber = document.getElementById('round-number');
-const lead1Name = document.getElementById('lead1-name');
-const lead2Name = document.getElementById('lead2-name');
-const follow1Name = document.getElementById('follow1-name');
-const follow2Name = document.getElementById('follow2-name');
-const contestantJudgesList = document.getElementById('contestant-judges-list');
-const currentLeadScores = document.getElementById('current-lead-scores');
-const currentFollowScores = document.getElementById('current-follow-scores');
-
-// Voting elements
-const leadVotingSection = document.getElementById('lead-voting');
-const followVotingSection = document.getElementById('follow-voting');
-const leadJudgesContainer = document.getElementById('lead-judges-container');
-const followJudgesContainer = document.getElementById('follow-judges-container');
-const leadResults = document.getElementById('lead-results');
-const followResults = document.getElementById('follow-results');
-const leadWinner = document.getElementById('lead-winner');
-const followWinner = document.getElementById('follow-winner');
-const leadGuestVotes = document.getElementById('lead-guest-votes');
-const leadContestantVotes = document.getElementById('lead-contestant-votes');
-const followGuestVotes = document.getElementById('follow-guest-votes');
-const followContestantVotes = document.getElementById('follow-contestant-votes');
-const determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
-const determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
-
-// Results elements
-const roundResultsSection = document.getElementById('round-results');
-const winMessages = document.getElementById('win-messages');
-const nextRoundBtn = document.getElementById('next-round');
-const endBattleBtn = document.getElementById('end-battle');
-const leadsLeaderboard = document.getElementById('leads-leaderboard');
-const followsLeaderboard = document.getElementById('follows-leaderboard');
-const newCompetitionBtn = document.getElementById('new-competition');
+// DOM Elements (initialized in the DOMContentLoaded event)
+let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
+let goToBattleBtn, goToUploadBtn;
+let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
+let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
+let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList;
+let currentLeadScores, currentFollowScores;
+let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
+let leadResults, followResults, leadWinner, followWinner;
+let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
+let determineLeadWinnerBtn, determineFollowWinnerBtn;
+let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
+let leadsLeaderboard, followsLeaderboard;
+let backToHomeFromResultsBtn, downloadBattleDataBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded');
+    
+    // Initialize DOM elements
+    homeScreen = document.getElementById('home-screen');
+    uploadScreen = document.getElementById('upload-screen');
+    setupScreen = document.getElementById('setup-screen');
+    roundScreen = document.getElementById('round-screen');
+    resultsScreen = document.getElementById('results-screen');
+    
+    // Home screen elements
+    goToBattleBtn = document.getElementById('go-to-battle');
+    goToUploadBtn = document.getElementById('go-to-upload');
+    
+    // Upload screen elements
+    battleFileUpload = document.getElementById('battle-file-upload');
+    uploadFileName = document.getElementById('upload-file-name');
+    uploadBattleDataBtn = document.getElementById('upload-battle-data');
+    backToHomeBtn = document.getElementById('back-to-home');
+    uploadError = document.getElementById('upload-error');
+
+// Setup screen elements
+    leadNamesInput = document.getElementById('lead-names');
+    followNamesInput = document.getElementById('follow-names');
+    judgeNamesInput = document.getElementById('judge-names');
+    startCompetitionBtn = document.getElementById('start-competition');
+    setupBackToHomeBtn = document.getElementById('setup-back-to-home');
+
+// Round screen elements
+    roundNumber = document.getElementById('round-number');
+    lead1Name = document.getElementById('lead1-name');
+    lead2Name = document.getElementById('lead2-name');
+    follow1Name = document.getElementById('follow1-name');
+    follow2Name = document.getElementById('follow2-name');
+    contestantJudgesList = document.getElementById('contestant-judges-list');
+    currentLeadScores = document.getElementById('current-lead-scores');
+    currentFollowScores = document.getElementById('current-follow-scores');
+
+// Voting elements
+    leadVotingSection = document.getElementById('lead-voting');
+    followVotingSection = document.getElementById('follow-voting');
+    leadJudgesContainer = document.getElementById('lead-judges-container');
+    followJudgesContainer = document.getElementById('follow-judges-container');
+    leadResults = document.getElementById('lead-results');
+    followResults = document.getElementById('follow-results');
+    leadWinner = document.getElementById('lead-winner');
+    followWinner = document.getElementById('follow-winner');
+    leadGuestVotes = document.getElementById('lead-guest-votes');
+    leadContestantVotes = document.getElementById('lead-contestant-votes');
+    followGuestVotes = document.getElementById('follow-guest-votes');
+    followContestantVotes = document.getElementById('follow-contestant-votes');
+    determineLeadWinnerBtn = document.getElementById('determine-lead-winner');
+    determineFollowWinnerBtn = document.getElementById('determine-follow-winner');
+
+// Results elements
+    roundResultsSection = document.getElementById('round-results');
+    winMessages = document.getElementById('win-messages');
+    nextRoundBtn = document.getElementById('next-round');
+    endBattleBtn = document.getElementById('end-battle');
+    leadsLeaderboard = document.getElementById('leads-leaderboard');
+    followsLeaderboard = document.getElementById('follows-leaderboard');
+    backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
+    downloadBattleDataBtn = document.getElementById('download-battle-data');
+    
+    // Check if elements exist
+    console.log('Checking elements:');
+    console.log('homeScreen:', homeScreen);
+    console.log('uploadScreen:', uploadScreen);
+    console.log('setupScreen:', setupScreen);
+    console.log('resultsScreen:', resultsScreen);
+    console.log('backToHomeBtn:', backToHomeBtn);
+    console.log('setupBackToHomeBtn:', setupBackToHomeBtn);
+    console.log('backToHomeFromResultsBtn:', backToHomeFromResultsBtn);
+    
+    // Create direct handler functions for better debugging
+    function goToHome() {
+        console.log('Go to home clicked');
+        showScreen(homeScreen);
+    }
+    
+    function setupBackToHomeHandler() {
+        console.log('Setup back to home clicked');
+        showScreen(homeScreen);
+    }
+    
+    // Home screen navigation
+    goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
+    goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    
+    // Upload screen
+    battleFileUpload.addEventListener('change', handleFileSelect);
+    uploadBattleDataBtn.addEventListener('click', processUploadedFile);
+    backToHomeBtn.addEventListener('click', goToHome);
+    
+    // Setup screen
+    setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
     startCompetitionBtn.addEventListener('click', startCompetition);
+    
+    // Battle flow
     determineLeadWinnerBtn.addEventListener('click', submitLeadVotes);
     determineFollowWinnerBtn.addEventListener('click', submitFollowVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
-    newCompetitionBtn.addEventListener('click', resetCompetition);
+    
+    // Results screen
+    console.log('Adding click handler to backToHomeFromResultsBtn');
+    if (backToHomeFromResultsBtn) {
+        backToHomeFromResultsBtn.addEventListener('click', resetAndGoHome);
+        console.log('Event listener added successfully');
+        // Add direct onclick handler as backup
+        backToHomeFromResultsBtn.onclick = function() {
+            console.log('Back to home from results clicked via onclick');
+            resetAndGoHome();
+        };
+    } else {
+        console.error('backToHomeFromResultsBtn is null or undefined!');
+    }
+    
+    downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 });
 
 // Functions
 function showScreen(screen) {
+    homeScreen.classList.remove('active');
+    uploadScreen.classList.remove('active');
     setupScreen.classList.remove('active');
     roundScreen.classList.remove('active');
     resultsScreen.classList.remove('active');
     
     screen.classList.add('active');
+    
+    // Reset error messages when switching screens
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        uploadFileName.textContent = file.name;
+        uploadError.textContent = '';
+        uploadError.classList.remove('visible');
+    } else {
+        uploadFileName.textContent = '';
+    }
+}
+
+async function processUploadedFile() {
+    const file = battleFileUpload.files[0];
+    
+    if (!file) {
+        uploadError.textContent = 'Please select a file to upload.';
+        uploadError.classList.add('visible');
+        return;
+    }
+    
+    // Clear any previous error messages
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
+    
+    // Create FormData object
+    const formData = new FormData();
+    formData.append('battle_file', file);
+    
+    try {
+        console.log('Uploading file:', file.name);
+        const response = await fetch('/api/process_uploaded_file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        console.log('Response status:', response.status);
+        const data = await response.json();
+        console.log('Received data:', data);
+        
+        if (data.error) {
+            console.error('Error in response:', data.error);
+            uploadError.textContent = data.error;
+            uploadError.classList.add('visible');
+            return;
+        }
+        
+        // Store initial order data
+        initialLeads = data.initial_leads || [];
+        initialFollows = data.initial_follows || [];
+        
+        console.log("Initial leads:", initialLeads);
+        console.log("Initial follows:", initialFollows);
+        
+        // Check leads data
+        if (data.leads) {
+            console.log("Lead data:", data.leads);
+            console.log(`Processing ${data.leads.length} leads:`);
+            data.leads.forEach((lead, i) => {
+                console.log(`Lead ${i}:`, lead, "Points:", lead.points, "Type:", typeof lead.points);
+                // Convert points to number if needed
+                if (lead.points !== undefined && lead.points !== null) {
+                    if (typeof lead.points !== 'number') {
+                        lead.points = parseInt(lead.points, 10) || 0;
+                        console.log(`Converted lead ${lead.name} points to:`, lead.points);
+                    }
+                } else {
+                    lead.points = 0;
+                    console.log(`Set default points (0) for lead ${lead.name}`);
+                }
+            });
+        }
+        
+        // Check follows data
+        if (data.follows) {
+            console.log("Follow data:", data.follows);
+            console.log(`Processing ${data.follows.length} follows:`);
+            data.follows.forEach((follow, i) => {
+                console.log(`Follow ${i}:`, follow, "Points:", follow.points, "Type:", typeof follow.points);
+                // Convert points to number if needed
+                if (follow.points !== undefined && follow.points !== null) {
+                    if (typeof follow.points !== 'number') {
+                        follow.points = parseInt(follow.points, 10) || 0;
+                        console.log(`Converted follow ${follow.name} points to:`, follow.points);
+                    }
+                } else {
+                    follow.points = 0;
+                    console.log(`Set default points (0) for follow ${follow.name}`);
+                }
+            });
+        }
+        
+        // Display the results
+        displayResults(data);
+    } catch (error) {
+        console.error('Error processing file:', error);
+        showUploadError(`Failed to process the file: ${error.message}`);
+    }
+}
+
+function showUploadError(message) {
+    uploadError.textContent = message;
+    uploadError.classList.add('visible');
 }
 
 async function startCompetition() {
@@ -102,6 +295,8 @@ async function startCompetition() {
         const data = await response.json();
         sessionId = data.session_id;
         guestJudges = data.guest_judges;
+        initialLeads = data.initial_leads;  // Store initial order
+        initialFollows = data.initial_follows;  // Store initial order
         
         // Get initial scores
         await fetchScores();
@@ -180,6 +375,9 @@ function updateRoundUI(data) {
     // Reset determine winner buttons
     determineLeadWinnerBtn.disabled = false;
     determineFollowWinnerBtn.disabled = false;
+    
+    // Reset song input
+    document.getElementById('song-input').value = '';
 }
 
 function setupVotingUI() {
@@ -350,6 +548,20 @@ async function submitLeadVotes() {
         votesArray.push([judge, leadVotes[judge]]);
     }
     
+    // Get song information
+    const songInput = document.getElementById('song-input');
+    const songInfo = {};
+    if (songInput.value) {
+        try {
+            const spotifyUrl = new URL(songInput.value);
+            if (spotifyUrl.hostname === 'open.spotify.com') {
+                songInfo.spotify_url = songInput.value;
+            }
+        } catch (e) {
+            console.error('Invalid Spotify URL:', e);
+        }
+    }
+    
     // Lock voting and disable the button to prevent further changes
     lockVoting('lead');
     determineLeadWinnerBtn.disabled = true;
@@ -360,7 +572,8 @@ async function submitLeadVotes() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
-                votes: votesArray
+                votes: votesArray,
+                song_info: songInfo
             })
         });
         
@@ -467,32 +680,41 @@ async function goToNextRound() {
     }
 }
 
-// End Competition function
 async function endCompetition() {
     // Call our updated endGame function that works with the new UI components
     endGame();
 }
 
+function resetAndGoHome() {
+    console.log('resetAndGoHome called');
+    resetCompetition();
+    console.log('resetCompetition completed, showing home screen');
+    showScreen(homeScreen);
+    console.log('Home screen should now be visible');
+}
+
 function resetCompetition() {
-    // Reset all game state
+    // Reset global variables
     sessionId = null;
     guestJudges = [];
     leadVotes = {};
     followVotes = {};
     votingLocked = { lead: false, follow: false };
+    currentLeads = [];
+    currentFollows = [];
     
-    // Reset UI elements
+    // Clear form inputs
     leadNamesInput.value = '';
     followNamesInput.value = '';
     judgeNamesInput.value = '';
     
-    // Reset UI state
-    nextRoundBtn.disabled = false;
-    determineLeadWinnerBtn.disabled = false;
-    determineFollowWinnerBtn.disabled = false;
+    // Clear file upload
+    battleFileUpload.value = '';
+    uploadFileName.textContent = '';
     
-    // Show setup screen
-    showScreen(setupScreen);
+    // Reset error messages
+    uploadError.textContent = '';
+    uploadError.classList.remove('visible');
 }
 
 // Update score table with current standings
@@ -533,41 +755,105 @@ function updateScoreTable(leads, follows) {
 }
 
 function displayResults(data) {
-    // Hide the round screen and show the results screen
-    document.getElementById('round-screen').style.display = 'none';
-    document.getElementById('results-screen').style.display = 'block';
-
-    // Display lead results
+    console.log('Displaying results with data:', data);
+    
+    // Use the showScreen function with the correct screen element
+    showScreen(resultsScreen);
+    
+    // Clear previous results
     const leadResultsBody = document.getElementById('lead-results-body');
-    leadResultsBody.innerHTML = '';
-    data.leads.forEach(lead => {
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
-        nameCell.textContent = `${lead.medal} ${lead.name}${lead.is_winner ? ' 👑' : ''}`;
-        const pointsCell = document.createElement('td');
-        pointsCell.textContent = lead.points;
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        leadResultsBody.appendChild(row);
-    });
-
-    // Display follow results
     const followResultsBody = document.getElementById('follow-results-body');
+    const roundsContainer = document.getElementById('rounds-accordion');
+    const leadsInitialOrder = document.getElementById('leads-initial-order');
+    const followsInitialOrder = document.getElementById('follows-initial-order');
+    
+    if (!leadResultsBody || !followResultsBody || !roundsContainer || !leadsInitialOrder || !followsInitialOrder) {
+        console.error('Could not find required elements for results display');
+        return;
+    }
+    
+    // Clear all previous data
+    leadResultsBody.innerHTML = '';
     followResultsBody.innerHTML = '';
-    data.follows.forEach(follow => {
-        const row = document.createElement('tr');
-        const nameCell = document.createElement('td');
-        nameCell.textContent = `${follow.medal} ${follow.name}${follow.is_winner ? ' 👑' : ''}`;
-        const pointsCell = document.createElement('td');
-        pointsCell.textContent = follow.points;
-        row.appendChild(nameCell);
-        row.appendChild(pointsCell);
-        followResultsBody.appendChild(row);
-    });
+    roundsContainer.innerHTML = '';
+    leadsInitialOrder.innerHTML = '';
+    followsInitialOrder.innerHTML = '';
+    
+    // Always use the initial order from the server response
+    const initialLeadsData = data.initial_leads;
+    const initialFollowsData = data.initial_follows;
+    
+    console.log('Using initial leads from server:', initialLeadsData);
+    console.log('Using initial follows from server:', initialFollowsData);
+    
+    // Add leads to initial order
+    if (initialLeadsData && Array.isArray(initialLeadsData)) {
+        initialLeadsData.forEach((lead, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${index + 1}.</span><span>${lead}</span>`;
+            leadsInitialOrder.appendChild(li);
+        });
+    } else {
+        console.warn('No initial leads data available from server');
+    }
+    
+    // Add follows to initial order
+    if (initialFollowsData && Array.isArray(initialFollowsData)) {
+        initialFollowsData.forEach((follow, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${index + 1}.</span><span>${follow}</span>`;
+            followsInitialOrder.appendChild(li);
+        });
+    } else {
+        console.warn('No initial follows data available from server');
+    }
+    
+    console.log('Lead results:', data.leads);
+    console.log('Follow results:', data.follows);
+    
+    // Display lead results
+    if (data.leads && Array.isArray(data.leads)) {
+        data.leads.forEach(lead => {
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
+            
+            const pointsCell = document.createElement('td');
+            pointsCell.textContent = lead.points;
+            
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            leadResultsBody.appendChild(row);
+        });
+    } else {
+        console.warn('No lead results data available');
+    }
+    
+    // Display follow results
+    if (data.follows && Array.isArray(data.follows)) {
+        data.follows.forEach(follow => {
+            const row = document.createElement('tr');
+            const nameCell = document.createElement('td');
+            nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
+            
+            const pointsCell = document.createElement('td');
+            pointsCell.textContent = follow.points;
+            
+            row.appendChild(nameCell);
+            row.appendChild(pointsCell);
+            followResultsBody.appendChild(row);
+        });
+    } else {
+        console.warn('No follow results data available');
+    }
+    
+    console.log('Round history:', data.rounds);
     
     // Display round history if available
     if (data.rounds && data.rounds.length > 0) {
         displayRoundHistory(data.rounds);
+    } else {
+        console.warn('No round history data available');
     }
 }
 
@@ -596,6 +882,37 @@ function displayRoundHistory(rounds) {
         // Add round details
         const details = document.createElement('div');
         details.className = 'round-details';
+        
+        // Add song information if available
+        if (round.song_info) {
+            const songSection = document.createElement('div');
+            songSection.className = 'round-song';
+            let songHTML = '<h4>Song</h4>';
+            
+            if (round.song_info.spotify_url) {
+                try {
+                    const spotifyUrl = new URL(round.song_info.spotify_url);
+                    const trackId = spotifyUrl.pathname.split('/').pop();
+                    if (trackId) {
+                        songHTML += `
+                            <iframe 
+                                src="https://open.spotify.com/embed/track/${trackId}" 
+                                width="100%" 
+                                height="80" 
+                                frameborder="0" 
+                                allowtransparency="true" 
+                                allow="encrypted-media"
+                                class="spotify-embed">
+                            </iframe>`;
+                    }
+                } catch (e) {
+                    console.error('Invalid Spotify URL:', e);
+                }
+            }
+            
+            songSection.innerHTML = songHTML;
+            details.appendChild(songSection);
+        }
         
         // Participants section
         const participants = document.createElement('div');
@@ -746,12 +1063,121 @@ function displayRoundHistory(rounds) {
     });
 }
 
+async function downloadBattleData() {
+    if (!sessionId) {
+        console.error('No active session to download data from.');
+        return;
+    }
+    
+    try {
+        // First get the battle data to find all Spotify URLs
+        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=json`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch battle data: ${response.status}`);
+        }
+        
+        // Get the battle data as JSON first
+        const battleData = await response.json();
+        
+        // Get Spotify access token
+        const tokenResponse = await fetch('/api/get_spotify_token');
+        if (!tokenResponse.ok) {
+            throw new Error('Failed to get Spotify access token');
+        }
+        const { access_token } = await tokenResponse.json();
+        
+        // Fetch metadata for all Spotify URLs
+        const rounds = battleData.rounds || [];
+        for (const round of rounds) {
+            if (round.song_info && round.song_info.spotify_url) {
+                try {
+                    // Extract track ID from Spotify URL
+                    const spotifyUrl = new URL(round.song_info.spotify_url);
+                    const trackId = spotifyUrl.pathname.split('/').pop();
+                    
+                    if (trackId) {
+                        // Use the Spotify Web API to get track details
+                        const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                            headers: {
+                                'Authorization': `Bearer ${access_token}`
+                            }
+                        });
+                        if (metadataResponse.ok) {
+                            const metadata = await metadataResponse.json();
+                            // Update song info with data from the Web API
+                            round.song_info.title = metadata.name;
+                            round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                            console.log('Updated song info:', round.song_info); // Debug log
+                        } else {
+                            console.error(`Failed to fetch metadata for ${round.song_info.spotify_url}: ${metadataResponse.status}`);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                }
+            }
+        }
+        
+        // Now get the Excel file with updated metadata
+        const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                rounds: rounds
+            })
+        });
+        
+        if (!excelResponse.ok) {
+            throw new Error(`Failed to fetch Excel file: ${excelResponse.status}`);
+        }
+        
+        // Check if the response is actually an Excel file
+        const contentType = excelResponse.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+            throw new Error('Invalid response format from server');
+        }
+        
+        // Get the filename from the Content-Disposition header or use a default
+        const contentDisposition = excelResponse.headers.get('content-disposition');
+        let filename = 'battle_data.xlsx';
+        if (contentDisposition) {
+            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+        
+        // Create a temporary link element
+        const blob = await excelResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const tempLink = document.createElement('a');
+        tempLink.href = url;
+        tempLink.setAttribute('download', filename);
+        
+        // Trigger the download
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        
+        // Clean up
+        document.body.removeChild(tempLink);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error downloading battle data:', error);
+        alert('Failed to download battle data. Please try again.');
+    }
+}
+
 // End game function
 function endGame() {
     // Disable voting buttons
     document.querySelectorAll('.vote-button').forEach(button => {
         button.disabled = true;
     });
+    
+    console.log('Ending game with session ID:', sessionId);
     
     // Send request to end game
     fetch('/api/end_game', {
@@ -765,11 +1191,17 @@ function endGame() {
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Received end game data:', data);
+        
+        // Ensure we have the initial order data
+        if (!data.initial_leads || !data.initial_follows) {
+            console.log('Using stored initial order data');
+            data.initial_leads = initialLeads;
+            data.initial_follows = initialFollows;
+        }
+        
         // Display final results
         displayResults(data);
-        
-        // Show results screen
-        showScreen(resultsScreen);
     })
     .catch(error => {
         console.error('Error ending game:', error);

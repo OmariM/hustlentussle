@@ -23,6 +23,7 @@ class Round:
         self.pairs = {}  # Will store the pairs for this round
         self.lead_winner = None  # Will store the name of the lead winner
         self.follow_winner = None  # Will store the name of the follow winner
+        self.song_info = None  # Will store song information for this round
 
 
 class Game:
@@ -41,6 +42,11 @@ class Game:
     has_winning_follow = False
 
     def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
+        # Store initial order
+        self.initial_leads = [Contestant(n.strip()) for n in lead_names]
+        self.initial_follows = [Contestant(n.strip()) for n in follow_names]
+        
+        # Create active contestant lists
         self.leads = [Contestant(n.strip()) for n in lead_names]
         self.follows = [Contestant(n.strip()) for n in follow_names]
         self.guest_judges = [n.strip() for n in guest_judge_names]
@@ -59,9 +65,6 @@ class Game:
         
         # Track previous pairings to avoid repeats after ties
         self.previous_pairs = {}
-
-        random.shuffle(self.leads)
-        random.shuffle(self.follows)
 
         # Always start with a Lead vs Follow pairing
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
@@ -415,9 +418,9 @@ class Game:
 
     def finalize_results(self):
         # Ensure final winners are in the lists
-        if self.winning_lead not in self.leads:
+        if self.winning_lead and self.winning_lead not in self.leads:
             self.leads.append(self.winning_lead)
-        if self.winning_follow not in self.follows:
+        if self.winning_follow and self.winning_follow not in self.follows:
             self.follows.append(self.winning_follow)
 
         # Sort each separately
