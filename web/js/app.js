@@ -294,6 +294,7 @@ async function startCompetition() {
         
         const data = await response.json();
         sessionId = data.session_id;
+        localStorage.setItem('sessionId', data.session_id);  // Store in localStorage
         guestJudges = data.guest_judges;
         initialLeads = data.initial_leads;  // Store initial order
         initialFollows = data.initial_follows;  // Store initial order

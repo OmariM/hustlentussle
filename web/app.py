@@ -18,13 +18,16 @@ from web.config import get_config
 # Get configuration based on environment
 config = get_config()
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, 
+            static_folder='.',
+            static_url_path='',
+            template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 games = {}  # Store active games by session ID
 
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    return render_template('index.html', config=app.config)
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
