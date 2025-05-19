@@ -12,7 +12,7 @@ class Contestant:
 
 class Round:
     def __init__(
-        self, round_num, lead_votes, follow_votes, judges, contestant_judges
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges, game_id
     ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
@@ -24,6 +24,7 @@ class Round:
         self.lead_winner = None  # Will store the name of the lead winner
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
+        self.game_id = game_id  # Store the game ID for this round
 
 
 class Game:
@@ -42,6 +43,9 @@ class Game:
     has_winning_follow = False
 
     def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
+        # Generate a random game ID
+        self.game_id = f"game_{random.randint(100000, 999999)}"
+        
         # Store initial order
         self.initial_leads = [Contestant(n.strip()) for n in lead_names]
         self.initial_follows = [Contestant(n.strip()) for n in follow_names]
@@ -80,6 +84,7 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
+            self.game_id
         )
         
         # Store the pairs for this round
@@ -225,6 +230,7 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
+            self.game_id
         )
         
         # Store the pairs for this round

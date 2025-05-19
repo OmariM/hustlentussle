@@ -2,6 +2,9 @@ class DebugTools {
     constructor() {
         this.isVisible = false;
         this.networkLogs = [];
+        this.autoAdvance = false;
+        this.autoAdvanceInterval = null;
+        this.autoAdvanceDelay = 3000; // Default to 3 seconds
         this.init();
         this.setupNetworkMonitoring();
     }
@@ -151,6 +154,100 @@ class DebugTools {
         // Round Navigation
         this.addSection('Round Navigation');
         this.addButton('Next Round', () => this.nextRound());
+        
+        // Add Auto-Advance Toggle and Interval Setting
+        const autoAdvanceContainer = document.createElement('div');
+        autoAdvanceContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin: 5px 0;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #4CAF50;
+            border-radius: 3px;
+        `;
+        
+        // Toggle Switch
+        const toggleContainer = document.createElement('div');
+        toggleContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+        `;
+        
+        const toggleLabel = document.createElement('span');
+        toggleLabel.textContent = 'Auto-Advance: ';
+        toggleLabel.style.cssText = `
+            color: white;
+            margin-right: 10px;
+        `;
+        
+        const toggleSwitch = document.createElement('input');
+        toggleSwitch.type = 'checkbox';
+        toggleSwitch.style.cssText = `
+            width: 20px;
+            height: 20px;
+            margin: 0;
+        `;
+        toggleSwitch.checked = this.autoAdvance;
+        
+        toggleSwitch.onchange = () => {
+            this.autoAdvance = toggleSwitch.checked;
+            if (this.autoAdvance) {
+                this.startAutoAdvance();
+            } else {
+                this.stopAutoAdvance();
+            }
+        };
+        
+        toggleContainer.appendChild(toggleLabel);
+        toggleContainer.appendChild(toggleSwitch);
+        
+        // Interval Setting
+        const intervalContainer = document.createElement('div');
+        intervalContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        `;
+        
+        const intervalLabel = document.createElement('span');
+        intervalLabel.textContent = 'Interval (seconds): ';
+        intervalLabel.style.cssText = `
+            color: white;
+        `;
+        
+        const intervalInput = document.createElement('input');
+        intervalInput.type = 'number';
+        intervalInput.min = '1';
+        intervalInput.max = '60';
+        intervalInput.value = this.autoAdvanceDelay / 1000;
+        intervalInput.style.cssText = `
+            width: 60px;
+            padding: 2px;
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+        `;
+        
+        intervalInput.onchange = () => {
+            const newValue = Math.max(1, Math.min(60, parseInt(intervalInput.value) || 3));
+            this.autoAdvanceDelay = newValue * 1000;
+            intervalInput.value = newValue;
+            
+            // Restart auto-advance with new interval if it's running
+            if (this.autoAdvance) {
+                this.startAutoAdvance();
+            }
+        };
+        
+        intervalContainer.appendChild(intervalLabel);
+        intervalContainer.appendChild(intervalInput);
+        
+        autoAdvanceContainer.appendChild(toggleContainer);
+        autoAdvanceContainer.appendChild(intervalContainer);
+        this.panel.appendChild(autoAdvanceContainer);
 
         // Clear Data
         this.addSection('Data Management');
@@ -169,37 +266,34 @@ class DebugTools {
 
     // Generate random names
     generateRandomNames(count, useGender) {
-        const maleFirstNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Quinn', 'Drew', 'Blake', 
-                            'Sam', 'Pat', 'Chris', 'Dana', 'Robin', 'Avery', 'Parker', 'Sage', 'Reese', 'Emerson',
-                            'James', 'Michael', 'David', 'John', 'Robert', 'William', 'Thomas', 'Daniel', 'Paul', 'Mark'];
+        const maleFirstNames = ['James', 'Michael', 'David', 'John', 'Robert', 'William', 'Thomas', 'Daniel', 'Paul', 'Mark'];
         
-        const femaleFirstNames = ['Sarah', 'Emily', 'Jessica', 'Jennifer', 'Elizabeth', 'Lauren', 'Michelle', 'Nicole', 'Amanda', 'Rachel',
-                            'Hannah', 'Megan', 'Melissa', 'Stephanie', 'Ashley', 'Rebecca', 'Laura', 'Amber', 'Kimberly', 'Courtney'];
+        const femaleFirstNames = ['Sarah', 'Emily', 'Jessica', 'Jennifer', 'Elizabeth', 'Lauren', 'Michelle', 'Nicole', 'Amanda', 'Rachel'];
         
-        const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
-                        'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Martin', 'Thompson', 'Moore', 'Lee', 'Walker'];
+        const genderNeutralNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey'];
         
         // Keep track of used names to ensure uniqueness
         const usedNames = new Set();
         
         const getRandomName = (nameList) => {
-            let fullName;
+            let name;
             do {
-                const firstName = nameList[Math.floor(Math.random() * nameList.length)];
-                const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-                fullName = `${firstName} ${lastName}`;
-            } while (usedNames.has(fullName));
+                name = nameList[Math.floor(Math.random() * nameList.length)];
+            } while (usedNames.has(name));
             
-            usedNames.add(fullName);
-            return fullName;
+            usedNames.add(name);
+            return name;
         };
 
-        if (useGender) {
-            // Generate gender-specific names
-            return Array(count).fill().map(() => getRandomName(useGender === 'male' ? maleFirstNames : femaleFirstNames));
+        if (useGender === 'male') {
+            // Generate male names
+            return Array(count).fill().map(() => getRandomName(maleFirstNames));
+        } else if (useGender === 'female') {
+            // Generate female names
+            return Array(count).fill().map(() => getRandomName(femaleFirstNames));
         } else {
             // Generate gender-neutral names
-            return Array(count).fill().map(() => getRandomName([...maleFirstNames, ...femaleFirstNames]));
+            return Array(count).fill().map(() => getRandomName(genderNeutralNames));
         }
     }
 
@@ -214,25 +308,44 @@ class DebugTools {
             return;
         }
         
-        // Generate random names
-        const leads = this.generateRandomNames(8, 'male');
-        const follows = this.generateRandomNames(8, 'female');
-        const judges = this.generateRandomNames(2);
+        // Generate all possible names
+        const allLeads = this.generateRandomNames(10, 'male');
+        const allFollows = this.generateRandomNames(10, 'female');
+        const allJudges = this.generateRandomNames(5);
+        
+        // Randomly select 8 leads, 8 follows, and 2 judges
+        const selectedLeads = this.shuffleArray(allLeads).slice(0, 8);
+        const selectedFollows = this.shuffleArray(allFollows).slice(0, 8);
+        const selectedJudges = this.shuffleArray(allJudges).slice(0, 2);
         
         // Fill inputs
-        leadsInput.value = leads.join(', ');
-        followsInput.value = follows.join(', ');
-        judgesInput.value = judges.join(', ');
+        leadsInput.value = selectedLeads.join(', ');
+        followsInput.value = selectedFollows.join(', ');
+        judgesInput.value = selectedJudges.join(', ');
         
-        console.log('Filled setup form with:', { leads, follows, judges });
+        console.log('Filled setup form with:', { 
+            leads: selectedLeads, 
+            follows: selectedFollows, 
+            judges: selectedJudges 
+        });
+    }
+
+    // Helper method to shuffle an array
+    shuffleArray(array) {
+        const newArray = [...array];
+        for (let i = newArray.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+        }
+        return newArray;
     }
     
     // Start a battle with random names
     async startWithRandomNames() {
         // Generate random names
-        const leads = this.generateRandomNames(8, 'male');
-        const follows = this.generateRandomNames(8, 'female');
-        const judges = this.generateRandomNames(2);
+        const leads = this.generateRandomNames(10, 'male');
+        const follows = this.generateRandomNames(10, 'female');
+        const judges = this.generateRandomNames(5);
         
         console.log('Generated names:', { leads, follows, judges });
         
@@ -670,6 +783,11 @@ class DebugTools {
     togglePanel() {
         this.isVisible = !this.isVisible;
         this.panel.style.display = this.isVisible ? 'block' : 'none';
+        
+        // Stop auto-advance when panel is hidden
+        if (!this.isVisible) {
+            this.stopAutoAdvance();
+        }
     }
 
     async testSpotifyAPI() {
@@ -700,6 +818,32 @@ class DebugTools {
             console.error('Export Test Error:', error);
             alert('Error testing export. Check console for details.');
         }
+    }
+
+    // Add auto-advance methods
+    startAutoAdvance() {
+        if (this.autoAdvanceInterval) {
+            clearInterval(this.autoAdvanceInterval);
+        }
+        
+        this.autoAdvanceInterval = setInterval(async () => {
+            const nextRoundButton = document.getElementById('next-round');
+            if (nextRoundButton && !nextRoundButton.disabled) {
+                console.log('Auto-advancing to next round...');
+                await this.nextRound();
+            } else {
+                console.log('Next round button not available or game finished');
+                this.stopAutoAdvance();
+            }
+        }, this.autoAdvanceDelay);
+    }
+
+    stopAutoAdvance() {
+        if (this.autoAdvanceInterval) {
+            clearInterval(this.autoAdvanceInterval);
+            this.autoAdvanceInterval = null;
+        }
+        this.autoAdvance = false;
     }
 }
 
