@@ -8,8 +8,8 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-hustle-n-tussle-key')
     SESSION_TYPE = 'filesystem'
     HOST = '0.0.0.0'
-    PORT = 5000
-    DEBUG = False
+    PORT = 5001
+    DEBUG = True
     ENABLE_DEBUG_TOOLS = False  # Master switch for debug tools
     
 

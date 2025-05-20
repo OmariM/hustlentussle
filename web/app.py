@@ -9,6 +9,14 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from werkzeug.utils import secure_filename
 import random
 import requests
+from flask_cors import CORS
+from dotenv import load_dotenv
+import uuid
+import tempfile
+import shutil
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add parent directory to path to import game_logic
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +31,7 @@ app = Flask(__name__,
             static_url_path='',
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
+CORS(app)
 games = {}  # Store active games by session ID
 
 @app.route('/')
@@ -53,15 +62,15 @@ def start_game():
     
     # Create a new game with the randomized order
     session_id = f"game_{len(games) + 1}"
-    games[session_id] = Game(lead_names, follow_names, judge_names)
+    game = Game(lead_names, follow_names, judge_names)
+    game.session_id = session_id  # Set the session ID on the game object
+    games[session_id] = game
     
     # Get initial game state
-    game = games[session_id]
     state = game.get_game_state()
     
     return jsonify({
         'session_id': session_id,
-        'game_id': game.game_id,  # Include game ID in response
         'round': state['round'],
         'pair_1': state['pair_1'],
         'pair_2': state['pair_2'],
@@ -246,25 +255,44 @@ def end_game():
     game = games[session_id]
     leads, follows = game.finalize_results()
     
-    # Format the results
+    # Format the results - include all leads
     lead_results = []
-    for idx, lead in enumerate(leads):
+    # Get all leads from initial order to ensure we include everyone
+    all_leads = [lead.name for lead in game.initial_leads]
+    # Create a dictionary of lead points for easy lookup
+    lead_points = {lead.name: lead.points for lead in leads}
+    
+    # Sort leads by points (descending) and then by name (ascending) for consistent ordering
+    sorted_leads = sorted(all_leads, key=lambda x: (-lead_points.get(x, 0), x))
+    
+    for idx, lead_name in enumerate(sorted_leads):
+        points = lead_points.get(lead_name, 0)
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead.name
+        is_winner = hasattr(game, 'last_lead_winner') and game.last_lead_winner == lead_name
         lead_results.append({
-            'name': lead.name,
-            'points': lead.points,
+            'name': lead_name,
+            'points': points,
             'medal': medal,
             'is_winner': is_winner
         })
     
+    # Format the results - include all follows
     follow_results = []
-    for idx, follow in enumerate(follows):
+    # Get all follows from initial order to ensure we include everyone
+    all_follows = [follow.name for follow in game.initial_follows]
+    # Create a dictionary of follow points for easy lookup
+    follow_points = {follow.name: follow.points for follow in follows}
+    
+    # Sort follows by points (descending) and then by name (ascending) for consistent ordering
+    sorted_follows = sorted(all_follows, key=lambda x: (-follow_points.get(x, 0), x))
+    
+    for idx, follow_name in enumerate(sorted_follows):
+        points = follow_points.get(follow_name, 0)
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
+        is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow_name
         follow_results.append({
-            'name': follow.name,
-            'points': follow.points,
+            'name': follow_name,
+            'points': points,
             'medal': medal,
             'is_winner': is_winner
         })
@@ -272,44 +300,47 @@ def end_game():
     # Collect round metadata
     rounds_data = []
     
-    # Add all completed rounds
+    # Add all completed rounds that belong to this session
     for r in game.rounds:
-        round_data = {
-            'round_num': r.round_num,
-            'game_id': r.game_id,  # Include game ID in round data
-            'pairs': r.pairs,
-            'lead_votes': r.lead_votes,
-            'follow_votes': r.follow_votes,
-            'judges': r.judges,
-            'contestant_judges': r.contestant_judges,
-            'win_messages': r.win_messages,
-            'lead_winner': r.lead_winner,
-            'follow_winner': r.follow_winner,
-            'song_info': r.song_info if hasattr(r, 'song_info') else None
-        }
-        
-        rounds_data.append(round_data)
+        if hasattr(r, 'session_id') and r.session_id == session_id:
+            round_data = {
+                'round_num': r.round_num,
+                'session_id': session_id,
+                'pairs': r.pairs,
+                'lead_votes': r.lead_votes,
+                'follow_votes': r.follow_votes,
+                'judges': r.judges,
+                'contestant_judges': r.contestant_judges,
+                'win_messages': r.win_messages,
+                'lead_winner': r.lead_winner,
+                'follow_winner': r.follow_winner,
+                'song_info': r.song_info if hasattr(r, 'song_info') else None
+            }
+            rounds_data.append(round_data)
     
     # Also include the current round if it exists and is not already in the rounds list
     if game.current_round and game.current_round not in game.rounds:
-        current_round_data = {
-            'round_num': game.current_round.round_num,
-            'game_id': game.current_round.game_id,  # Include game ID in current round data
-            'pairs': game.current_round.pairs,
-            'lead_votes': game.current_round.lead_votes,
-            'follow_votes': game.current_round.follow_votes,
-            'judges': game.current_round.judges,
-            'contestant_judges': game.current_round.contestant_judges,
-            'win_messages': game.current_round.win_messages,
-            'lead_winner': game.current_round.lead_winner,
-            'follow_winner': game.current_round.follow_winner,
-            'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
-        }
-        
-        rounds_data.append(current_round_data)
+        if hasattr(game.current_round, 'session_id') and game.current_round.session_id == session_id:
+            current_round_data = {
+                'round_num': game.current_round.round_num,
+                'session_id': session_id,
+                'pairs': game.current_round.pairs,
+                'lead_votes': game.current_round.lead_votes,
+                'follow_votes': game.current_round.follow_votes,
+                'judges': game.current_round.judges,
+                'contestant_judges': game.current_round.contestant_judges,
+                'win_messages': game.current_round.win_messages,
+                'lead_winner': game.current_round.lead_winner,
+                'follow_winner': game.current_round.follow_winner,
+                'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
+            }
+            rounds_data.append(current_round_data)
+    
+    # Sort rounds by round number
+    rounds_data.sort(key=lambda x: x['round_num'])
     
     return jsonify({
-        'game_id': game.game_id,  # Include game ID in response
+        'session_id': session_id,
         'leads': lead_results,
         'follows': follow_results,
         'rounds': rounds_data
@@ -364,7 +395,7 @@ def export_battle_data():
     for r in all_rounds:
         round_data = {
             'round_num': r.round_num,
-            'game_id': r.game_id,  # Include game ID in round data
+            'session_id': session_id,
             'pairs': r.pairs,
             'lead_votes': r.lead_votes,
             'follow_votes': r.follow_votes,
@@ -375,12 +406,14 @@ def export_battle_data():
             'follow_winner': r.follow_winner,
             'song_info': r.song_info if hasattr(r, 'song_info') else None
         }
-        
         rounds_data.append(round_data)
+    
+    # Sort rounds by round number
+    rounds_data.sort(key=lambda x: x['round_num'])
     
     if format_type == 'json':
         return jsonify({
-            'game_id': game.game_id,  # Include game ID in response
+            'session_id': session_id,
             'leads': lead_results,
             'follows': follow_results,
             'rounds': rounds_data
@@ -395,7 +428,7 @@ def export_battle_data():
         now = datetime.datetime.now()
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H:%M:%S")
-        summary_sheet['A1'] = f"Game ID: {game.game_id}"
+        summary_sheet['A1'] = f"Game ID: {session_id}"
         summary_sheet['A3'] = "Date:"
         summary_sheet['B3'] = date_str
         summary_sheet['A4'] = "Time:"
@@ -581,7 +614,7 @@ def export_battle_data():
             excel_file,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'battle_results_{game.game_id}.xlsx'
+            download_name=f'battle_results_{session_id}.xlsx'
         )
 
 @app.route('/api/process_uploaded_file', methods=['POST'])

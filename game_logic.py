@@ -12,7 +12,7 @@ class Contestant:
 
 class Round:
     def __init__(
-        self, round_num, lead_votes, follow_votes, judges, contestant_judges, game_id
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges, session_id
     ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
@@ -24,67 +24,74 @@ class Round:
         self.lead_winner = None  # Will store the name of the lead winner
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
-        self.game_id = game_id  # Store the game ID for this round
+        self.session_id = session_id  # Store the session ID for this round
 
 
 class Game:
     state = 0
-    round_num = 1
-    current_round = None
-    rounds = []
-    contestant_judges = []
-    num_contestant_judges = 3
-
-    winning_lead = None
-    winning_follow = None
-    tie_lead_pair = None
-    tie_follow_pair = None
-    has_winning_lead = False
-    has_winning_follow = False
-
+    
     def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
-        # Generate a random game ID
-        self.game_id = f"game_{random.randint(100000, 999999)}"
+        # Store the session ID
+        self.session_id = None  # Will be set when the game is created
+        
+        # Initialize contestants
+        self.leads = [Contestant(name) for name in lead_names]
+        self.follows = [Contestant(name) for name in follow_names]
         
         # Store initial order
-        self.initial_leads = [Contestant(n.strip()) for n in lead_names]
-        self.initial_follows = [Contestant(n.strip()) for n in follow_names]
+        self.initial_leads = self.leads.copy()
+        self.initial_follows = self.follows.copy()
         
-        # Create active contestant lists
-        self.leads = [Contestant(n.strip()) for n in lead_names]
-        self.follows = [Contestant(n.strip()) for n in follow_names]
-        self.guest_judges = [n.strip() for n in guest_judge_names]
-
-        # Validate that we have equal numbers of leads and follows
-        if len(self.leads) != len(self.follows):
-            raise ValueError("Number of leads must equal number of follows")
-            
-        # Track totals for win condition
-        self.total_num_leads = len(self.leads)
-        self.total_num_follows = len(self.follows)
+        # Initialize judges
+        self.guest_judges = guest_judge_names
+        self.contestant_judges = []
         
-        # Initialize tracking for winners with crown emojis
+        # Initialize game state
+        self.round_num = 1
+        self.pair_1 = None
+        self.pair_2 = None
+        self.rounds = []
+        self.current_round = None
+        
+        # Initialize winning state
+        self.winning_lead = None
+        self.winning_follow = None
+        self.has_winning_lead = False
+        self.has_winning_follow = False
         self.last_lead_winner = None
         self.last_follow_winner = None
         
-        # Track previous pairings to avoid repeats after ties
-        self.previous_pairs = {}
-
-        # Always start with a Lead vs Follow pairing
+        # Initialize tie state
+        self.tie_lead_pair = None
+        self.tie_follow_pair = None
+        
+        # Calculate total number of contestants
+        self.total_num_leads = len(self.leads)
+        self.total_num_follows = len(self.follows)
+        
+        # Calculate number of contestant judges needed
+        self.num_contestant_judges = min(2, len(self.leads) + len(self.follows) - 4)
+        
+        # Start the first round
+        self.start_round()
+        
+    def start_round(self):
+        """Start a new round by selecting pairs and contestant judges."""
+        # Select contestant judges
+        self.contestant_judges = self.get_contestant_judges()
+        
+        # Select pairs
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.follows.pop(0))
         
-        # Record initial pairings
-        self._record_pairings()
-
-        self.contestant_judges = self.get_contestant_judges()
+        # Create new round
         self.current_round = Round(
             self.round_num,
             {},
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
-            self.game_id
+            self.session_id
         )
         
         # Store the pairs for this round
@@ -212,7 +219,7 @@ class Game:
             elif (self.last_lead_winner == lead2.name and self.last_follow_winner == follow2.name):
                 # Swap follows to prevent winners being paired
                 follow1, follow2 = follow2, follow1
-        
+
         # Form new Lead vs Follow pairs
         self.pair_1 = (lead1, follow1)
         self.pair_2 = (lead2, follow2)
@@ -230,7 +237,7 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
-            self.game_id
+            self.session_id
         )
         
         # Store the pairs for this round
@@ -345,7 +352,7 @@ class Game:
             self.last_follow_winner = winner.name
             # Also store the follow winner in the current round
             self.current_round.follow_winner = winner.name
-        
+
         winner.points += 1
 
         gv = []
@@ -395,7 +402,7 @@ class Game:
                     
             if is_new_crown:
                 out.append(win_message)
-        
+
         # Only set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
