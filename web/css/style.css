@@ -1,0 +1,156 @@
+/* Round History Accordion Styles */
+#rounds-accordion {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.accordion-item {
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.accordion-header {
+    background-color: #f8f9fa;
+    padding: 15px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s ease;
+}
+
+.accordion-header:hover {
+    background-color: #e9ecef;
+}
+
+.accordion-header.active {
+    background-color: #e9ecef;
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    background-color: white;
+}
+
+.accordion-content.active {
+    max-height: 1000px; /* Adjust this value based on your content */
+    transition: max-height 0.5s ease-in;
+}
+
+.round-details {
+    padding: 15px;
+}
+
+.round-song {
+    margin-bottom: 20px;
+}
+
+.round-song h4 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.spotify-embed {
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.round-participants {
+    margin-bottom: 20px;
+}
+
+.round-participants h4 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.match-pair {
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.match-pair .lead {
+    color: #007bff;
+    font-weight: bold;
+}
+
+.match-pair .follow {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.winner {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    font-weight: bold;
+    color: #28a745;
+}
+
+.round-session-id {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Judge Votes Styles */
+.judge-votes {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.judge-votes h4 {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.vote-section {
+    margin-bottom: 20px;
+}
+
+.vote-section h5 {
+    margin-bottom: 10px;
+    color: #495057;
+    font-size: 1.1em;
+}
+
+.judge-vote {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 5px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.judge-vote.guest-judge {
+    background-color: #e9ecef;
+    border-color: #ced4da;
+}
+
+.judge-vote.guest-judge .judge-name {
+    font-weight: bold;
+}
+
+.judge-name {
+    color: #495057;
+}
+
+.vote {
+    color: #6c757d;
+    font-weight: 500;
+} 

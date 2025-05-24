@@ -5,6 +5,7 @@ class DebugTools {
         this.autoAdvance = false;
         this.autoAdvanceInterval = null;
         this.autoAdvanceDelay = 3000; // Default to 3 seconds
+        this.playlistId = '3S34wIELHX7T82ChgdU9NS'; // Your playlist ID
         this.init();
         this.setupNetworkMonitoring();
     }
@@ -716,6 +717,12 @@ class DebugTools {
         }
         
         try {
+            // Get a random song from the playlist
+            const songUrl = await this.getRandomSongFromPlaylist();
+            if (songUrl) {
+                document.getElementById('song-input').value = songUrl;
+            }
+
             // First, handle lead votes
             console.log('Handling lead votes...');
             const leadVotesProcessed = await this.randomVotes(true);
@@ -821,7 +828,41 @@ class DebugTools {
     }
 
     // Add auto-advance methods
-    startAutoAdvance() {
+    async getRandomSongFromPlaylist() {
+        try {
+            // Get Spotify access token
+            const tokenResponse = await fetch('/api/get_spotify_token');
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Get playlist tracks
+            const response = await fetch(`https://api.spotify.com/v1/playlists/${this.playlistId}/tracks`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch playlist tracks');
+            }
+
+            const data = await response.json();
+            const tracks = data.items;
+
+            if (!tracks || tracks.length === 0) {
+                throw new Error('No tracks found in playlist');
+            }
+
+            // Get a random track
+            const randomTrack = tracks[Math.floor(Math.random() * tracks.length)].track;
+            return `https://open.spotify.com/track/${randomTrack.id}`;
+        } catch (error) {
+            console.error('Error getting random song:', error);
+            return null;
+        }
+    }
+
+    async startAutoAdvance() {
         if (this.autoAdvanceInterval) {
             clearInterval(this.autoAdvanceInterval);
         }

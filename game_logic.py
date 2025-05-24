@@ -65,12 +65,15 @@ class Game:
         self.tie_lead_pair = None
         self.tie_follow_pair = None
         
+        # Initialize previous pairs tracking
+        self.previous_pairs = {}
+        
         # Calculate total number of contestants
         self.total_num_leads = len(self.leads)
         self.total_num_follows = len(self.follows)
         
-        # Calculate number of contestant judges needed
-        self.num_contestant_judges = min(2, len(self.leads) + len(self.follows) - 4)
+        # Calculate number of contestant judges needed - always use 3 if possible
+        self.num_contestant_judges = min(3, len(self.leads) + len(self.follows) - 4)
         
         # Start the first round
         self.start_round()

@@ -389,8 +389,10 @@ function updateRoundUI(data) {
     determineLeadWinnerBtn.disabled = false;
     determineFollowWinnerBtn.disabled = false;
     
-    // Reset song input
-    document.getElementById('song-input').value = '';
+    // Only reset song input if we're not in auto-advance mode
+    if (!window.debugTools || !window.debugTools.autoAdvance) {
+        document.getElementById('song-input').value = '';
+    }
 }
 
 function setupVotingUI() {
@@ -888,6 +890,20 @@ function displayRoundHistory(rounds) {
         header.className = 'accordion-header';
         header.innerHTML = `<span>Round ${round.round_num}</span><span>+</span>`;
         
+        // Add click handler for accordion functionality
+        header.addEventListener('click', () => {
+            const content = header.nextElementSibling;
+            const isActive = header.classList.contains('active');
+            
+            // Toggle active state
+            header.classList.toggle('active');
+            content.classList.toggle('active');
+            
+            // Update the plus/minus symbol
+            const symbol = header.querySelector('span:last-child');
+            symbol.textContent = isActive ? '+' : '-';
+        });
+        
         // Create the content
         const content = document.createElement('div');
         content.className = 'accordion-content';
@@ -962,6 +978,66 @@ function displayRoundHistory(rounds) {
         
         participants.innerHTML = participantsHTML;
         details.appendChild(participants);
+
+        // Add judge votes section
+        const judgeVotes = document.createElement('div');
+        judgeVotes.className = 'judge-votes';
+        let judgeVotesHTML = '<h4>Judge Votes</h4>';
+
+        // Lead votes
+        if (round.lead_votes) {
+            judgeVotesHTML += '<div class="vote-section"><h5>Lead Votes</h5>';
+            
+            // Sort votes to show guest judges first
+            const sortedVotes = Object.entries(round.lead_votes).sort((a, b) => {
+                const aIsGuest = guestJudges.includes(a[0]);
+                const bIsGuest = guestJudges.includes(b[0]);
+                if (aIsGuest && !bIsGuest) return -1;
+                if (!aIsGuest && bIsGuest) return 1;
+                return 0;
+            });
+
+            sortedVotes.forEach(([judge, vote]) => {
+                const isGuest = guestJudges.includes(judge);
+                const voteText = getVoteText(vote, round);
+                judgeVotesHTML += `
+                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <span class="judge-name">${judge}</span>
+                        <span class="vote">${voteText}</span>
+                    </div>
+                `;
+            });
+            judgeVotesHTML += '</div>';
+        }
+
+        // Follow votes
+        if (round.follow_votes) {
+            judgeVotesHTML += '<div class="vote-section"><h5>Follow Votes</h5>';
+            
+            // Sort votes to show guest judges first
+            const sortedVotes = Object.entries(round.follow_votes).sort((a, b) => {
+                const aIsGuest = guestJudges.includes(a[0]);
+                const bIsGuest = guestJudges.includes(b[0]);
+                if (aIsGuest && !bIsGuest) return -1;
+                if (!aIsGuest && bIsGuest) return 1;
+                return 0;
+            });
+
+            sortedVotes.forEach(([judge, vote]) => {
+                const isGuest = guestJudges.includes(judge);
+                const voteText = getFollowVoteText(vote, round);
+                judgeVotesHTML += `
+                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <span class="judge-name">${judge}</span>
+                        <span class="vote">${voteText}</span>
+                    </div>
+                `;
+            });
+            judgeVotesHTML += '</div>';
+        }
+
+        judgeVotes.innerHTML = judgeVotesHTML;
+        details.appendChild(judgeVotes);
         
         // Add session ID to the round details
         const sessionIdDiv = document.createElement('div');
@@ -974,6 +1050,42 @@ function displayRoundHistory(rounds) {
         accordionItem.appendChild(content);
         roundsContainer.appendChild(accordionItem);
     });
+}
+
+// Helper function to convert vote numbers to text
+function getVoteText(vote, round) {
+    if (!round || !round.pairs) return 'Unknown';
+    
+    switch (vote) {
+        case 1:
+            return round.pairs.pair_1.lead;
+        case 2:
+            return round.pairs.pair_2.lead;
+        case 3:
+            return 'Tie';
+        case 4:
+            return 'No Contest';
+        default:
+            return 'Unknown';
+    }
+}
+
+// Helper function to convert follow vote numbers to text
+function getFollowVoteText(vote, round) {
+    if (!round || !round.pairs) return 'Unknown';
+    
+    switch (vote) {
+        case 1:
+            return round.pairs.pair_1.follow;
+        case 2:
+            return round.pairs.pair_2.follow;
+        case 3:
+            return 'Tie';
+        case 4:
+            return 'No Contest';
+        default:
+            return 'Unknown';
+    }
 }
 
 async function getSpotifyToken() {

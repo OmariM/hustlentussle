@@ -66,6 +66,10 @@ def start_game():
     game.session_id = session_id  # Set the session ID on the game object
     games[session_id] = game
     
+    # Set session ID for the first round
+    if game.current_round:
+        game.current_round.session_id = session_id
+    
     # Get initial game state
     state = game.get_game_state()
     
