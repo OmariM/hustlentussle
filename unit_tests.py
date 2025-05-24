@@ -204,6 +204,76 @@ class TestGameLogic(unittest.TestCase):
             f"Winning lead still competing. Current competitors: {competing_leads}"
         )
 
+    def test_tie_on_follows(self):
+        """Test that when there's a tie between follows, the same follows compete again with the winning lead and next lead from queue."""
+        # Get initial pairs
+        initial_pair1 = (self.game.pair_1[0].name, self.game.pair_1[1].name)
+        initial_pair2 = (self.game.pair_2[0].name, self.game.pair_2[1].name)
+        
+        # First simulate a lead round to establish a winning lead
+        lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
+        lead_result = self.simulate_round(
+            lead_pair, "lead",
+            [("Judge1", 1), ("Judge2", 1), ("Lead3", 1), ("Lead4", 1)]
+        )
+        
+        # Verify lead winner was recorded
+        self.assertEqual(
+            lead_result["winner"], lead_pair[0].name,
+            f"Expected {lead_pair[0].name} to win lead round, got: {lead_result['winner']}"
+        )
+        
+        # Store the next lead from queue before the follow tie
+        next_lead = self.game.leads[0]
+        
+        # Now simulate a tie between follows
+        follow_pair = (self.game.pair_1[1], self.game.pair_2[1])
+        follow_result = self.simulate_round(
+            follow_pair, "follow",
+            [("Judge1", 3), ("Judge2", 3), ("Follow3", 1), ("Follow4", 2)]
+        )
+        
+        # Verify tie was recorded
+        self.assertTrue(
+            follow_result["winner"].startswith("Tie between"),
+            f"Expected tie, got: {follow_result['winner']}"
+        )
+        
+        # Move to next round
+        self.game.next_round()
+        
+        # Get new pairs
+        new_pair1 = (self.game.pair_1[0].name, self.game.pair_1[1].name)
+        new_pair2 = (self.game.pair_2[0].name, self.game.pair_2[1].name)
+        
+        # Verify that the follows are the same as before
+        self.assertEqual(
+            {initial_pair1[1], initial_pair2[1]},
+            {new_pair1[1], new_pair2[1]},
+            "Follows should remain the same after follow tie"
+        )
+        
+        # Verify that one lead is the winning lead from previous round
+        self.assertIn(
+            self.game.last_lead_winner,
+            [new_pair1[0], new_pair2[0]],
+            "Winning lead should stay in competition"
+        )
+        
+        # Verify that the other lead is the next lead from queue
+        self.assertIn(
+            next_lead.name,
+            [new_pair1[0], new_pair2[0]],
+            "Next lead from queue should be competing"
+        )
+        
+        # Verify that no couple is the same as before
+        self.assertFalse(
+            (new_pair1 == initial_pair1 or new_pair1 == initial_pair2 or
+             new_pair2 == initial_pair1 or new_pair2 == initial_pair2),
+            "No couple should remain the same after follow tie"
+        )
+
 class TestExportBattleData(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

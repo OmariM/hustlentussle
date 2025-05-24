@@ -253,7 +253,7 @@ async function processUploadedFile() {
         }
         
         // Display the results
-        displayResults(data);
+        await displayResults(data);
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
@@ -265,6 +265,15 @@ function showUploadError(message) {
     uploadError.classList.add('visible');
 }
 
+// Function to update session ID display
+function updateSessionIdDisplay() {
+    const sessionIdDisplay = document.getElementById('session-id-display');
+    if (sessionIdDisplay) {
+        sessionIdDisplay.textContent = sessionId ? `Session: ${sessionId}` : '';
+    }
+}
+
+// Update the startCompetition function
 async function startCompetition() {
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
@@ -294,9 +303,13 @@ async function startCompetition() {
         
         const data = await response.json();
         sessionId = data.session_id;
+        localStorage.setItem('sessionId', data.session_id);  // Store in localStorage
         guestJudges = data.guest_judges;
         initialLeads = data.initial_leads;  // Store initial order
         initialFollows = data.initial_follows;  // Store initial order
+        
+        // Update session ID display
+        updateSessionIdDisplay();
         
         // Get initial scores
         await fetchScores();
@@ -376,8 +389,10 @@ function updateRoundUI(data) {
     determineLeadWinnerBtn.disabled = false;
     determineFollowWinnerBtn.disabled = false;
     
-    // Reset song input
-    document.getElementById('song-input').value = '';
+    // Only reset song input if we're not in auto-advance mode
+    if (!window.debugTools || !window.debugTools.autoAdvance) {
+        document.getElementById('song-input').value = '';
+    }
 }
 
 function setupVotingUI() {
@@ -754,7 +769,7 @@ function updateScoreTable(leads, follows) {
     });
 }
 
-function displayResults(data) {
+async function displayResults(data) {
     console.log('Displaying results with data:', data);
     
     // Use the showScreen function with the correct screen element
@@ -849,15 +864,62 @@ function displayResults(data) {
     
     console.log('Round history:', data.rounds);
     
-    // Display round history if available
+    // Fetch Spotify metadata for all rounds if available
     if (data.rounds && data.rounds.length > 0) {
+        try {
+            const access_token = await getSpotifyToken();
+            
+            // Fetch metadata for all rounds in parallel
+            await Promise.all(data.rounds.map(async (round) => {
+                if (round.song_info && round.song_info.spotify_url) {
+                    try {
+                        const spotifyUrl = new URL(round.song_info.spotify_url);
+                        const trackId = spotifyUrl.pathname.split('/').pop();
+                        
+                        if (trackId) {
+                            const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${access_token}`
+                                }
+                            });
+                            
+                            if (metadataResponse.status === 401) {
+                                // Token expired, get a new one and retry
+                                const newToken = await getSpotifyToken();
+                                const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                                    headers: {
+                                        'Authorization': `Bearer ${newToken}`
+                                    }
+                                });
+                                
+                                if (retryResponse.ok) {
+                                    const metadata = await retryResponse.json();
+                                    round.song_info.title = metadata.name;
+                                    round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                                }
+                            } else if (metadataResponse.ok) {
+                                const metadata = await metadataResponse.json();
+                                round.song_info.title = metadata.name;
+                                round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                    }
+                }
+            }));
+        } catch (error) {
+            console.error('Error fetching Spotify metadata:', error);
+        }
+        
+        // Display round history with the updated metadata
         displayRoundHistory(data.rounds);
     } else {
         console.warn('No round history data available');
     }
 }
 
-// Function to display round history
+// Update the displayRoundHistory function
 function displayRoundHistory(rounds) {
     const roundsContainer = document.getElementById('rounds-accordion');
     roundsContainer.innerHTML = '';
@@ -875,6 +937,20 @@ function displayRoundHistory(rounds) {
         header.className = 'accordion-header';
         header.innerHTML = `<span>Round ${round.round_num}</span><span>+</span>`;
         
+        // Add click handler for accordion functionality
+        header.addEventListener('click', () => {
+            const content = header.nextElementSibling;
+            const isActive = header.classList.contains('active');
+            
+            // Toggle active state
+            header.classList.toggle('active');
+            content.classList.toggle('active');
+            
+            // Update the plus/minus symbol
+            const symbol = header.querySelector('span:last-child');
+            symbol.textContent = isActive ? '+' : '-';
+        });
+        
         // Create the content
         const content = document.createElement('div');
         content.className = 'accordion-content';
@@ -888,6 +964,18 @@ function displayRoundHistory(rounds) {
             const songSection = document.createElement('div');
             songSection.className = 'round-song';
             let songHTML = '<h4>Song</h4>';
+            
+            // Add song title and artist if available
+            if (round.song_info.title || round.song_info.artist) {
+                songHTML += '<div class="song-details">';
+                if (round.song_info.title) {
+                    songHTML += `<div class="song-title">${round.song_info.title}</div>`;
+                }
+                if (round.song_info.artist) {
+                    songHTML += `<div class="song-artist">${round.song_info.artist}</div>`;
+                }
+                songHTML += '</div>';
+            }
             
             if (round.song_info.spotify_url) {
                 try {
@@ -948,119 +1036,129 @@ function displayRoundHistory(rounds) {
         }
         
         participants.innerHTML = participantsHTML;
-        
-        // Voting section
-        const voting = document.createElement('div');
-        voting.className = 'round-voting';
-        
-        let votingHTML = '<h4>Voting Results</h4>';
-        
-        // Lead votes
-        votingHTML += `<div class="votes-section">
-            <h5>Lead Votes</h5>
-        `;
-        
-        if (round.lead_votes && Object.keys(round.lead_votes).length > 0) {
-            votingHTML += '<ul class="votes-list">';
-            for (const judge in round.lead_votes) {
-                const voteValue = round.lead_votes[judge];
-                let voteText = '';
-                
-                // Get the contestant names from the pairs
-                const lead1 = round.pairs?.pair_1?.lead;
-                const lead2 = round.pairs?.pair_2?.lead;
-                
-                // Convert numeric vote to meaningful text
-                if (parseInt(voteValue) === 1) {
-                    voteText = lead1 || 'Contestant 1';
-                } else if (parseInt(voteValue) === 2) {
-                    voteText = lead2 || 'Contestant 2';
-                } else if (parseInt(voteValue) === 3) {
-                    voteText = 'Tie';
-                } else if (parseInt(voteValue) === 4) {
-                    voteText = 'No Contest';
-                } else {
-                    voteText = voteValue;
-                }
-                
-                votingHTML += `<li><span class="judge-name">${judge}</span>: ${voteText}</li>`;
-            }
-            votingHTML += '</ul>';
-        } else {
-            votingHTML += '<p>No lead voting data available.</p>';
-        }
-        
-        // Follow votes
-        votingHTML += `</div><div class="votes-section">
-            <h5>Follow Votes</h5>
-        `;
-        
-        if (round.follow_votes && Object.keys(round.follow_votes).length > 0) {
-            votingHTML += '<ul class="votes-list">';
-            for (const judge in round.follow_votes) {
-                const voteValue = round.follow_votes[judge];
-                let voteText = '';
-                
-                // Get the contestant names from the pairs
-                const follow1 = round.pairs?.pair_1?.follow;
-                const follow2 = round.pairs?.pair_2?.follow;
-                
-                // Convert numeric vote to meaningful text
-                if (parseInt(voteValue) === 1) {
-                    voteText = follow1 || 'Contestant 1';
-                } else if (parseInt(voteValue) === 2) {
-                    voteText = follow2 || 'Contestant 2';
-                } else if (parseInt(voteValue) === 3) {
-                    voteText = 'Tie';
-                } else if (parseInt(voteValue) === 4) {
-                    voteText = 'No Contest';
-                } else {
-                    voteText = voteValue;
-                }
-                
-                votingHTML += `<li><span class="judge-name">${judge}</span>: ${voteText}</li>`;
-            }
-            votingHTML += '</ul>';
-        } else {
-            votingHTML += '<p>No follow voting data available.</p>';
-        }
-        
-        votingHTML += '</div>';
-        
-        // Win messages
-        if (round.win_messages && round.win_messages.length > 0) {
-            votingHTML += '<div class="win-message">';
-            round.win_messages.forEach(message => {
-                votingHTML += `<p>${message}</p>`;
-            });
-            votingHTML += '</div>';
-        }
-        
-        voting.innerHTML = votingHTML;
-        
-        // Add the sections to the details
         details.appendChild(participants);
-        details.appendChild(voting);
+
+        // Add judge votes section
+        const judgeVotes = document.createElement('div');
+        judgeVotes.className = 'judge-votes';
+        let judgeVotesHTML = '<h4>Judge Votes</h4>';
+
+        // Lead votes
+        if (round.lead_votes) {
+            judgeVotesHTML += '<div class="vote-section"><h5>Lead Votes</h5>';
+            
+            // Sort votes to show guest judges first
+            const sortedVotes = Object.entries(round.lead_votes).sort((a, b) => {
+                const aIsGuest = guestJudges.includes(a[0]);
+                const bIsGuest = guestJudges.includes(b[0]);
+                if (aIsGuest && !bIsGuest) return -1;
+                if (!aIsGuest && bIsGuest) return 1;
+                return 0;
+            });
+
+            sortedVotes.forEach(([judge, vote]) => {
+                const isGuest = guestJudges.includes(judge);
+                const voteText = getVoteText(vote, round);
+                judgeVotesHTML += `
+                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <span class="judge-name">${judge}</span>
+                        <span class="vote">${voteText}</span>
+                    </div>
+                `;
+            });
+            judgeVotesHTML += '</div>';
+        }
+
+        // Follow votes
+        if (round.follow_votes) {
+            judgeVotesHTML += '<div class="vote-section"><h5>Follow Votes</h5>';
+            
+            // Sort votes to show guest judges first
+            const sortedVotes = Object.entries(round.follow_votes).sort((a, b) => {
+                const aIsGuest = guestJudges.includes(a[0]);
+                const bIsGuest = guestJudges.includes(b[0]);
+                if (aIsGuest && !bIsGuest) return -1;
+                if (!aIsGuest && bIsGuest) return 1;
+                return 0;
+            });
+
+            sortedVotes.forEach(([judge, vote]) => {
+                const isGuest = guestJudges.includes(judge);
+                const voteText = getFollowVoteText(vote, round);
+                judgeVotesHTML += `
+                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <span class="judge-name">${judge}</span>
+                        <span class="vote">${voteText}</span>
+                    </div>
+                `;
+            });
+            judgeVotesHTML += '</div>';
+        }
+
+        judgeVotes.innerHTML = judgeVotesHTML;
+        details.appendChild(judgeVotes);
         
-        // Add the details to the content
+        // Add session ID to the round details
+        const sessionIdDiv = document.createElement('div');
+        sessionIdDiv.className = 'round-session-id';
+        sessionIdDiv.textContent = `Session: ${round.session_id}`;
+        details.appendChild(sessionIdDiv);
+        
         content.appendChild(details);
-        
-        // Add event listener to the header to toggle the content
-        header.addEventListener('click', function() {
-            this.classList.toggle('active');
-            const content = this.nextElementSibling;
-            content.classList.toggle('active');
-            this.querySelector('span:last-child').textContent = 
-                this.classList.contains('active') ? '-' : '+';
-        });
-        
-        // Add header and content to the accordion item
         accordionItem.appendChild(header);
         accordionItem.appendChild(content);
-        
-        // Add the accordion item to the container
         roundsContainer.appendChild(accordionItem);
     });
+}
+
+// Helper function to convert vote numbers to text
+function getVoteText(vote, round) {
+    if (!round || !round.pairs) return 'Unknown';
+    
+    switch (vote) {
+        case 1:
+            return round.pairs.pair_1.lead;
+        case 2:
+            return round.pairs.pair_2.lead;
+        case 3:
+            return 'Tie';
+        case 4:
+            return 'No Contest';
+        default:
+            return 'Unknown';
+    }
+}
+
+// Helper function to convert follow vote numbers to text
+function getFollowVoteText(vote, round) {
+    if (!round || !round.pairs) return 'Unknown';
+    
+    switch (vote) {
+        case 1:
+            return round.pairs.pair_1.follow;
+        case 2:
+            return round.pairs.pair_2.follow;
+        case 3:
+            return 'Tie';
+        case 4:
+            return 'No Contest';
+        default:
+            return 'Unknown';
+    }
+}
+
+async function getSpotifyToken() {
+    try {
+        const response = await fetch('/api/get_spotify_token');
+        if (!response.ok) {
+            throw new Error('Failed to get Spotify access token');
+        }
+        const data = await response.json();
+        return data.access_token;
+    } catch (error) {
+        console.error('Error getting Spotify token:', error);
+        throw error;
+    }
 }
 
 async function downloadBattleData() {
@@ -1080,89 +1178,73 @@ async function downloadBattleData() {
         const battleData = await response.json();
         
         // Get Spotify access token
-        const tokenResponse = await fetch('/api/get_spotify_token');
-        if (!tokenResponse.ok) {
-            throw new Error('Failed to get Spotify access token');
-        }
-        const { access_token } = await tokenResponse.json();
+        const access_token = await getSpotifyToken();
         
-        // Fetch metadata for all Spotify URLs
-        const rounds = battleData.rounds || [];
-        for (const round of rounds) {
+        // Fetch metadata for all rounds in parallel
+        await Promise.all(battleData.rounds.map(async (round) => {
             if (round.song_info && round.song_info.spotify_url) {
                 try {
-                    // Extract track ID from Spotify URL
                     const spotifyUrl = new URL(round.song_info.spotify_url);
                     const trackId = spotifyUrl.pathname.split('/').pop();
                     
                     if (trackId) {
-                        // Use the Spotify Web API to get track details
                         const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
                             headers: {
                                 'Authorization': `Bearer ${access_token}`
                             }
                         });
-                        if (metadataResponse.ok) {
+                        
+                        if (metadataResponse.status === 401) {
+                            // Token expired, get a new one and retry
+                            const newToken = await getSpotifyToken();
+                            const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${newToken}`
+                                }
+                            });
+                            
+                            if (retryResponse.ok) {
+                                const metadata = await retryResponse.json();
+                                round.song_info.title = metadata.name;
+                                round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                            }
+                        } else if (metadataResponse.ok) {
                             const metadata = await metadataResponse.json();
-                            // Update song info with data from the Web API
                             round.song_info.title = metadata.name;
                             round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                            console.log('Updated song info:', round.song_info); // Debug log
-                        } else {
-                            console.error(`Failed to fetch metadata for ${round.song_info.spotify_url}: ${metadataResponse.status}`);
                         }
                     }
                 } catch (e) {
                     console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
                 }
             }
-        }
+        }));
         
-        // Now get the Excel file with updated metadata
+        // Now get the Excel file with the updated metadata
         const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                rounds: rounds
+                rounds: battleData.rounds
             })
         });
         
         if (!excelResponse.ok) {
-            throw new Error(`Failed to fetch Excel file: ${excelResponse.status}`);
+            throw new Error(`Failed to generate Excel file: ${excelResponse.status}`);
         }
         
-        // Check if the response is actually an Excel file
-        const contentType = excelResponse.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
-            throw new Error('Invalid response format from server');
-        }
-        
-        // Get the filename from the Content-Disposition header or use a default
-        const contentDisposition = excelResponse.headers.get('content-disposition');
-        let filename = 'battle_data.xlsx';
-        if (contentDisposition) {
-            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
-            if (matches != null && matches[1]) {
-                filename = matches[1].replace(/['"]/g, '');
-            }
-        }
-        
-        // Create a temporary link element
+        // Download the Excel file
         const blob = await excelResponse.blob();
         const url = window.URL.createObjectURL(blob);
-        const tempLink = document.createElement('a');
-        tempLink.href = url;
-        tempLink.setAttribute('download', filename);
-        
-        // Trigger the download
-        document.body.appendChild(tempLink);
-        tempLink.click();
-        
-        // Clean up
-        document.body.removeChild(tempLink);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `battle_data_${sessionId}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
         window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
         
     } catch (error) {
         console.error('Error downloading battle data:', error);

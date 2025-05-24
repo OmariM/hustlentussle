@@ -12,7 +12,7 @@ class Contestant:
 
 class Round:
     def __init__(
-        self, round_num, lead_votes, follow_votes, judges, contestant_judges
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges, session_id
     ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
@@ -24,62 +24,77 @@ class Round:
         self.lead_winner = None  # Will store the name of the lead winner
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
+        self.session_id = session_id  # Store the session ID for this round
 
 
 class Game:
     state = 0
-    round_num = 1
-    current_round = None
-    rounds = []
-    contestant_judges = []
-    num_contestant_judges = 3
-
-    winning_lead = None
-    winning_follow = None
-    tie_lead_pair = None
-    tie_follow_pair = None
-    has_winning_lead = False
-    has_winning_follow = False
-
+    
     def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
+        # Store the session ID
+        self.session_id = None  # Will be set when the game is created
+        
+        # Initialize contestants
+        self.leads = [Contestant(name) for name in lead_names]
+        self.follows = [Contestant(name) for name in follow_names]
+        
         # Store initial order
-        self.initial_leads = [Contestant(n.strip()) for n in lead_names]
-        self.initial_follows = [Contestant(n.strip()) for n in follow_names]
+        self.initial_leads = self.leads.copy()
+        self.initial_follows = self.follows.copy()
         
-        # Create active contestant lists
-        self.leads = [Contestant(n.strip()) for n in lead_names]
-        self.follows = [Contestant(n.strip()) for n in follow_names]
-        self.guest_judges = [n.strip() for n in guest_judge_names]
-
-        # Validate that we have equal numbers of leads and follows
-        if len(self.leads) != len(self.follows):
-            raise ValueError("Number of leads must equal number of follows")
-            
-        # Track totals for win condition
-        self.total_num_leads = len(self.leads)
-        self.total_num_follows = len(self.follows)
+        # Initialize judges
+        self.guest_judges = guest_judge_names
+        self.contestant_judges = []
         
-        # Initialize tracking for winners with crown emojis
+        # Initialize game state
+        self.round_num = 1
+        self.pair_1 = None
+        self.pair_2 = None
+        self.rounds = []
+        self.current_round = None
+        
+        # Initialize winning state
+        self.winning_lead = None
+        self.winning_follow = None
+        self.has_winning_lead = False
+        self.has_winning_follow = False
         self.last_lead_winner = None
         self.last_follow_winner = None
         
-        # Track previous pairings to avoid repeats after ties
+        # Initialize tie state
+        self.tie_lead_pair = None
+        self.tie_follow_pair = None
+        
+        # Initialize previous pairs tracking
         self.previous_pairs = {}
-
-        # Always start with a Lead vs Follow pairing
+        
+        # Calculate total number of contestants
+        self.total_num_leads = len(self.leads)
+        self.total_num_follows = len(self.follows)
+        
+        # Calculate number of contestant judges needed - always use 3 if possible
+        self.num_contestant_judges = min(3, len(self.leads) + len(self.follows) - 4)
+        
+        # Start the first round
+        self.start_round()
+        
+    def start_round(self):
+        """Start a new round by selecting pairs and contestant judges."""
+        # Select contestant judges
+        self.contestant_judges = self.get_contestant_judges()
+        
+        # Select pairs
         self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
         self.pair_2 = (self.leads.pop(0), self.follows.pop(0))
         
-        # Record initial pairings
-        self._record_pairings()
-
-        self.contestant_judges = self.get_contestant_judges()
+        # Create new round
         self.current_round = Round(
             self.round_num,
             {},
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
+            self.session_id
         )
         
         # Store the pairs for this round
@@ -103,6 +118,12 @@ class Game:
         """Prepare the game for the next round."""
         self.round_num += 1
         self.rounds.append(self.current_round)
+
+        # Store current follows if we have a follow tie
+        current_follows = None
+        if self.tie_follow_pair:
+            current_follows = (self.pair_1[1], self.pair_2[1])
+            self.tie_follow_pair = None
 
         # Handle lead selection based on game state
         if self.has_winning_lead and not self.has_winning_follow:
@@ -154,10 +175,8 @@ class Game:
                 # Select the next two follows from the queue
                 follow1 = self.follows.pop(0)
                 follow2 = self.follows.pop(0)
-            elif self.tie_follow_pair:
-                # Use the tied follows
-                follow1, follow2 = self.tie_follow_pair
-                self.tie_follow_pair = None
+            elif current_follows:  # If we have a follow tie, keep the same follows
+                follow1, follow2 = current_follows
             elif self.winning_follow:
                 # Regular round winner (after a role already has a winner)
                 # stays in the competition
@@ -168,10 +187,8 @@ class Game:
                 # Regular selection
                 follow1 = self.follows.pop(0)
                 follow2 = self.follows.pop(0)
-        elif self.tie_follow_pair:
-            # Use the tied follows
-            follow1, follow2 = self.tie_follow_pair
-            self.tie_follow_pair = None
+        elif current_follows:  # If we have a follow tie, keep the same follows
+            follow1, follow2 = current_follows
         else:
             # If there's a previous round winner for follow, use them in the next round
             # BUT only if that role doesn't already have an overall winner
@@ -184,33 +201,52 @@ class Game:
                 follow1 = self.follows.pop(0)
                 follow2 = self.follows.pop(0)
 
-        # Ensure no contestant gets the same partner in consecutive rounds
-        # This applies to both tie and non-tie situations
-        if (self.tie_lead_pair is None and self.tie_follow_pair is None and 
-            (lead1, lead2) != (None, None) and (follow1, follow2) != (None, None)):
+        # When there's a follow tie, we need to ensure the couples are different
+        if current_follows:
+            # Get the winning lead and next lead from queue
+            winning_lead = lead1 if lead1.name == self.last_lead_winner else lead2
+            next_lead = lead2 if lead1.name == self.last_lead_winner else lead1
             
-            # Check if the default pairing would recreate previous pairs
-            pairing_1 = (lead1.name, follow1.name)
-            pairing_2 = (lead2.name, follow2.name)
+            # Get the previous pairs for comparison
+            prev_pair1 = (self.pair_1[0].name, self.pair_1[1].name)
+            prev_pair2 = (self.pair_2[0].name, self.pair_2[1].name)
             
-            # If either pairing already exists in previous_pairs, swap follows
-            if pairing_1 in self.previous_pairs or pairing_2 in self.previous_pairs:
-                # Swap follows to avoid repeat pairings
+            # Try different combinations until we find one that doesn't match previous pairs
+            if (winning_lead.name, follow1.name) == prev_pair1 or (winning_lead.name, follow1.name) == prev_pair2:
+                # If winning lead with follow1 would recreate a previous pair, swap follows
                 follow1, follow2 = follow2, follow1
             
-            # Prevent pairing two winning contestants together
-            # Check if both lead1 and follow1 were winners in the last round
-            if (self.last_lead_winner == lead1.name and self.last_follow_winner == follow1.name):
-                # Swap follows to prevent winners being paired
-                follow1, follow2 = follow2, follow1
-            # Check if both lead2 and follow2 were winners in the last round
-            elif (self.last_lead_winner == lead2.name and self.last_follow_winner == follow2.name):
-                # Swap follows to prevent winners being paired
-                follow1, follow2 = follow2, follow1
-        
-        # Form new Lead vs Follow pairs
-        self.pair_1 = (lead1, follow1)
-        self.pair_2 = (lead2, follow2)
+            # Set the pairs
+            self.pair_1 = (winning_lead, follow1)
+            self.pair_2 = (next_lead, follow2)
+        else:
+            # Ensure no contestant gets the same partner in consecutive rounds
+            # This applies to both tie and non-tie situations
+            if (self.tie_lead_pair is None and self.tie_follow_pair is None and 
+                (lead1, lead2) != (None, None) and (follow1, follow2) != (None, None)):
+                
+                # Check if the default pairing would recreate previous pairs
+                pairing_1 = (lead1.name, follow1.name)
+                pairing_2 = (lead2.name, follow2.name)
+                
+                # If either pairing already exists in previous_pairs, swap follows
+                if pairing_1 in self.previous_pairs or pairing_2 in self.previous_pairs:
+                    # Swap follows to avoid repeat pairings
+                    follow1, follow2 = follow2, follow1
+                
+                # Prevent pairing two winning contestants together
+                # Check if both lead1 and follow1 were winners in the last round
+                if (self.last_lead_winner == lead1.name and self.last_follow_winner == follow1.name):
+                    # Swap follows to prevent winners being paired
+                    follow1, follow2 = follow2, follow1
+                # Check if both lead2 and follow2 were winners in the last round
+                elif (self.last_lead_winner == lead2.name and self.last_follow_winner == follow2.name):
+                    # Swap follows to prevent winners being paired
+                    follow1, follow2 = follow2, follow1
+
+            # Form new Lead vs Follow pairs
+            self.pair_1 = (lead1, follow1)
+            self.pair_2 = (lead2, follow2)
         
         # Clear previous pairings since we only care about consecutive rounds
         self.previous_pairs = {}
@@ -225,6 +261,7 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
+            self.session_id
         )
         
         # Store the pairs for this round
@@ -339,7 +376,7 @@ class Game:
             self.last_follow_winner = winner.name
             # Also store the follow winner in the current round
             self.current_round.follow_winner = winner.name
-        
+
         winner.points += 1
 
         gv = []
@@ -389,7 +426,7 @@ class Game:
                     
             if is_new_crown:
                 out.append(win_message)
-        
+
         # Only set game as finished if both roles have winners
         if self.has_winning_lead and self.has_winning_follow:
             self.state = 1
