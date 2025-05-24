@@ -159,10 +159,74 @@ class TestGameLogic(unittest.TestCase):
             "Top follow not correctly sorted"
         )
     
-    def test_lead_win_condition(self):
-        """Test that lead win condition is correctly handled."""
+    def test_unequal_contestants(self):
+        """Test that the game works correctly with unequal numbers of leads and follows."""
+        # Create a game with 3 leads and 5 follows
         game = Game(
+            ["Lead1", "Lead2", "Lead3"],
+            ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+            ["Judge1", "Judge2"]
+        )
+        
+        # Verify win threshold is based on maximum number of contestants
+        self.assertEqual(game.win_threshold, 4,  # max(3,5) - 1
+                        "Win threshold should be max(num_leads, num_follows) - 1")
+        
+        # Simulate a lead winning enough rounds to reach threshold
+        lead = game.pair_1[0]
+        for _ in range(4):  # Win 4 rounds
+            lead.points += 1
+        
+        # Verify lead is marked as winner
+        self.assertTrue(
+            lead.points >= game.win_threshold,
+            f"Lead should be marked as winner with {lead.points} points"
+        )
+        
+        # Simulate a follow winning enough rounds to reach threshold
+        follow = game.pair_1[1]
+        for _ in range(4):  # Win 4 rounds
+            follow.points += 1
+        
+        # Verify follow is marked as winner
+        self.assertTrue(
+            follow.points >= game.win_threshold,
+            f"Follow should be marked as winner with {follow.points} points"
+        )
+
+    def test_win_threshold_calculation(self):
+        """Test that win threshold is correctly calculated for different numbers of contestants."""
+        # Test case 1: More leads than follows
+        game1 = Game(
             ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
+            ["Follow1", "Follow2", "Follow3"],
+            ["Judge1", "Judge2"]
+        )
+        self.assertEqual(game1.win_threshold, 4,  # max(5,3) - 1
+                        "Win threshold should be 4 for 5 leads and 3 follows")
+        
+        # Test case 2: More follows than leads
+        game2 = Game(
+            ["Lead1", "Lead2"],
+            ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5", "Follow6"],
+            ["Judge1", "Judge2"]
+        )
+        self.assertEqual(game2.win_threshold, 5,  # max(2,6) - 1
+                        "Win threshold should be 5 for 2 leads and 6 follows")
+        
+        # Test case 3: Equal numbers
+        game3 = Game(
+            ["Lead1", "Lead2", "Lead3"],
+            ["Follow1", "Follow2", "Follow3"],
+            ["Judge1", "Judge2"]
+        )
+        self.assertEqual(game3.win_threshold, 2,  # max(3,3) - 1
+                        "Win threshold should be 2 for 3 leads and 3 follows")
+
+    def test_lead_win_condition(self):
+        """Test that lead win condition is correctly handled with unequal numbers."""
+        game = Game(
+            ["Lead1", "Lead2", "Lead3"],
             ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
             ["Judge1", "Judge2"]
         )
@@ -170,8 +234,8 @@ class TestGameLogic(unittest.TestCase):
         initial_lead_1 = game.pair_1[0]
         initial_lead_2 = game.pair_2[0]
         
-        # Give winning points to Lead1
-        initial_lead_1.points = game.total_num_leads - 2
+        # Give winning points to Lead1 (4 points needed to win)
+        initial_lead_1.points = game.win_threshold - 1
         
         # Simulate round where Lead1 wins
         lead_pair = (initial_lead_1, initial_lead_2)
@@ -202,6 +266,51 @@ class TestGameLogic(unittest.TestCase):
         self.assertNotIn(
             initial_lead_1.name, competing_leads,
             f"Winning lead still competing. Current competitors: {competing_leads}"
+        )
+
+    def test_follow_win_condition(self):
+        """Test that follow win condition is correctly handled with unequal numbers."""
+        game = Game(
+            ["Lead1", "Lead2", "Lead3"],
+            ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
+            ["Judge1", "Judge2"]
+        )
+        
+        initial_follow_1 = game.pair_1[1]
+        initial_follow_2 = game.pair_2[1]
+        
+        # Give winning points to Follow1 (4 points needed to win)
+        initial_follow_1.points = game.win_threshold - 1
+        
+        # Simulate round where Follow1 wins
+        follow_pair = (initial_follow_1, initial_follow_2)
+        result = game.judge_round(
+            follow_pair[0], follow_pair[1], "follow",
+            [("Judge1", 1), ("Judge2", 1)]
+        )
+        
+        # Check if Follow1 is marked as a winner
+        self.assertTrue(
+            game.has_winning_follow and game.winning_follow.name == initial_follow_1.name,
+            f"Follow winner not correctly identified. Has winning follow: {game.has_winning_follow}, "
+            f"Winning follow: {game.winning_follow.name if game.winning_follow else None}"
+        )
+        
+        # Move to next round
+        game.next_round()
+        
+        # Check if the winning follow is in the queue
+        follows_in_queue = [follow.name for follow in game.follows]
+        self.assertIn(
+            initial_follow_1.name, follows_in_queue,
+            f"Winning follow not in queue. Queue: {follows_in_queue}"
+        )
+        
+        # Check that two different follows are now competing
+        competing_follows = [game.pair_1[1].name, game.pair_2[1].name]
+        self.assertNotIn(
+            initial_follow_1.name, competing_follows,
+            f"Winning follow still competing. Current competitors: {competing_follows}"
         )
 
     def test_tie_on_follows(self):

@@ -50,12 +50,6 @@ def start_game():
     follow_names = [name.strip() for name in follow_names if name.strip()]
     judge_names = [name.strip() for name in judge_names if name.strip()]
     
-    # Validate equal counts of leads and follows
-    if len(lead_names) != len(follow_names):
-        return jsonify({
-            'error': 'The number of leads must equal the number of follows.'
-        }), 400
-    
     # Randomize the order of leads and follows
     random.shuffle(lead_names)
     random.shuffle(follow_names)

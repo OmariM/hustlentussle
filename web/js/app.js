@@ -284,16 +284,6 @@ async function startCompetition() {
         return;
     }
     
-    // Count the number of leads and follows
-    const leadCount = leads.split(',').filter(name => name.trim()).length;
-    const followCount = follows.split(',').filter(name => name.trim()).length;
-    
-    // Validate equal counts of leads and follows
-    if (leadCount !== followCount) {
-        alert(`The number of leads (${leadCount}) must equal the number of follows (${followCount}). Please adjust your entries.`);
-        return;
-    }
-    
     try {
         const response = await fetch('/api/start_game', {
             method: 'POST',
