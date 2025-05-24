@@ -153,4 +153,22 @@
 .vote {
     color: #6c757d;
     font-weight: 500;
+}
+
+.song-details {
+    margin: 10px 0;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+}
+
+.song-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 5px;
+}
+
+.song-artist {
+    color: #666;
+    font-style: italic;
 } 

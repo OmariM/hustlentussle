@@ -253,7 +253,7 @@ async function processUploadedFile() {
         }
         
         // Display the results
-        displayResults(data);
+        await displayResults(data);
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
@@ -769,7 +769,7 @@ function updateScoreTable(leads, follows) {
     });
 }
 
-function displayResults(data) {
+async function displayResults(data) {
     console.log('Displaying results with data:', data);
     
     // Use the showScreen function with the correct screen element
@@ -864,8 +864,55 @@ function displayResults(data) {
     
     console.log('Round history:', data.rounds);
     
-    // Display round history if available
+    // Fetch Spotify metadata for all rounds if available
     if (data.rounds && data.rounds.length > 0) {
+        try {
+            const access_token = await getSpotifyToken();
+            
+            // Fetch metadata for all rounds in parallel
+            await Promise.all(data.rounds.map(async (round) => {
+                if (round.song_info && round.song_info.spotify_url) {
+                    try {
+                        const spotifyUrl = new URL(round.song_info.spotify_url);
+                        const trackId = spotifyUrl.pathname.split('/').pop();
+                        
+                        if (trackId) {
+                            const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${access_token}`
+                                }
+                            });
+                            
+                            if (metadataResponse.status === 401) {
+                                // Token expired, get a new one and retry
+                                const newToken = await getSpotifyToken();
+                                const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                                    headers: {
+                                        'Authorization': `Bearer ${newToken}`
+                                    }
+                                });
+                                
+                                if (retryResponse.ok) {
+                                    const metadata = await retryResponse.json();
+                                    round.song_info.title = metadata.name;
+                                    round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                                }
+                            } else if (metadataResponse.ok) {
+                                const metadata = await metadataResponse.json();
+                                round.song_info.title = metadata.name;
+                                round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                    }
+                }
+            }));
+        } catch (error) {
+            console.error('Error fetching Spotify metadata:', error);
+        }
+        
+        // Display round history with the updated metadata
         displayRoundHistory(data.rounds);
     } else {
         console.warn('No round history data available');
@@ -917,6 +964,18 @@ function displayRoundHistory(rounds) {
             const songSection = document.createElement('div');
             songSection.className = 'round-song';
             let songHTML = '<h4>Song</h4>';
+            
+            // Add song title and artist if available
+            if (round.song_info.title || round.song_info.artist) {
+                songHTML += '<div class="song-details">';
+                if (round.song_info.title) {
+                    songHTML += `<div class="song-title">${round.song_info.title}</div>`;
+                }
+                if (round.song_info.artist) {
+                    songHTML += `<div class="song-artist">${round.song_info.artist}</div>`;
+                }
+                songHTML += '</div>';
+            }
             
             if (round.song_info.spotify_url) {
                 try {
@@ -1121,17 +1180,14 @@ async function downloadBattleData() {
         // Get Spotify access token
         const access_token = await getSpotifyToken();
         
-        // Fetch metadata for all Spotify URLs
-        const rounds = battleData.rounds || [];
-        for (const round of rounds) {
+        // Fetch metadata for all rounds in parallel
+        await Promise.all(battleData.rounds.map(async (round) => {
             if (round.song_info && round.song_info.spotify_url) {
                 try {
-                    // Extract track ID from Spotify URL
                     const spotifyUrl = new URL(round.song_info.spotify_url);
                     const trackId = spotifyUrl.pathname.split('/').pop();
                     
                     if (trackId) {
-                        // Use the Spotify Web API to get track details
                         const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
                             headers: {
                                 'Authorization': `Bearer ${access_token}`
@@ -1151,31 +1207,27 @@ async function downloadBattleData() {
                                 const metadata = await retryResponse.json();
                                 round.song_info.title = metadata.name;
                                 round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                            } else {
-                                console.error(`Failed to fetch metadata after token refresh for ${round.song_info.spotify_url}: ${retryResponse.status}`);
                             }
                         } else if (metadataResponse.ok) {
                             const metadata = await metadataResponse.json();
                             round.song_info.title = metadata.name;
                             round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                        } else {
-                            console.error(`Failed to fetch metadata for ${round.song_info.spotify_url}: ${metadataResponse.status}`);
                         }
                     }
                 } catch (e) {
                     console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
                 }
             }
-        }
+        }));
         
-        // Now get the Excel file with updated metadata
+        // Now get the Excel file with the updated metadata
         const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                rounds: rounds
+                rounds: battleData.rounds
             })
         });
         

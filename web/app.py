@@ -395,22 +395,26 @@ def export_battle_data():
     # Collect round metadata
     rounds_data = []
     
-    # Add all completed rounds
-    for r in all_rounds:
-        round_data = {
-            'round_num': r.round_num,
-            'session_id': session_id,
-            'pairs': r.pairs,
-            'lead_votes': r.lead_votes,
-            'follow_votes': r.follow_votes,
-            'judges': r.judges,
-            'contestant_judges': r.contestant_judges,
-            'win_messages': r.win_messages,
-            'lead_winner': r.lead_winner,
-            'follow_winner': r.follow_winner,
-            'song_info': r.song_info if hasattr(r, 'song_info') else None
-        }
-        rounds_data.append(round_data)
+    # Check if we received updated rounds data in the POST request
+    if request.method == 'POST' and request.json and 'rounds' in request.json:
+        rounds_data = request.json['rounds']
+    else:
+        # Add all completed rounds from the game object
+        for r in all_rounds:
+            round_data = {
+                'round_num': r.round_num,
+                'session_id': session_id,
+                'pairs': r.pairs,
+                'lead_votes': r.lead_votes,
+                'follow_votes': r.follow_votes,
+                'judges': r.judges,
+                'contestant_judges': r.contestant_judges,
+                'win_messages': r.win_messages,
+                'lead_winner': r.lead_winner,
+                'follow_winner': r.follow_winner,
+                'song_info': r.song_info if hasattr(r, 'song_info') else None
+            }
+            rounds_data.append(round_data)
     
     # Sort rounds by round number
     rounds_data.sort(key=lambda x: x['round_num'])
