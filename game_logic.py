@@ -72,6 +72,9 @@ class Game:
         self.total_num_leads = len(self.leads)
         self.total_num_follows = len(self.follows)
         
+        # Calculate win threshold based on maximum number of contestants
+        self.win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
+        
         # Calculate number of contestant judges needed - always use 3 if possible
         self.num_contestant_judges = min(3, len(self.leads) + len(self.follows) - 4)
         
@@ -119,6 +122,22 @@ class Game:
         self.round_num += 1
         self.rounds.append(self.current_round)
 
+        # Replenish leads if we're running low
+        if len(self.leads) < 2:
+            # Add all leads back to the queue except the current competing leads
+            competing_leads = {self.pair_1[0].name, self.pair_2[0].name}
+            for lead in self.initial_leads:
+                if lead.name not in competing_leads and lead not in self.leads:
+                    self.leads.append(lead)
+
+        # Replenish follows if we're running low
+        if len(self.follows) < 2:
+            # Add all follows back to the queue except the current competing follows
+            competing_follows = {self.pair_1[1].name, self.pair_2[1].name}
+            for follow in self.initial_follows:
+                if follow.name not in competing_follows and follow not in self.follows:
+                    self.follows.append(follow)
+
         # Store current follows if we have a follow tie
         current_follows = None
         if self.tie_follow_pair:
@@ -128,7 +147,7 @@ class Game:
         # Handle lead selection based on game state
         if self.has_winning_lead and not self.has_winning_follow:
             # Initial winning lead (with flags set) should go to the end of the queue
-            if self.winning_lead and self.winning_lead.points >= self.total_num_leads - 1:
+            if self.winning_lead and self.winning_lead.points >= self.win_threshold:
                 self.leads.append(self.winning_lead)
                 self.winning_lead = None
                 
@@ -168,7 +187,7 @@ class Game:
         # Handle follow selection based on game state
         if self.has_winning_follow and not self.has_winning_lead:
             # Initial winning follow (with flags set) should go to the end of the queue
-            if self.winning_follow and self.winning_follow.points >= self.total_num_follows - 1:
+            if self.winning_follow and self.winning_follow.points >= self.win_threshold:
                 self.follows.append(self.winning_follow)
                 self.winning_follow = None
                 
@@ -253,6 +272,22 @@ class Game:
         
         # Record new pairings for next round
         self._record_pairings()
+
+        # Replenish leads if we're running low
+        if len(self.leads) < 2:
+            # Add all leads back to the queue except the current competing leads
+            competing_leads = {self.pair_1[0].name, self.pair_2[0].name}
+            for lead in self.initial_leads:
+                if lead.name not in competing_leads and lead not in self.leads:
+                    self.leads.append(lead)
+
+        # Replenish follows if we're running low
+        if len(self.follows) < 2:
+            # Add all follows back to the queue except the current competing follows
+            competing_follows = {self.pair_1[1].name, self.pair_2[1].name}
+            for follow in self.initial_follows:
+                if follow.name not in competing_follows and follow not in self.follows:
+                    self.follows.append(follow)
 
         self.contestant_judges = self.get_contestant_judges()
         self.current_round = Round(
@@ -347,8 +382,8 @@ class Game:
                 self.winning_lead = winner
                 self.leads.append(loser)
                 
-                # Check if we've reached a win condition
-                if winner.points + 1 >= self.total_num_leads - 1:
+                # Check if we've reached a win condition using the common threshold
+                if winner.points + 1 >= self.win_threshold:
                     self.has_winning_lead = True
             
             # Track the lead winner for this round to prevent pairing with follow winner
@@ -368,9 +403,12 @@ class Game:
                 self.winning_follow = winner
                 self.follows.append(loser)
                 
-                # Check if we've reached a win condition
-                if winner.points + 1 >= self.total_num_follows - 1:
+                # Check if we've reached a win condition using the common threshold
+                if winner.points + 1 >= self.win_threshold:
                     self.has_winning_follow = True
+                    # If follow has reached threshold, add them to the queue
+                    self.follows.append(winner)
+                    self.winning_follow = None
             
             # Track the follow winner for this round to prevent pairing with lead winner
             self.last_follow_winner = winner.name
@@ -394,7 +432,7 @@ class Game:
         # Generate win message for lead winner if they've reached the winning threshold
         # Only show the message if this is the first winner for leads
         if (self.has_winning_lead and self.winning_lead and 
-            self.winning_lead.points >= self.total_num_leads - 1):
+            self.winning_lead.points >= self.win_threshold):
             
             # Only add crown message if we haven't already shown a crown message for this role
             win_message = f"👑 {self.winning_lead.name} has won for the leads!"
@@ -412,7 +450,7 @@ class Game:
         # Generate win message for follow winner if they've reached the winning threshold
         # Only show the message if this is the first winner for follows
         if (self.has_winning_follow and self.winning_follow and 
-            self.winning_follow.points >= self.total_num_follows - 1):
+            self.winning_follow.points >= self.win_threshold):
             
             # Only add crown message if we haven't already shown a crown message for this role
             win_message = f"👑 {self.winning_follow.name} has won for the follows!"
