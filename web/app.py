@@ -40,7 +40,10 @@ def index():
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     lead_names = data.get('leads', '').split(',')
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
@@ -225,13 +228,18 @@ def judge_follows():
 
 @app.route('/api/next_round', methods=['POST'])
 def next_round():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     session_id = data.get('session_id')
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
     state = game.get_game_state()
     
@@ -244,13 +252,18 @@ def next_round():
 
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     session_id = data.get('session_id')
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
     leads, follows = game.finalize_results()
     
     # Format the results - include all leads
