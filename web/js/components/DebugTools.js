@@ -502,11 +502,13 @@ class DebugTools {
             judgeCard.classList.add('voted');
         });
         
-        // Add guest judge options if applicable
+        voteOptions.appendChild(option1Btn);
+        voteOptions.appendChild(option2Btn);
+        
+        // Add tie and no-contest buttons for guest judges
         if (isGuest) {
-            // Tie button
             const tieBtn = document.createElement('button');
-            tieBtn.className = 'vote-btn vote-option-3';
+            tieBtn.className = 'vote-btn vote-tie';
             tieBtn.textContent = 'Tie';
             tieBtn.addEventListener('click', () => {
                 if (window.votingLocked && window.votingLocked[voteType]) return;
@@ -519,9 +521,8 @@ class DebugTools {
                 judgeCard.classList.add('voted');
             });
             
-            // No Contest button
             const noContestBtn = document.createElement('button');
-            noContestBtn.className = 'vote-btn vote-option-4';
+            noContestBtn.className = 'vote-btn vote-no-contest';
             noContestBtn.textContent = 'No Contest';
             noContestBtn.addEventListener('click', () => {
                 if (window.votingLocked && window.votingLocked[voteType]) return;
@@ -538,24 +539,23 @@ class DebugTools {
             voteOptions.appendChild(noContestBtn);
         }
         
-        voteOptions.appendChild(option1Btn);
-        voteOptions.appendChild(option2Btn);
-        
         judgeCard.appendChild(judgeNameEl);
         judgeCard.appendChild(voteOptions);
         
         return judgeCard;
     }
     
-    // Helper method to record votes
-    recordVote(judge, decision, voteType) {
-        if (!window.leadVotes) window.leadVotes = {};
-        if (!window.followVotes) window.followVotes = {};
-        
+    recordVote(judgeName, voteOption, voteType) {
         if (voteType === 'lead') {
-            window.leadVotes[judge] = decision;
-        } else {
-            window.followVotes[judge] = decision;
+            window.leadVotes[judgeName] = voteOption;
+        } else if (voteType === 'follow') {
+            window.followVotes[judgeName] = voteOption;
+        }
+        console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
+        
+        // Update submit button state and show previews if available
+        if (window.updateSubmitButtonState) {
+            window.updateSubmitButtonState();
         }
     }
 

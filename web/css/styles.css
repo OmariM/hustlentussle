@@ -293,6 +293,34 @@ textarea {
     color: var(--primary-color);
 }
 
+.winner-preview {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #e8f5e8;
+    border: 1px solid #28a745;
+    border-radius: 5px;
+    text-align: center;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.winner-preview h4 {
+    margin: 0 0 5px 0;
+    color: #28a745;
+    font-size: 1em;
+}
+
+.winner-preview .preview-note {
+    margin: 0;
+    font-size: 0.85em;
+    color: #666;
+    font-style: italic;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 .results-container {
     display: flex;
     gap: 20px;

@@ -20,6 +20,7 @@ let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesCon
 let leadResults, followResults, leadWinner, followWinner;
 let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
 let submitVotesBtn, votingResults;
+let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
@@ -78,6 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
     followContestantVotes = document.getElementById('follow-contestant-votes');
     submitVotesBtn = document.getElementById('submit-votes');
     votingResults = document.getElementById('voting-results');
+    leadWinnerPreview = document.getElementById('lead-winner-preview');
+    followWinnerPreview = document.getElementById('follow-winner-preview');
+    leadPreviewName = document.getElementById('lead-preview-name');
+    followPreviewName = document.getElementById('follow-preview-name');
 
 // Results elements
     roundResultsSection = document.getElementById('round-results');
@@ -366,6 +371,10 @@ function updateRoundUI(data) {
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
     
+    // Hide winner previews
+    leadWinnerPreview.classList.add('hidden');
+    followWinnerPreview.classList.add('hidden');
+    
     // Reset collected votes
     leadVotes = {};
     followVotes = {};
@@ -404,6 +413,10 @@ function setupVotingUI() {
         const judgeCard = createJudgeVotingCard(judge, isGuest, 'follow');
         followJudgesContainer.appendChild(judgeCard);
     });
+    
+    // Hide winner previews initially
+    leadWinnerPreview.classList.add('hidden');
+    followWinnerPreview.classList.add('hidden');
     
     // Initialize submit button state
     updateSubmitButtonState();
@@ -539,6 +552,98 @@ function updateSubmitButtonState() {
             submitBtn.textContent = `Submit Votes (${leadCount + followCount}/${allJudges.length * 2} cast)`;
             submitBtn.classList.add('partial-votes');
         }
+    }
+    
+    // Show winner previews when all votes for a role are complete
+    if (leadVotesComplete) {
+        showWinnerPreview('lead');
+    } else {
+        hideWinnerPreview('lead');
+    }
+    
+    if (followVotesComplete) {
+        showWinnerPreview('follow');
+    } else {
+        hideWinnerPreview('follow');
+    }
+}
+
+function calculateWinner(voteType) {
+    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    const votes = voteType === 'lead' ? leadVotes : followVotes;
+    
+    // Get contestant names
+    const contestant1 = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
+    const contestant2 = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
+    
+    // Check if all votes are present
+    const hasAllVotes = allJudges.every(judge => votes[judge]);
+    if (!hasAllVotes) {
+        return null; // Not all votes are in yet
+    }
+    
+    // Convert votes to the format expected by the game logic
+    const votesArray = [];
+    for (const judge of allJudges) {
+        votesArray.push([judge, votes[judge]]);
+    }
+    
+    // Calculate winner using the same logic as the backend
+    const guestVotes = votesArray.filter(([judge, vote]) => guestJudges.includes(judge)).map(([judge, vote]) => vote);
+    
+    // Check for special cases - need all guest judges to vote the same
+    if (guestVotes.length > 0 && guestVotes.every(vote => vote === 3)) {
+        return `Tie between ${contestant1} and ${contestant2}`;
+    }
+    
+    if (guestVotes.length > 0 && guestVotes.every(vote => vote === 4)) {
+        return "No Contest";
+    }
+    
+    // Calculate scores
+    let score1 = 0;
+    let score2 = 0;
+    
+    for (const [judge, vote] of votesArray) {
+        const isGuest = guestJudges.includes(judge);
+        const voteWeight = isGuest ? 2 : 1;
+        
+        if (vote === 1) {
+            score1 += voteWeight;
+        } else if (vote === 2) {
+            score2 += voteWeight;
+        } else if (vote === 3 && isGuest) {
+            score1 += 1;
+            score2 += 1;
+        }
+    }
+    
+    // Winner is whoever has higher score, ties go to contestant 1
+    return score1 >= score2 ? contestant1 : contestant2;
+}
+
+function showWinnerPreview(voteType) {
+    const winner = calculateWinner(voteType);
+    
+    // Only show preview if we have a calculated winner
+    if (winner) {
+        if (voteType === 'lead') {
+            leadPreviewName.textContent = winner;
+            leadWinnerPreview.classList.remove('hidden');
+        } else {
+            followPreviewName.textContent = winner;
+            followWinnerPreview.classList.remove('hidden');
+        }
+    } else {
+        hideWinnerPreview(voteType);
+    }
+}
+
+function hideWinnerPreview(voteType) {
+    if (voteType === 'lead') {
+        leadWinnerPreview.classList.add('hidden');
+    } else {
+        followWinnerPreview.classList.add('hidden');
     }
 }
 
@@ -694,6 +799,10 @@ function resetCompetition() {
     votingLocked = { lead: false, follow: false };
     currentLeads = [];
     currentFollows = [];
+    
+    // Hide winner previews
+    if (leadWinnerPreview) leadWinnerPreview.classList.add('hidden');
+    if (followWinnerPreview) followWinnerPreview.classList.add('hidden');
     
     // Clear form inputs
     leadNamesInput.value = '';
