@@ -127,6 +127,9 @@ For more details, see the [Render documentation](https://render.com/docs).
 
 ## ⚙️ Features
 
+- **Cross-Device Sessions**: 🆕 Start a battle on one device and join from another! Perfect for multi-judge competitions.
+- **Real-Time Synchronization**: Live score updates and voting results across all connected devices.
+- **QR Code Sharing**: Instantly join battles by scanning QR codes with your phone.
 - **Random Pairing**: Each round pairs one Lead with one Follow.
 - **Guest & Contestant Judges**: Guests can choose Tie or No Contest; contestants must pick a winner.
 - **Tie Handling**: Both tied dancers gain +1 point and continue to the next round with fresh opponents.
@@ -165,6 +168,18 @@ hustle-n-tussle/
 Feel free to submit pull requests or open issues on GitHub. All enhancements and bug fixes are welcome!
 
 ---
+
+## 🎯 Cross-Device Usage
+
+The new cross-device functionality allows seamless collaboration across multiple devices:
+
+1. **Start a battle** on your computer or tablet
+2. **Click "📱 Share Battle"** to generate a QR code and share code
+3. **Scan the QR code** with phones/tablets to join instantly
+4. **All devices sync in real-time** - votes, scores, and round progression
+5. **Perfect for competitions** with multiple judges using their own devices
+
+For detailed setup instructions, see [CROSS_DEVICE_SETUP.md](CROSS_DEVICE_SETUP.md).
 
 ## 📝 Future Enhancements
 

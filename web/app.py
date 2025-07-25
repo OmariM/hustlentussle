@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import sys
 import os
 import pandas as pd
@@ -14,6 +15,10 @@ from dotenv import load_dotenv
 import uuid
 import tempfile
 import shutil
+import qrcode
+import base64
+import json
+import time
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,7 +37,10 @@ app = Flask(__name__,
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 games = {}  # Store active games by session ID
+session_sharing = {}  # Store session sharing data: share_code -> session_id
+device_sessions = {}  # Store device to session mapping: device_id -> session_id
 
 @app.route('/')
 def index():
@@ -188,6 +196,16 @@ def judge_leads():
     # Process votes and determine winner
     result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
     
+    # Broadcast lead voting result to all connected devices
+    broadcast_game_update(session_id, 'lead_votes_complete', {
+        'winner': result['winner'],
+        'guest_votes': result['guest_votes'],
+        'contestant_votes': result['contestant_votes']
+    })
+    
+    # Sync updated scores
+    sync_scores(session_id)
+    
     return jsonify({
         'winner': result['winner'],
         'guest_votes': result['guest_votes'],
@@ -217,6 +235,18 @@ def judge_follows():
     
     # Check for win condition
     win_messages = game.check_for_win() or []
+    
+    # Broadcast follow voting result to all connected devices
+    broadcast_game_update(session_id, 'follow_votes_complete', {
+        'winner': result['winner'],
+        'guest_votes': result['guest_votes'],
+        'contestant_votes': result['contestant_votes'],
+        'win_messages': win_messages,
+        'game_finished': game.is_finished()
+    })
+    
+    # Sync updated scores
+    sync_scores(session_id)
     
     return jsonify({
         'winner': result['winner'],
@@ -281,6 +311,17 @@ def next_round():
         return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
     state = game.get_game_state()
+    
+    # Broadcast next round to all connected devices
+    broadcast_game_update(session_id, 'next_round', {
+        'round': state['round'],
+        'pair_1': state['pair_1'],
+        'pair_2': state['pair_2'],
+        'contestant_judges': state['contestant_judges']
+    })
+    
+    # Sync current voting state
+    sync_voting_state(session_id)
     
     return jsonify({
         'round': state['round'],
@@ -1111,5 +1152,272 @@ def get_spotify_token():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Cross-Device Session Sharing Endpoints
+
+def generate_share_code():
+    """Generate a 6-digit alphanumeric share code"""
+    import string
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def generate_qr_code_data(data):
+    """Generate QR code as base64 encoded PNG"""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    
+    return base64.b64encode(buffer.getvalue()).decode()
+
+@app.route('/api/create_share_code', methods=['POST'])
+def create_share_code():
+    """Create a shareable code for cross-device access"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    session_id = data.get('session_id')
+    if not session_id or session_id not in games:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Generate share code
+    share_code = generate_share_code()
+    
+    # Store mapping
+    session_sharing[share_code] = {
+        'session_id': session_id,
+        'created_at': time.time(),
+        'expires_at': time.time() + 3600  # Expires in 1 hour
+    }
+    
+    # Create join URL and QR code
+    join_url = f"{request.host_url}join/{share_code}"
+    qr_code_data = generate_qr_code_data(join_url)
+    
+    return jsonify({
+        'share_code': share_code,
+        'join_url': join_url,
+        'qr_code': f"data:image/png;base64,{qr_code_data}",
+        'expires_in': 3600
+    })
+
+@app.route('/api/join_session', methods=['POST'])
+def join_session():
+    """Join an existing session using a share code"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    share_code = data.get('share_code', '').upper()
+    device_id = data.get('device_id', str(uuid.uuid4()))
+    
+    if not share_code:
+        return jsonify({'error': 'Share code is required'}), 400
+    
+    # Check if share code exists and is valid
+    if share_code not in session_sharing:
+        return jsonify({'error': 'Invalid share code'}), 404
+    
+    share_data = session_sharing[share_code]
+    
+    # Check if expired
+    if time.time() > share_data['expires_at']:
+        del session_sharing[share_code]
+        return jsonify({'error': 'Share code has expired'}), 410
+    
+    session_id = share_data['session_id']
+    
+    # Check if session still exists
+    if session_id not in games:
+        return jsonify({'error': 'Battle session no longer exists'}), 404
+    
+    # Map device to session
+    device_sessions[device_id] = session_id
+    
+    # Get current game state
+    game = games[session_id]
+    state = game.get_game_state()
+    
+    return jsonify({
+        'session_id': session_id,
+        'device_id': device_id,
+        'game_state': {
+            'round': state['round'],
+            'pair_1': state['pair_1'],
+            'pair_2': state['pair_2'],
+            'contestant_judges': state['contestant_judges'],
+            'guest_judges': game.guest_judges,
+            'initial_leads': [lead.name for lead in game.initial_leads],
+            'initial_follows': [follow.name for follow in game.initial_follows]
+        }
+    })
+
+@app.route('/join/<share_code>')
+def join_battle_session_redirect(share_code):
+    """Redirect page for joining battle sessions via QR code"""
+    share_code = share_code.upper()
+    
+    if share_code not in session_sharing:
+        return render_template('join_error.html', error='Invalid or expired share code'), 404
+    
+    share_data = session_sharing[share_code]
+    
+    if time.time() > share_data['expires_at']:
+        del session_sharing[share_code]
+        return render_template('join_error.html', error='Share code has expired'), 410
+    
+    session_id = share_data['session_id']
+    if session_id not in games:
+        return render_template('join_error.html', error='Battle session no longer exists'), 404
+    
+    # Redirect to main app with join parameters
+    return render_template('index.html', join_session=share_code)
+
+@app.route('/api/session_status/<session_id>')
+def get_session_status(session_id):
+    """Get current status of a session"""
+    if session_id not in games:
+        return jsonify({'error': 'Session not found'}), 404
+    
+    game = games[session_id]
+    state = game.get_game_state()
+    
+    return jsonify({
+        'session_id': session_id,
+        'active': True,
+        'round': state['round'],
+        'is_finished': game.is_finished()
+    })
+
+# Socket.IO Events for Real-time Synchronization
+
+@socketio.on('connect')
+def handle_connect():
+    print(f'Client connected: {request.sid}')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f'Client disconnected: {request.sid}')
+
+@socketio.on('join_session_room')
+def handle_join_session_room(data):
+    """Join a session room for real-time updates"""
+    session_id = data.get('session_id')
+    device_id = data.get('device_id')
+    
+    if session_id and session_id in games:
+        join_room(session_id)
+        emit('session_joined', {'session_id': session_id, 'device_id': device_id})
+        print(f'Device {device_id} joined session room {session_id}')
+
+@socketio.on('leave_session_room')
+def handle_leave_session_room(data):
+    """Leave a session room"""
+    session_id = data.get('session_id')
+    device_id = data.get('device_id')
+    
+    if session_id:
+        leave_room(session_id)
+        emit('session_left', {'session_id': session_id, 'device_id': device_id})
+        print(f'Device {device_id} left session room {session_id}')
+
+def broadcast_game_update(session_id, event_type, data):
+    """Broadcast game updates to all devices in a session"""
+    if session_id in games:
+        socketio.emit('game_update', {
+            'event_type': event_type,
+            'data': data,
+            'timestamp': time.time()
+        }, room=session_id)
+
+# Helper function to sync votes across devices
+def sync_voting_state(session_id):
+    """Sync current voting state to all connected devices"""
+    if session_id in games:
+        game = games[session_id]
+        state = game.get_game_state()
+        
+        broadcast_game_update(session_id, 'voting_state_sync', {
+            'round': state['round'],
+            'pair_1': state['pair_1'],
+            'pair_2': state['pair_2'],
+            'contestant_judges': state['contestant_judges'],
+            'guest_judges': game.guest_judges
+        })
+
+# Helper function to sync scores across devices
+def sync_scores(session_id):
+    """Sync current scores to all connected devices"""
+    if session_id in games:
+        game = games[session_id]
+        
+        # Get scores using existing endpoint logic
+        lead_dict = {}
+        follow_dict = {}
+        
+        # Helper function to determine if a contestant has earned a crown
+        def has_earned_crown(contestant, role):
+            if role == "lead":
+                return contestant.points >= game.total_num_leads - 1 and game.has_winning_lead
+            else:  # role == "follow"
+                return contestant.points >= game.total_num_follows - 1 and game.has_winning_follow
+        
+        # Add current pair contestants
+        lead_dict[game.pair_1[0].name] = {
+            'name': game.pair_1[0].name, 
+            'points': game.pair_1[0].points,
+            'is_winner': has_earned_crown(game.pair_1[0], "lead")
+        }
+        
+        lead_dict[game.pair_2[0].name] = {
+            'name': game.pair_2[0].name, 
+            'points': game.pair_2[0].points,
+            'is_winner': has_earned_crown(game.pair_2[0], "lead")
+        }
+        
+        follow_dict[game.pair_1[1].name] = {
+            'name': game.pair_1[1].name, 
+            'points': game.pair_1[1].points,
+            'is_winner': has_earned_crown(game.pair_1[1], "follow")
+        }
+        
+        follow_dict[game.pair_2[1].name] = {
+            'name': game.pair_2[1].name, 
+            'points': game.pair_2[1].points,
+            'is_winner': has_earned_crown(game.pair_2[1], "follow")
+        }
+        
+        # Add contestants from the queue
+        for lead in game.leads:
+            lead_dict[lead.name] = {
+                'name': lead.name, 
+                'points': lead.points,
+                'is_winner': has_earned_crown(lead, "lead")
+            }
+        
+        for follow in game.follows:
+            follow_dict[follow.name] = {
+                'name': follow.name, 
+                'points': follow.points,
+                'is_winner': has_earned_crown(follow, "follow")
+            }
+        
+        # Convert dictionaries to lists for the response
+        lead_list = list(lead_dict.values())
+        follow_list = list(follow_dict.values())
+        
+        broadcast_game_update(session_id, 'scores_update', {
+            'leads': lead_list,
+            'follows': follow_list
+        })
+
 if __name__ == '__main__':
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
+    socketio.run(app, host=config.HOST, port=config.PORT, debug=config.DEBUG) 

@@ -5,9 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hustle n' Tussle - Dance Competition</title>
     <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 </head>
 <body>
     <div id="session-id-display" class="session-id-display"></div>
+    
+    <!-- Cross-device sharing elements -->
+    <div id="share-battle-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="close-share-modal">&times;</span>
+            <h2>Share Battle Session</h2>
+            <div class="share-options">
+                <div class="share-code-section">
+                    <h3>Share Code</h3>
+                    <div class="share-code-display">
+                        <span id="share-code" class="share-code"></span>
+                        <button id="copy-share-code" class="btn secondary small">Copy</button>
+                    </div>
+                    <p class="share-instructions">Share this 6-digit code with others to let them join this battle.</p>
+                </div>
+                
+                <div class="qr-code-section">
+                    <h3>QR Code</h3>
+                    <div class="qr-code-display">
+                        <img id="qr-code-image" src="" alt="QR Code" />
+                    </div>
+                    <p class="share-instructions">Scan this QR code with your phone to join this battle.</p>
+                </div>
+                
+                <div class="share-url-section">
+                    <h3>Direct Link</h3>
+                    <div class="share-url-display">
+                        <input type="text" id="share-url" readonly />
+                        <button id="copy-share-url" class="btn secondary small">Copy</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="connected-devices">
+                <h4>Connected Devices</h4>
+                <div id="connected-devices-list">
+                    <span class="device-status">This device (host)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Join session modal -->
+    <div id="join-session-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="close-join-modal">&times;</span>
+            <h2>Join Battle Session</h2>
+            <div class="join-form">
+                <label for="join-code-input">Enter 6-digit share code:</label>
+                <input type="text" id="join-code-input" placeholder="ABC123" maxlength="6" />
+                <button id="join-session-btn" class="btn primary">Join Battle</button>
+                <div id="join-error" class="error-message"></div>
+            </div>
+        </div>
+    </div>
     <div class="container">
         <header>
             <h1>Hustle n' Tussle</h1>
@@ -21,6 +77,7 @@
             </div>
             <div class="home-actions">
                 <button id="go-to-battle" class="btn primary large">Start Battle</button>
+                <button id="join-battle" class="btn secondary large">Join Battle</button>
                 <button id="go-to-upload" class="btn secondary large">Upload Results</button>
             </div>
         </div>
@@ -86,7 +143,10 @@
         </div>
 
         <div id="battle-screen" class="screen">
-            <h1 id="battle-title">Battle</h1>
+            <div class="battle-header">
+                <h1 id="battle-title">Battle</h1>
+                <button id="share-battle" class="btn secondary small">📱 Share Battle</button>
+            </div>
             
             <div class="round-header">
                 <div class="round-info-container">
@@ -282,6 +342,7 @@
         window.ENABLE_DEBUG_TOOLS = {{ 'true' if config.ENABLE_DEBUG_TOOLS else 'false' }};
     </script>
     <script src="js/components/DebugTools.js"></script>
+    <script src="js/crossDevice.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html> 

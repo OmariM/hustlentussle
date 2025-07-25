@@ -65,4 +65,7 @@ function showScreen(screenId) {
         document.getElementById('leads-initial-order').innerHTML = '';
         document.getElementById('follows-initial-order').innerHTML = '';
     }
-} 
+}
+
+// Make showScreen globally available for cross-device functionality
+window.showScreen = showScreen; 

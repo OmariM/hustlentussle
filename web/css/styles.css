@@ -1237,4 +1237,245 @@ td span.crown {
     border-radius: 8px;
     margin-top: 0.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Cross-Device Sharing Styles */
+.battle-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.battle-header h1 {
+    margin: 0;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5% auto;
+    padding: 30px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 600px;
+    position: relative;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    position: absolute;
+    right: 20px;
+    top: 15px;
+    cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+    color: #000;
+    text-decoration: none;
+}
+
+.share-options {
+    display: grid;
+    gap: 25px;
+    margin-bottom: 30px;
+}
+
+.share-code-section,
+.qr-code-section,
+.share-url-section {
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.share-code-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.share-code {
+    font-family: 'Courier New', monospace;
+    font-size: 24px;
+    font-weight: bold;
+    background-color: white;
+    padding: 10px 15px;
+    border: 2px solid var(--primary-color);
+    border-radius: 5px;
+    letter-spacing: 2px;
+}
+
+.qr-code-display {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.qr-code-display img {
+    max-width: 200px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.share-url-display {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.share-url-display input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.share-instructions {
+    font-size: 14px;
+    color: var(--light-text);
+    margin-top: 10px;
+}
+
+.connected-devices {
+    border-top: 1px solid var(--border-color);
+    padding-top: 20px;
+}
+
+.connected-devices h4 {
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.device-status {
+    display: inline-block;
+    background-color: #d4edda;
+    color: #155724;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    margin: 2px;
+}
+
+.join-form {
+    display: grid;
+    gap: 15px;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.join-form label {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.join-form input {
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 16px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.join-form input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.error-screen {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.error-content {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.error-message {
+    color: #dc3545;
+    font-size: 18px;
+    margin: 20px 0;
+}
+
+.error-actions {
+    margin-top: 30px;
+}
+
+.help-text {
+    font-size: 14px;
+    color: var(--light-text);
+    margin-top: 15px;
+}
+
+/* Small button variant */
+.btn.small {
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+/* Real-time sync indicator */
+.sync-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    z-index: 100;
+}
+
+.sync-indicator.disconnected {
+    background-color: #dc3545;
+}
+
+/* Mobile responsive adjustments for modals */
+@media (max-width: 768px) {
+    .modal-content {
+        margin: 10% auto;
+        padding: 20px;
+        width: 95%;
+    }
+    
+    .battle-header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    .share-code {
+        font-size: 20px;
+    }
+    
+    .share-options {
+        gap: 15px;
+    }
+    
+    .qr-code-display img {
+        max-width: 150px;
+    }
 } 

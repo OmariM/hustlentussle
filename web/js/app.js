@@ -278,6 +278,18 @@ function updateSessionIdDisplay() {
     }
 }
 
+// Make this function globally available for cross-device functionality
+window.updateSessionIdDisplay = updateSessionIdDisplay;
+
+// Simple vote preview update function for cross-device compatibility
+function updateVotePreview() {
+    // This function can be expanded to show vote previews
+    // For now, it's a placeholder for cross-device compatibility
+}
+
+// Make globally available
+window.updateVotePreview = updateVotePreview;
+
 // Update the startCompetition function
 async function startCompetition() {
     const leads = leadNamesInput.value.trim();
