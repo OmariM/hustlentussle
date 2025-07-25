@@ -14,7 +14,7 @@ let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
-let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList;
+let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
 let currentLeadScores, currentFollowScores;
 let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
 let leadResults, followResults, leadWinner, followWinner;
@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
     follow1Name = document.getElementById('follow1-name');
     follow2Name = document.getElementById('follow2-name');
     contestantJudgesList = document.getElementById('contestant-judges-list');
+    guestJudgesList = document.getElementById('guest-judges-list');
     currentLeadScores = document.getElementById('current-lead-scores');
     currentFollowScores = document.getElementById('current-follow-scores');
 
@@ -324,7 +325,14 @@ function fetchScores() {
     fetch(`/api/get_scores?session_id=${sessionId}`)
         .then(response => response.json())
         .then(data => {
-            // Update score tables with new data
+            // Store current scores data
+            currentLeads = data.leads || [];
+            currentFollows = data.follows || [];
+            
+            // Update current scores display
+            updateScoresDisplay();
+            
+            // Update score tables with new data (for final results)
             updateScoreTable(data.leads, data.follows);
         })
         .catch(error => {
@@ -363,8 +371,37 @@ function updateRoundUI(data) {
     lead2Name.textContent = data.pair_2[0];
     follow2Name.textContent = data.pair_2[1];
     
+    // Update guest judges
+    guestJudgesList.innerHTML = '';
+    if (guestJudges.length > 0) {
+        guestJudges.forEach(judge => {
+            const judgeItem = document.createElement('div');
+            judgeItem.className = 'judge-item guest';
+            judgeItem.textContent = judge;
+            guestJudgesList.appendChild(judgeItem);
+        });
+    } else {
+        const noJudges = document.createElement('div');
+        noJudges.className = 'judge-item';
+        noJudges.textContent = 'No guest judges assigned';
+        guestJudgesList.appendChild(noJudges);
+    }
+    
     // Update contestant judges
-    contestantJudgesList.textContent = data.contestant_judges.join(', ');
+    contestantJudgesList.innerHTML = '';
+    if (data.contestant_judges && data.contestant_judges.length > 0) {
+        data.contestant_judges.forEach(judge => {
+            const judgeItem = document.createElement('div');
+            judgeItem.className = 'judge-item contestant';
+            judgeItem.textContent = judge;
+            contestantJudgesList.appendChild(judgeItem);
+        });
+    } else {
+        const noJudges = document.createElement('div');
+        noJudges.className = 'judge-item';
+        noJudges.textContent = 'No contestant judges assigned';
+        contestantJudgesList.appendChild(noJudges);
+    }
     
     // Reset voting sections - both are now visible side by side
     votingResults.classList.add('hidden');
@@ -396,8 +433,9 @@ function setupVotingUI() {
     
     const allJudges = [...guestJudges];
     
-    // Get contestant judges from the text content and split by comma
-    const contestantJudges = contestantJudgesList.textContent.split(', ');
+    // Get contestant judges from the DOM elements
+    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
     allJudges.push(...contestantJudges);
     
     // Create lead voting UI
@@ -535,7 +573,10 @@ function recordVote(judgeName, voteOption, voteType) {
 }
 
 function updateSubmitButtonState() {
-    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    // Get contestant judges from the DOM elements
+    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    const allJudges = [...guestJudges, ...contestantJudges];
     const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
     const followVotesComplete = allJudges.every(judge => followVotes[judge]);
     
@@ -569,7 +610,10 @@ function updateSubmitButtonState() {
 }
 
 function calculateWinner(voteType) {
-    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    // Get contestant judges from the DOM elements
+    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    const allJudges = [...guestJudges, ...contestantJudges];
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -665,7 +709,10 @@ function lockVoting(voteType) {
 }
 
 async function submitCombinedVotes() {
-    const allJudges = [...guestJudges, ...contestantJudgesList.textContent.split(', ')];
+    // Get contestant judges from the DOM elements
+    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    const allJudges = [...guestJudges, ...contestantJudges];
     
     // Check if all judges have voted for both lead and follow
     const missingLeadVotes = allJudges.filter(judge => !leadVotes[judge]);
@@ -771,6 +818,9 @@ async function goToNextRound() {
         // Update UI with new round data
         updateRoundUI(data);
         setupVotingUI();
+        
+        // Fetch and update current scores
+        await fetchScores();
     } catch (error) {
         console.error('Error starting next round:', error);
         alert('Failed to start the next round. Please try again.');
