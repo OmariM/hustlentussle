@@ -42,8 +42,8 @@ function startCompetition() {
         competition.scores.follows[follow] = 0;
     });
 
-    // Show the round screen
-    showScreen('round-screen');
+    // Show the battle screen
+    showScreen('battle-screen');
     updateRoundDisplay();
 }
 
