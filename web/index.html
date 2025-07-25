@@ -85,99 +85,82 @@
             </div>
         </div>
 
-        <div id="round-screen" class="screen">
-            <div class="round-header">
-                <div class="round-info-container">
-                    <div class="round-info">
-                        <h2>Round <span id="round-number">1</span></h2>
-                        <div class="song-input-container">
-                            <label for="song-input">Spotify Song Link:</label>
-                            <input type="url" id="song-input" placeholder="https://open.spotify.com/track/..." />
-                        </div>
-                        <div class="matchups">
-                            <div class="matchup">
-                                <h3>Couple 1</h3>
-                                <div class="pair">
-                                    <span id="lead1-name" class="contestant lead"></span> (Lead) &
-                                    <span id="follow1-name" class="contestant follow"></span> (Follow)
-                                </div>
-                            </div>
-                            <div class="matchup">
-                                <h3>Couple 2</h3>
-                                <div class="pair">
-                                    <span id="lead2-name" class="contestant lead"></span> (Lead) &
-                                    <span id="follow2-name" class="contestant follow"></span> (Follow)
-                                </div>
-                            </div>
-                        </div>
-                        <div class="judges">
-                            <h3>Contestant Judges:</h3>
-                            <div id="contestant-judges-list"></div>
-                        </div>
+        <div id="battle-screen" class="screen">
+            <h1 id="battle-title">Battle</h1>
+            
+            <div id="current-round" class="round-info">
+                <h2>Round <span id="round-number">1</span></h2>
+            </div>
+
+            <div id="song-input-section">
+                <h3>Song Information</h3>
+                <label for="song-input">Spotify URL (optional):</label>
+                <input type="url" id="song-input" placeholder="https://open.spotify.com/track/..." />
+            </div>
+
+            <div id="current-matchup" class="matchup-container">
+                <div class="matchup">
+                    <h3>Pair 1</h3>
+                    <div class="pair">
+                        <span class="contestant lead" id="lead1-name"></span> (Lead) / 
+                        <span class="contestant follow" id="follow1-name"></span> (Follow)
                     </div>
-                    
-                    <div class="scores-display">
-                        <h3>Current Scores</h3>
-                        <div class="scores-container">
-                            <div class="lead-scores">
-                                <h4>Leads</h4>
-                                <table class="score-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Pts</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="lead-score-body">
-                                        <!-- Lead scores will be inserted here -->
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="follow-scores">
-                                <h4>Follows</h4>
-                                <table class="score-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Pts</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="follow-score-body">
-                                        <!-- Follow scores will be inserted here -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                </div>
+                
+                <div class="vs">VS</div>
+                
+                <div class="matchup">
+                    <h3>Pair 2</h3>
+                    <div class="pair">
+                        <span class="contestant lead" id="lead2-name"></span> (Lead) / 
+                        <span class="contestant follow" id="follow2-name"></span> (Follow)
                     </div>
                 </div>
             </div>
 
-            <div id="lead-voting" class="voting-section">
-                <h2>Voting for Leads</h2>
-                <div id="lead-judges-container" class="judges-container"></div>
-                <div class="vote-submission">
-                    <button id="determine-lead-winner" class="btn primary">Determine Lead Winner</button>
-                </div>
-                <div id="lead-results" class="results hidden">
-                    <h3>Lead Winner: <span id="lead-winner"></span></h3>
-                    <div class="votes">
-                        <p>Guest Votes: <span id="lead-guest-votes"></span></p>
-                        <p>Contestant Votes: <span id="lead-contestant-votes"></span></p>
-                    </div>
-                </div>
+            <div class="judges">
+                <h3>Guest Judges</h3>
+                <div id="guest-judges-list"></div>
+                
+                <h3>Contestant Judges</h3>
+                <div id="contestant-judges-list"></div>
             </div>
 
-            <div id="follow-voting" class="voting-section hidden">
-                <h2>Voting for Follows</h2>
-                <div id="follow-judges-container" class="judges-container"></div>
-                <div class="vote-submission">
-                    <button id="determine-follow-winner" class="btn primary">Determine Follow Winner</button>
+            <div id="combined-voting" class="combined-voting-section">
+                <h2>Voting</h2>
+                <div class="voting-container">
+                    <div id="lead-voting" class="voting-section">
+                        <h3>Voting for Leads</h3>
+                        <div id="lead-judges-container" class="judges-container"></div>
+                    </div>
+
+                    <div id="follow-voting" class="voting-section">
+                        <h3>Voting for Follows</h3>
+                        <div id="follow-judges-container" class="judges-container"></div>
+                    </div>
                 </div>
-                <div id="follow-results" class="results hidden">
-                    <h3>Follow Winner: <span id="follow-winner"></span></h3>
-                    <div class="votes">
-                        <p>Guest Votes: <span id="follow-guest-votes"></span></p>
-                        <p>Contestant Votes: <span id="follow-contestant-votes"></span></p>
+                
+                <div class="vote-submission">
+                    <button id="submit-votes" class="btn primary">Submit All Votes</button>
+                </div>
+                
+                <div id="voting-results" class="results hidden">
+                    <div class="results-container">
+                        <div id="lead-results" class="result-section">
+                            <h3>Lead Winner: <span id="lead-winner"></span></h3>
+                            <div class="votes">
+                                <p>Guest Votes: <span id="lead-guest-votes"></span></p>
+                                <p>Contestant Votes: <span id="lead-contestant-votes"></span></p>
+                            </div>
+                        </div>
+                        
+                        <div id="follow-results" class="result-section">
+                            <h3>Follow Winner: <span id="follow-winner"></span></h3>
+                            <div class="votes">
+                                <p>Guest Votes: <span id="follow-guest-votes"></span></p>
+                                <p>Contestant Votes: <span id="follow-contestant-votes"></span></p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

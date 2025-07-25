@@ -410,7 +410,7 @@ class DebugTools {
             
             // Show the round screen
             document.getElementById('setup-screen').classList.remove('active');
-            document.getElementById('round-screen').classList.add('active');
+            document.getElementById('battle-screen').classList.add('active');
             
             // Setup voting UI
             this.setupVotingUI();
@@ -578,7 +578,7 @@ class DebugTools {
             console.log('Game state:', data);
             
             // Check if we're on the round screen
-            const roundScreen = document.getElementById('round-screen');
+            const roundScreen = document.getElementById('battle-screen');
             if (!roundScreen || !roundScreen.classList.contains('active')) {
                 alert('Please navigate to the round screen first.');
                 return;
@@ -723,7 +723,7 @@ class DebugTools {
                 document.getElementById('song-input').value = songUrl;
             }
 
-            // First, handle lead votes
+            // Handle both lead and follow votes simultaneously
             console.log('Handling lead votes...');
             const leadVotesProcessed = await this.randomVotes(true);
             if (!leadVotesProcessed) {
@@ -731,7 +731,6 @@ class DebugTools {
                 return;
             }
             
-            // Then, handle follow votes
             console.log('Handling follow votes...');
             const followVotesProcessed = await this.randomVotes(false);
             if (!followVotesProcessed) {
@@ -739,13 +738,24 @@ class DebugTools {
                 return;
             }
             
-            // Find and click the Next Round button
-            const nextRoundButton = document.getElementById('next-round');
-            if (nextRoundButton) {
-                console.log('Clicking Next Round button...');
-                nextRoundButton.click();
+            // Submit all votes using the combined submit button
+            const submitVotesButton = document.getElementById('submit-votes');
+            if (submitVotesButton) {
+                console.log('Clicking Submit All Votes button...');
+                submitVotesButton.click();
+                
+                // Wait a bit for the voting to process, then click Next Round
+                setTimeout(() => {
+                    const nextRoundButton = document.getElementById('next-round');
+                    if (nextRoundButton && !nextRoundButton.disabled) {
+                        console.log('Clicking Next Round button...');
+                        nextRoundButton.click();
+                    } else {
+                        console.warn('Next Round button not found or disabled');
+                    }
+                }, 2000);
             } else {
-                console.warn('Next Round button not found');
+                console.warn('Submit All Votes button not found');
             }
         } catch (error) {
             console.error('Error in next round process:', error);
