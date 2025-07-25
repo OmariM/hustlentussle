@@ -40,7 +40,10 @@ def index():
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     lead_names = data.get('leads', '').split(',')
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
@@ -223,15 +226,59 @@ def judge_follows():
         'game_finished': game.is_finished()
     })
 
+@app.route('/api/judge_combined', methods=['POST'])
+def judge_combined():
+    data = request.get_json()
+    session_id = data.get('session_id')
+    lead_votes = data.get('lead_votes', [])
+    follow_votes = data.get('follow_votes', [])
+    song_info = data.get('song_info', {})
+    
+    if not session_id or not lead_votes or not follow_votes:
+        return jsonify({'error': 'Missing session_id, lead_votes, or follow_votes'}), 400
+    
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Store song info in the current round
+    if song_info:
+        game.current_round.song_info = song_info
+    
+    # Process lead votes and determine winner
+    lead_result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes)
+    
+    # Process follow votes and determine winner
+    follow_result = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes)
+    
+    # Check for win condition
+    win_messages = game.check_for_win() or []
+    
+    return jsonify({
+        'lead_winner': lead_result['winner'],
+        'lead_guest_votes': lead_result['guest_votes'],
+        'lead_contestant_votes': lead_result['contestant_votes'],
+        'follow_winner': follow_result['winner'],
+        'follow_guest_votes': follow_result['guest_votes'],
+        'follow_contestant_votes': follow_result['contestant_votes'],
+        'win_messages': win_messages,
+        'game_finished': game.is_finished()
+    })
+
 @app.route('/api/next_round', methods=['POST'])
 def next_round():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     session_id = data.get('session_id')
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
     state = game.get_game_state()
     
@@ -244,13 +291,18 @@ def next_round():
 
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
-    data = request.json
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
     session_id = data.get('session_id')
     
-    if session_id not in games:
-        return jsonify({'error': 'Game not found'}), 404
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games[session_id]
+    game = games.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
     leads, follows = game.finalize_results()
     
     # Format the results - include all leads
