@@ -626,6 +626,11 @@ class CrossDeviceManager {
                 this.handleVotingStateSync(data.data);
                 break;
 
+            case 'voting_results':
+                console.log('Processing voting_results event');
+                this.handleVotingResults(data.data);
+                break;
+
             default:
                 console.log('Unknown game update type:', data.event_type);
         }
@@ -784,13 +789,21 @@ class CrossDeviceManager {
             changed: contestantNamesChanged
         });
         
-        // Always recreate voting UI when we receive a voting_state_sync event
-        // because it means the voting state has changed (new round, new contestants, etc.)
-        if (typeof setupVotingUI === 'function') {
-            setupVotingUI();
-            console.log('Setup voting UI called from voting_state_sync (voting state updated)');
+        // Check if voting results are currently visible
+        const votingResults = document.getElementById('voting-results');
+        const votingResultsVisible = votingResults && !votingResults.classList.contains('hidden');
+        
+        // Only recreate voting UI if voting results are not visible
+        // This prevents interfering with the voting results display
+        if (!votingResultsVisible) {
+            if (typeof setupVotingUI === 'function') {
+                setupVotingUI();
+                console.log('Setup voting UI called from voting_state_sync (voting state updated)');
+            } else {
+                console.log('setupVotingUI function not available');
+            }
         } else {
-            console.log('setupVotingUI function not available');
+            console.log('Voting results are visible, skipping voting UI setup to preserve results');
         }
 
         // For joined devices, we don't need to reset voting state since they're just joining
@@ -820,6 +833,57 @@ class CrossDeviceManager {
         // Reset vote preview
         if (typeof updateVotePreview === 'function') {
             updateVotePreview();
+        }
+    }
+
+    handleVotingResults(data) {
+        console.log('Handling voting results:', data);
+        
+        // Show voting results section
+        const votingResults = document.getElementById('voting-results');
+        if (votingResults) {
+            votingResults.classList.remove('hidden');
+        }
+        
+        // Update lead results
+        const leadResults = document.getElementById('lead-results');
+        const leadWinner = document.getElementById('lead-winner');
+        const leadGuestVotes = document.getElementById('lead-guest-votes');
+        const leadContestantVotes = document.getElementById('lead-contestant-votes');
+        
+        if (leadWinner) leadWinner.textContent = data.lead_winner;
+        if (leadGuestVotes) leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
+        if (leadContestantVotes) leadContestantVotes.textContent = data.lead_contestant_votes.join(', ') || 'None';
+        if (leadResults) leadResults.style.display = 'block';
+        
+        // Update follow results
+        const followResults = document.getElementById('follow-results');
+        const followWinner = document.getElementById('follow-winner');
+        const followGuestVotes = document.getElementById('follow-guest-votes');
+        const followContestantVotes = document.getElementById('follow-contestant-votes');
+        
+        if (followWinner) followWinner.textContent = data.follow_winner;
+        if (followGuestVotes) followGuestVotes.textContent = data.follow_guest_votes.join(', ') || 'None';
+        if (followContestantVotes) followContestantVotes.textContent = data.follow_contestant_votes.join(', ') || 'None';
+        if (followResults) followResults.style.display = 'block';
+        
+        // Show win messages if any
+        if (data.win_messages && data.win_messages.length > 0) {
+            this.showWinMessages(data.win_messages);
+        }
+        
+        // Show round results section
+        const roundResultsSection = document.getElementById('round-results-section');
+        if (roundResultsSection) {
+            roundResultsSection.classList.remove('hidden');
+        }
+        
+        // Disable next round button if game is finished
+        if (data.game_finished) {
+            const nextRoundBtn = document.getElementById('next-round-btn');
+            if (nextRoundBtn) {
+                nextRoundBtn.disabled = true;
+            }
         }
     }
 

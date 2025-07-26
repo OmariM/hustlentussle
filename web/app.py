@@ -288,6 +288,18 @@ def judge_combined():
     # Sync updated scores to all connected devices
     sync_scores(session_id)
     
+    # Sync voting results to all connected devices
+    broadcast_game_update(session_id, 'voting_results', {
+        'lead_winner': lead_result['winner'],
+        'lead_guest_votes': lead_result['guest_votes'],
+        'lead_contestant_votes': lead_result['contestant_votes'],
+        'follow_winner': follow_result['winner'],
+        'follow_guest_votes': follow_result['guest_votes'],
+        'follow_contestant_votes': follow_result['contestant_votes'],
+        'win_messages': win_messages,
+        'game_finished': game.is_finished()
+    })
+    
     return jsonify({
         'lead_winner': lead_result['winner'],
         'lead_guest_votes': lead_result['guest_votes'],
