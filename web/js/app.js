@@ -327,6 +327,11 @@ async function startCompetition() {
         
         // Show round screen
         showScreen(roundScreen);
+        
+        // Join the session room for cross-device functionality
+        if (window.crossDeviceManager && window.crossDeviceManager.joinSessionRoom) {
+            window.crossDeviceManager.joinSessionRoom();
+        }
     } catch (error) {
         console.error('Error starting game:', error);
         alert('Failed to start the competition. Please try again.');
@@ -471,6 +476,9 @@ function setupVotingUI() {
     // Initialize submit button state
     updateSubmitButtonState();
 }
+
+// Expose setupVotingUI globally for cross-device functionality
+window.setupVotingUI = setupVotingUI;
 
 function createJudgeVotingCard(judgeName, isGuest, voteType) {
     const judgeCard = document.createElement('div');

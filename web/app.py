@@ -41,6 +41,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 games = {}  # Store active games by session ID
 session_sharing = {}  # Store session sharing data: share_code -> session_id
 device_sessions = {}  # Store device to session mapping: device_id -> session_id
+connected_devices = {}  # Store connected devices per session: session_id -> [device_ids]
 
 @app.route('/')
 def index():
@@ -283,6 +284,9 @@ def judge_combined():
     
     # Check for win condition
     win_messages = game.check_for_win() or []
+    
+    # Sync updated scores to all connected devices
+    sync_scores(session_id)
     
     return jsonify({
         'lead_winner': lead_result['winner'],
@@ -1297,6 +1301,24 @@ def get_session_status(session_id):
         'is_finished': game.is_finished()
     })
 
+@app.route('/api/connected_devices/<session_id>')
+def get_connected_devices(session_id):
+    """Get list of connected devices for a session"""
+    print(f'DEBUG: get_connected_devices called for session_id={session_id}')
+    print(f'DEBUG: Current connected_devices: {connected_devices}')
+    
+    if session_id not in games:
+        return jsonify({'error': 'Session not found'}), 404
+    
+    devices = connected_devices.get(session_id, [])
+    print(f'DEBUG: Returning devices for session {session_id}: {devices}')
+    
+    return jsonify({
+        'session_id': session_id,
+        'connected_devices': devices,
+        'count': len(devices)
+    })
+
 # Socket.IO Events for Real-time Synchronization
 
 @socketio.on('connect')
@@ -1313,10 +1335,50 @@ def handle_join_session_room(data):
     session_id = data.get('session_id')
     device_id = data.get('device_id')
     
+    print(f'DEBUG: join_session_room called with session_id={session_id}, device_id={device_id}')
+    print(f'DEBUG: Current connected_devices: {connected_devices}')
+    
     if session_id and session_id in games:
         join_room(session_id)
+        
+        # Track connected devices
+        if session_id not in connected_devices:
+            connected_devices[session_id] = []
+        if device_id not in connected_devices[session_id]:
+            connected_devices[session_id].append(device_id)
+            print(f'DEBUG: Added device {device_id} to session {session_id}')
+        else:
+            print(f'DEBUG: Device {device_id} already in session {session_id}')
+        
+        # Broadcast to all devices in the room that a new device joined
+        socketio.emit('device_joined', {
+            'session_id': session_id,
+            'device_id': device_id,
+            'connected_devices': connected_devices[session_id]
+        }, room=session_id)
+        
+        # Send current voting state only to the newly joined device
+        if session_id in games:
+            game = games[session_id]
+            state = game.get_game_state()
+            
+            emit('game_update', {
+                'event_type': 'voting_state_sync',
+                'data': {
+                    'round': state['round'],
+                    'pair_1': state['pair_1'],
+                    'pair_2': state['pair_2'],
+                    'contestant_judges': state['contestant_judges'],
+                    'guest_judges': game.guest_judges
+                },
+                'timestamp': time.time()
+            })
+        
         emit('session_joined', {'session_id': session_id, 'device_id': device_id})
         print(f'Device {device_id} joined session room {session_id}')
+        print(f'Connected devices for session {session_id}: {connected_devices[session_id]}')
+    else:
+        print(f'DEBUG: Invalid session_id={session_id} or session not in games')
 
 @socketio.on('leave_session_room')
 def handle_leave_session_room(data):
@@ -1326,8 +1388,23 @@ def handle_leave_session_room(data):
     
     if session_id:
         leave_room(session_id)
+        
+        # Remove device from tracking
+        if session_id in connected_devices and device_id in connected_devices[session_id]:
+            connected_devices[session_id].remove(device_id)
+        
+        # Broadcast to remaining devices
+        if session_id in connected_devices:
+            socketio.emit('device_left', {
+                'session_id': session_id,
+                'device_id': device_id,
+                'connected_devices': connected_devices[session_id]
+            }, room=session_id)
+        
         emit('session_left', {'session_id': session_id, 'device_id': device_id})
         print(f'Device {device_id} left session room {session_id}')
+        if session_id in connected_devices:
+            print(f'Remaining devices for session {session_id}: {connected_devices[session_id]}')
 
 def broadcast_game_update(session_id, event_type, data):
     """Broadcast game updates to all devices in a session"""
@@ -1352,6 +1429,8 @@ def sync_voting_state(session_id):
             'contestant_judges': state['contestant_judges'],
             'guest_judges': game.guest_judges
         })
+
+
 
 # Helper function to sync scores across devices
 def sync_scores(session_id):

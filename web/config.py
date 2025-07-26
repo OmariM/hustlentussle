@@ -7,7 +7,7 @@ class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-hustle-n-tussle-key')
     SESSION_TYPE = 'filesystem'
-    HOST = '0.0.0.0'
+    HOST = '127.0.0.1'
     PORT = 5001
     DEBUG = True
     ENABLE_DEBUG_TOOLS = False  # Master switch for debug tools
@@ -18,7 +18,7 @@ class DevelopmentConfig(Config):
     DEBUG = True
     ENABLE_DEBUG_TOOLS = True  # Enable debug tools in development
     HOST = '127.0.0.1'
-    PORT = 5000
+    PORT = 5001
 
 
 class ProductionConfig(Config):

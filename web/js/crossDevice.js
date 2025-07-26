@@ -11,13 +11,11 @@ class CrossDeviceManager {
     }
 
     generateDeviceId() {
-        // Generate or retrieve device ID from localStorage
-        let deviceId = localStorage.getItem('deviceId');
-        if (!deviceId) {
-            deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('deviceId', deviceId);
-        }
-        return deviceId;
+        // Generate a unique device ID for this tab (don't reuse from localStorage)
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substr(2, 9);
+        const tabId = Math.random().toString(36).substr(2, 6); // Add tab-specific component
+        return `device_${timestamp}${random}_${tabId}`;
     }
 
     init() {
@@ -35,7 +33,10 @@ class CrossDeviceManager {
                 console.log('Connected to server for real-time sync');
                 this.isConnected = true;
                 this.updateSyncIndicator(true);
-                this.joinSessionRoom();
+                // Only join session room if we have a session ID
+                if (sessionId) {
+                    this.joinSessionRoom();
+                }
             });
 
             this.socket.on('disconnect', () => {
@@ -45,11 +46,23 @@ class CrossDeviceManager {
             });
 
             this.socket.on('game_update', (data) => {
+                console.log('Received game update:', data);
+                console.log('Current sessionId:', sessionId, 'Device ID:', this.deviceId);
                 this.handleGameUpdate(data);
             });
 
             this.socket.on('session_joined', (data) => {
                 console.log('Joined session room:', data);
+            });
+
+            this.socket.on('device_joined', (data) => {
+                console.log('Device joined:', data);
+                this.updateConnectedDevicesList(data.connected_devices);
+            });
+
+            this.socket.on('device_left', (data) => {
+                console.log('Device left:', data);
+                this.updateConnectedDevicesList(data.connected_devices);
             });
         }
     }
@@ -87,6 +100,12 @@ class CrossDeviceManager {
         const copyShareUrl = document.getElementById('copy-share-url');
         if (copyShareUrl) {
             copyShareUrl.addEventListener('click', () => this.copyToClipboard('share-url'));
+        }
+
+        // Refresh devices button
+        const refreshDevices = document.getElementById('refresh-devices');
+        if (refreshDevices) {
+            refreshDevices.addEventListener('click', () => this.loadConnectedDevices());
         }
 
         // Join session button
@@ -208,6 +227,9 @@ class CrossDeviceManager {
                 this.shareData = data;
                 this.displayShareData(data);
                 document.getElementById('share-battle-modal').style.display = 'block';
+                
+                // Load current connected devices
+                this.loadConnectedDevices();
             } else {
                 this.showError('Failed to create share code: ' + data.error);
             }
@@ -281,18 +303,21 @@ class CrossDeviceManager {
     }
 
     handleJoinSuccess(data) {
+        console.log('Join success! Data received:', data);
+        
         // Set global session variables
         window.sessionId = data.session_id;
         sessionId = data.session_id;
         this.isJoinedDevice = true;
         
-        // Store in localStorage
+        // Store session ID in localStorage (but not device ID - each tab should be unique)
         localStorage.setItem('sessionId', data.session_id);
-        localStorage.setItem('deviceId', data.device_id);
 
         // Update UI
         this.updateSyncIndicator(this.isConnected);
-        updateSessionIdDisplay();
+        if (typeof updateSessionIdDisplay === 'function') {
+            updateSessionIdDisplay();
+        }
 
         // Navigate to battle screen and load game state
         this.loadGameState(data.game_state);
@@ -304,52 +329,151 @@ class CrossDeviceManager {
     }
 
     loadGameState(gameState) {
-        // Hide home screen and show battle screen
-        showScreen('battle-screen');
-
-        // Update round information
-        if (document.getElementById('round-number')) {
-            document.getElementById('round-number').textContent = gameState.round;
-        }
-
-        // Update matchups
-        if (gameState.pair_1 && gameState.pair_2) {
-            if (document.getElementById('lead1-name')) {
-                document.getElementById('lead1-name').textContent = gameState.pair_1[0];
-            }
-            if (document.getElementById('follow1-name')) {
-                document.getElementById('follow1-name').textContent = gameState.pair_1[1];
-            }
-            if (document.getElementById('lead2-name')) {
-                document.getElementById('lead2-name').textContent = gameState.pair_2[0];
-            }
-            if (document.getElementById('follow2-name')) {
-                document.getElementById('follow2-name').textContent = gameState.pair_2[1];
-            }
-        }
-
-        // Set global variables
+        console.log('Loading game state:', gameState);
+        
+        // Set global variables first (these are used by the main app)
+        window.guestJudges = gameState.guest_judges || [];
+        window.initialLeads = gameState.initial_leads || [];
+        window.initialFollows = gameState.initial_follows || [];
+        
+        // Also set the local variables
         guestJudges = gameState.guest_judges || [];
         initialLeads = gameState.initial_leads || [];
         initialFollows = gameState.initial_follows || [];
 
-        // Update judges list if available
+        // Hide home screen and show battle screen
+        this.showBattleScreen();
+
+        // Wait a moment for the screen to load, then update UI
+        setTimeout(() => {
+            this.updateBattleUI(gameState);
+        }, 100);
+    }
+
+    showBattleScreen() {
+        // Hide all screens
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+        
+        // Show the battle screen
+        const battleScreen = document.getElementById('battle-screen');
+        if (battleScreen) {
+            battleScreen.classList.add('active');
+        } else {
+            console.error('Battle screen element not found');
+        }
+    }
+
+    updateBattleUI(gameState) {
+        console.log('Updating battle UI with:', gameState);
+        
+        // Update round information
+        const roundNumber = document.getElementById('round-number');
+        if (roundNumber) {
+            roundNumber.textContent = gameState.round;
+        }
+
+        // Update matchups
+        if (gameState.pair_1 && gameState.pair_2) {
+            const lead1Name = document.getElementById('lead1-name');
+            const follow1Name = document.getElementById('follow1-name');
+            const lead2Name = document.getElementById('lead2-name');
+            const follow2Name = document.getElementById('follow2-name');
+
+            if (lead1Name) lead1Name.textContent = gameState.pair_1[0];
+            if (follow1Name) follow1Name.textContent = gameState.pair_1[1];
+            if (lead2Name) lead2Name.textContent = gameState.pair_2[0];
+            if (follow2Name) follow2Name.textContent = gameState.pair_2[1];
+        }
+
+        // Update judges list
         this.updateJudgesList(gameState.contestant_judges, guestJudges);
 
-        // Load scores
+        // Setup voting UI (this creates all the voting elements)
+        if (typeof setupVotingUI === 'function') {
+            setupVotingUI();
+        }
+
+        // Load and display scores
         this.loadScores();
+        
+        // Update session ID display
+        if (typeof updateSessionIdDisplay === 'function') {
+            updateSessionIdDisplay();
+        }
+        
+        // Force a refresh of the scores display to ensure everything shows up
+        setTimeout(() => {
+            this.loadScores();
+        }, 200);
     }
 
     updateJudgesList(contestantJudges, guestJudges) {
         const contestantJudgesList = document.getElementById('contestant-judges-list');
         const guestJudgesList = document.getElementById('guest-judges-list');
 
+        // Update contestant judges with proper DOM structure
         if (contestantJudgesList && contestantJudges) {
-            contestantJudgesList.innerHTML = contestantJudges.join(', ') || 'None';
+            contestantJudgesList.innerHTML = '';
+            if (contestantJudges.length > 0) {
+                contestantJudges.forEach(judge => {
+                    const judgeItem = document.createElement('div');
+                    judgeItem.className = 'judge-item contestant';
+                    judgeItem.textContent = judge;
+                    contestantJudgesList.appendChild(judgeItem);
+                });
+            } else {
+                const noJudges = document.createElement('div');
+                noJudges.className = 'judge-item';
+                noJudges.textContent = 'No contestant judges assigned';
+                contestantJudgesList.appendChild(noJudges);
+            }
         }
 
+        // Update guest judges (keep as simple text for display)
         if (guestJudgesList && guestJudges) {
             guestJudgesList.innerHTML = guestJudges.join(', ') || 'None';
+        }
+    }
+
+    updateConnectedDevicesList(deviceIds) {
+        const connectedDevicesList = document.getElementById('connected-devices-list');
+        if (!connectedDevicesList) return;
+
+        // Clear existing list
+        connectedDevicesList.innerHTML = '';
+
+        // Add host device
+        const hostDevice = document.createElement('span');
+        hostDevice.className = 'device-status';
+        hostDevice.textContent = 'This device (host)';
+        connectedDevicesList.appendChild(hostDevice);
+
+        // Add joined devices
+        deviceIds.forEach(deviceId => {
+            if (deviceId !== this.deviceId) { // Don't show this device twice
+                const deviceElement = document.createElement('span');
+                deviceElement.className = 'device-status';
+                deviceElement.textContent = `Device ${deviceId.substring(0, 8)}...`;
+                connectedDevicesList.appendChild(deviceElement);
+            }
+        });
+    }
+
+    async loadConnectedDevices() {
+        if (!sessionId) return;
+
+        try {
+            const response = await fetch(`/api/connected_devices/${sessionId}`);
+            const data = await response.json();
+
+            if (response.ok) {
+                console.log('Loaded connected devices:', data);
+                this.updateConnectedDevicesList(data.connected_devices);
+            }
+        } catch (error) {
+            console.error('Error loading connected devices:', error);
         }
     }
 
@@ -369,28 +493,87 @@ class CrossDeviceManager {
     }
 
     updateScoresDisplay(scores) {
+        console.log('Updating scores display:', scores);
+        
         const currentLeadScores = document.getElementById('current-lead-scores');
         const currentFollowScores = document.getElementById('current-follow-scores');
 
+        console.log('Found currentLeadScores element:', currentLeadScores);
+        console.log('Found currentFollowScores element:', currentFollowScores);
+
         if (currentLeadScores && scores.leads) {
-            currentLeadScores.innerHTML = scores.leads
-                .sort((a, b) => b.points - a.points)
-                .map(lead => `
-                    <div class="contestant-score ${lead.is_winner ? 'winner' : ''}">
-                        ${lead.is_winner ? '👑 ' : ''}${lead.name} (${lead.points} pts)
-                    </div>
-                `).join('');
+            // Clear existing content
+            currentLeadScores.innerHTML = '';
+            console.log('Cleared currentLeadScores, adding', scores.leads.length, 'leads');
+            
+            // Sort by points (highest first)
+            const sortedLeads = [...scores.leads].sort((a, b) => b.points - a.points);
+            console.log('Sorted leads:', sortedLeads);
+            
+            // Add each lead as a list item (matching the main app format)
+            sortedLeads.forEach(lead => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="score-name">${lead.name}${lead.is_winner ? ' 👑' : ''}</span><span class="score-points">${lead.points}</span>`;
+                currentLeadScores.appendChild(li);
+                console.log('Added lead:', lead.name, 'with', lead.points, 'points');
+            });
+        } else {
+            console.log('currentLeadScores not found or no leads data');
         }
 
         if (currentFollowScores && scores.follows) {
-            currentFollowScores.innerHTML = scores.follows
-                .sort((a, b) => b.points - a.points)
-                .map(follow => `
-                    <div class="contestant-score ${follow.is_winner ? 'winner' : ''}">
-                        ${follow.is_winner ? '👑 ' : ''}${follow.name} (${follow.points} pts)
-                    </div>
-                `).join('');
+            // Clear existing content
+            currentFollowScores.innerHTML = '';
+            console.log('Cleared currentFollowScores, adding', scores.follows.length, 'follows');
+            
+            // Sort by points (highest first)
+            const sortedFollows = [...scores.follows].sort((a, b) => b.points - a.points);
+            console.log('Sorted follows:', sortedFollows);
+            
+            // Add each follow as a list item (matching the main app format)
+            sortedFollows.forEach(follow => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="score-name">${follow.name}${follow.is_winner ? ' 👑' : ''}</span><span class="score-points">${follow.points}</span>`;
+                currentFollowScores.appendChild(li);
+                console.log('Added follow:', follow.name, 'with', follow.points, 'points');
+            });
+        } else {
+            console.log('currentFollowScores not found or no follows data');
         }
+        
+        // Also update the global variables that the main app uses
+        if (scores.leads) {
+            window.currentLeads = scores.leads;
+            // Also set the local variable if it exists
+            if (typeof currentLeads !== 'undefined') {
+                currentLeads = scores.leads;
+            }
+            console.log('Updated global currentLeads:', window.currentLeads);
+        }
+        if (scores.follows) {
+            window.currentFollows = scores.follows;
+            // Also set the local variable if it exists
+            if (typeof currentFollows !== 'undefined') {
+                currentFollows = scores.follows;
+            }
+            console.log('Updated global currentFollows:', window.currentFollows);
+        }
+        
+        // Debug: Check if the scores are actually visible in the DOM
+        setTimeout(() => {
+            console.log('Final currentLeadScores HTML:', currentLeadScores ? currentLeadScores.innerHTML : 'null');
+            console.log('Final currentFollowScores HTML:', currentFollowScores ? currentFollowScores.innerHTML : 'null');
+            
+            // Check if the scores section is visible
+            const scoresSection = document.querySelector('.scores-section');
+            if (scoresSection) {
+                console.log('Scores section display style:', scoresSection.style.display);
+                console.log('Scores section visibility:', scoresSection.style.visibility);
+                console.log('Scores section computed display:', window.getComputedStyle(scoresSection).display);
+            } else {
+                console.log('Scores section not found');
+            }
+        }, 100);
     }
 
     joinSessionRoom() {
@@ -407,22 +590,39 @@ class CrossDeviceManager {
 
         switch (data.event_type) {
             case 'scores_update':
-                this.updateScoresDisplay(data.data);
+                console.log('Processing scores_update event');
+                // Use the main app's updateScoresDisplay function instead of our own
+                if (typeof updateScoresDisplay === 'function') {
+                    // Update the global variables first
+                    window.currentLeads = data.data.leads;
+                    window.currentFollows = data.data.follows;
+                    if (typeof currentLeads !== 'undefined') currentLeads = data.data.leads;
+                    if (typeof currentFollows !== 'undefined') currentFollows = data.data.follows;
+                    // Then call the main app's function
+                    updateScoresDisplay();
+                } else {
+                    // Fallback to our own implementation
+                    this.updateScoresDisplay(data.data);
+                }
                 break;
 
             case 'lead_votes_complete':
+                console.log('Processing lead_votes_complete event');
                 this.handleVotingComplete('lead', data.data);
                 break;
 
             case 'follow_votes_complete':
+                console.log('Processing follow_votes_complete event');
                 this.handleVotingComplete('follow', data.data);
                 break;
 
             case 'next_round':
+                console.log('Processing next_round event');
                 this.handleNextRound(data.data);
                 break;
 
             case 'voting_state_sync':
+                console.log('Processing voting_state_sync event');
                 this.handleVotingStateSync(data.data);
                 break;
 
@@ -461,24 +661,50 @@ class CrossDeviceManager {
     }
 
     handleNextRound(data) {
+        console.log('handleNextRound called with data:', data);
+        
         // Update round information
-        if (document.getElementById('round-number')) {
-            document.getElementById('round-number').textContent = data.round;
+        const roundNumber = document.getElementById('round-number');
+        if (roundNumber) {
+            roundNumber.textContent = data.round;
+            console.log('Updated round number to:', data.round);
+        } else {
+            console.log('round-number element not found');
         }
 
         // Update matchups
         if (data.pair_1 && data.pair_2) {
-            if (document.getElementById('lead1-name')) {
-                document.getElementById('lead1-name').textContent = data.pair_1[0];
+            const lead1Name = document.getElementById('lead1-name');
+            const follow1Name = document.getElementById('follow1-name');
+            const lead2Name = document.getElementById('lead2-name');
+            const follow2Name = document.getElementById('follow2-name');
+            
+            if (lead1Name) {
+                lead1Name.textContent = data.pair_1[0];
+                console.log('Updated lead1-name to:', data.pair_1[0]);
+            } else {
+                console.log('lead1-name element not found');
             }
-            if (document.getElementById('follow1-name')) {
-                document.getElementById('follow1-name').textContent = data.pair_1[1];
+            
+            if (follow1Name) {
+                follow1Name.textContent = data.pair_1[1];
+                console.log('Updated follow1-name to:', data.pair_1[1]);
+            } else {
+                console.log('follow1-name element not found');
             }
-            if (document.getElementById('lead2-name')) {
-                document.getElementById('lead2-name').textContent = data.pair_2[0];
+            
+            if (lead2Name) {
+                lead2Name.textContent = data.pair_2[0];
+                console.log('Updated lead2-name to:', data.pair_2[0]);
+            } else {
+                console.log('lead2-name element not found');
             }
-            if (document.getElementById('follow2-name')) {
-                document.getElementById('follow2-name').textContent = data.pair_2[1];
+            
+            if (follow2Name) {
+                follow2Name.textContent = data.pair_2[1];
+                console.log('Updated follow2-name to:', data.pair_2[1]);
+            } else {
+                console.log('follow2-name element not found');
             }
         }
 
@@ -490,8 +716,92 @@ class CrossDeviceManager {
     }
 
     handleVotingStateSync(data) {
-        // Sync voting state with other devices
+        console.log('Processing voting_state_sync event with data:', data);
+        
+        // Update round information
+        const roundNumber = document.getElementById('round-number');
+        if (roundNumber) {
+            roundNumber.textContent = data.round;
+        }
+
+        // Update matchups FIRST (before setting up voting UI)
+        if (data.pair_1 && data.pair_2) {
+            const lead1Name = document.getElementById('lead1-name');
+            const follow1Name = document.getElementById('follow1-name');
+            const lead2Name = document.getElementById('lead2-name');
+            const follow2Name = document.getElementById('follow2-name');
+            
+            if (lead1Name) lead1Name.textContent = data.pair_1[0];
+            if (follow1Name) follow1Name.textContent = data.pair_1[1];
+            if (lead2Name) lead2Name.textContent = data.pair_2[0];
+            if (follow2Name) follow2Name.textContent = data.pair_2[1];
+            
+            console.log('Updated matchups:', {
+                lead1: data.pair_1[0],
+                follow1: data.pair_1[1],
+                lead2: data.pair_2[0],
+                follow2: data.pair_2[1]
+            });
+        }
+
+        // Update judges list
         this.updateJudgesList(data.contestant_judges, data.guest_judges);
+        console.log('Updated judges list:', {
+            contestant: data.contestant_judges,
+            guest: data.guest_judges
+        });
+
+        // Check if voting UI exists and if contestant names have changed
+        const leadJudgesContainer = document.getElementById('lead-judges-container');
+        const followJudgesContainer = document.getElementById('follow-judges-container');
+        const lead1Name = document.getElementById('lead1-name');
+        const follow1Name = document.getElementById('follow1-name');
+        const lead2Name = document.getElementById('lead2-name');
+        const follow2Name = document.getElementById('follow2-name');
+        
+        // Check if we need to recreate voting UI (either missing or contestant names changed)
+        const needsVotingUI = (!leadJudgesContainer || leadJudgesContainer.children.length === 0) || 
+                             (!followJudgesContainer || followJudgesContainer.children.length === 0);
+        
+        // Check if contestant names have changed (for existing voting UI)
+        const currentLead1 = lead1Name ? lead1Name.textContent : '';
+        const currentFollow1 = follow1Name ? follow1Name.textContent : '';
+        const currentLead2 = lead2Name ? lead2Name.textContent : '';
+        const currentFollow2 = follow2Name ? follow2Name.textContent : '';
+        
+        const contestantNamesChanged = leadJudgesContainer && followJudgesContainer && 
+                                      leadJudgesContainer.children.length > 0 && 
+                                      followJudgesContainer.children.length > 0 &&
+                                      lead1Name && follow1Name && lead2Name && follow2Name &&
+                                      (currentLead1 !== data.pair_1[0] || 
+                                       currentFollow1 !== data.pair_1[1] || 
+                                       currentLead2 !== data.pair_2[0] || 
+                                       currentFollow2 !== data.pair_2[1]);
+        
+        console.log('Contestant name comparison:', {
+            current: { lead1: currentLead1, follow1: currentFollow1, lead2: currentLead2, follow2: currentFollow2 },
+            new: { lead1: data.pair_1[0], follow1: data.pair_1[1], lead2: data.pair_2[0], follow2: data.pair_2[1] },
+            changed: contestantNamesChanged
+        });
+        
+        // Always recreate voting UI when we receive a voting_state_sync event
+        // because it means the voting state has changed (new round, new contestants, etc.)
+        if (typeof setupVotingUI === 'function') {
+            setupVotingUI();
+            console.log('Setup voting UI called from voting_state_sync (voting state updated)');
+        } else {
+            console.log('setupVotingUI function not available');
+        }
+
+        // For joined devices, we don't need to reset voting state since they're just joining
+        // The voting state will be empty anyway
+        if (this.isJoinedDevice) {
+            console.log('Joined device - skipping vote reset');
+        } else {
+            // For host device (shouldn't happen now, but just in case)
+            console.log('Host device - resetting voting state');
+            this.resetVotingUI();
+        }
     }
 
     resetVotingUI() {
@@ -502,13 +812,15 @@ class CrossDeviceManager {
         if (leadResults) leadResults.style.display = 'none';
         if (followResults) followResults.style.display = 'none';
 
-        // Clear voting forms
-        leadVotes = {};
-        followVotes = {};
-        votingLocked = { lead: false, follow: false };
+        // Clear voting forms using global variables
+        if (typeof window.leadVotes !== 'undefined') window.leadVotes = {};
+        if (typeof window.followVotes !== 'undefined') window.followVotes = {};
+        if (typeof window.votingLocked !== 'undefined') window.votingLocked = { lead: false, follow: false };
 
         // Reset vote preview
-        updateVotePreview();
+        if (typeof updateVotePreview === 'function') {
+            updateVotePreview();
+        }
     }
 
     showWinMessages(messages) {
