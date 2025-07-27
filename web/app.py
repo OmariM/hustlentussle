@@ -1332,11 +1332,28 @@ def get_session_status(session_id):
     game = games[session_id]
     state = game.get_game_state()
     
+    # Get connected devices for this session
+    devices = connected_devices.get(session_id, [])
+    
+    # Get voting state information
+    voting_state = {
+        'is_voting_active': game.current_round is not None and not game.current_round.is_complete(),
+        'current_round': state['round'] if state['round'] else None,
+        'pair_1': state.get('pair_1', {}),
+        'pair_2': state.get('pair_2', {}),
+        'contestant_judges': state.get('contestant_judges', []),
+        'guest_judges': game.guest_judges if hasattr(game, 'guest_judges') else []
+    }
+    
     return jsonify({
         'session_id': session_id,
         'active': True,
         'round': state['round'],
-        'is_finished': game.is_finished()
+        'is_finished': game.is_finished(),
+        'last_updated': datetime.datetime.now().isoformat(),
+        'connected_devices': devices,
+        'connected_devices_count': len(devices),
+        'voting_state': voting_state
     })
 
 @app.route('/api/connected_devices/<session_id>')

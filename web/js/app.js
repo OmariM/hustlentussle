@@ -332,6 +332,11 @@ async function startCompetition() {
         if (window.crossDeviceManager && window.crossDeviceManager.joinSessionRoom) {
             window.crossDeviceManager.joinSessionRoom();
         }
+        
+        // Start polling if real-time sync is not available
+        if (window.crossDeviceManager && !window.crossDeviceManager.isConnected) {
+            window.crossDeviceManager.startPollingSync();
+        }
     } catch (error) {
         console.error('Error starting game:', error);
         alert('Failed to start the competition. Please try again.');

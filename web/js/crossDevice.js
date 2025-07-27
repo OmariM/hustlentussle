@@ -7,6 +7,8 @@ class CrossDeviceManager {
         this.isJoinedDevice = false;
         this.shareData = null;
         this.syncIndicator = null;
+        this.pollingInterval = null;
+        this.lastSyncTime = null;
         this.init();
     }
 
@@ -55,7 +57,9 @@ class CrossDeviceManager {
                     this.isConnected = false;
                     this.updateSyncIndicator(false);
                     // Show a notification that real-time sync is not available
-                    this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
+                    this.showNotification('Real-time sync not available. Using polling-based sync instead.', 'warning');
+                    // Start polling-based sync as fallback
+                    this.startPollingSync();
                 });
 
                 this.socket.on('game_update', (data) => {
@@ -81,13 +85,15 @@ class CrossDeviceManager {
                 console.log('Failed to initialize Socket.IO:', error);
                 this.isConnected = false;
                 this.updateSyncIndicator(false);
-                this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
+                this.showNotification('Real-time sync not available. Using polling-based sync instead.', 'warning');
+                this.startPollingSync();
             }
         } else {
             console.log('Socket.IO not available');
             this.isConnected = false;
             this.updateSyncIndicator(false);
-            this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
+            this.showNotification('Real-time sync not available. Using polling-based sync instead.', 'warning');
+            this.startPollingSync();
         }
     }
 
@@ -348,6 +354,11 @@ class CrossDeviceManager {
         
         // Join the socket room
         this.joinSessionRoom();
+
+        // Start polling if real-time sync is not available
+        if (!this.isConnected) {
+            this.startPollingSync();
+        }
 
         this.showSuccess('Successfully joined battle session!');
     }
@@ -984,7 +995,7 @@ class CrossDeviceManager {
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: ${type === 'success' ? '#28a745' : '#dc3545'};
+            background-color: ${type === 'success' ? '#28a745' : type === 'warning' ? '#ff9800' : '#dc3545'};
             color: white;
             padding: 12px 24px;
             border-radius: 6px;
@@ -1000,6 +1011,121 @@ class CrossDeviceManager {
                 notification.parentNode.removeChild(notification);
             }
         }, 3000);
+    }
+
+    // Polling-based sync methods
+    startPollingSync() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+        }
+        
+        console.log('Starting polling-based sync');
+        this.pollingInterval = setInterval(() => {
+            this.pollForUpdates();
+        }, 3000); // Poll every 3 seconds
+    }
+
+    stopPollingSync() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+            console.log('Stopped polling-based sync');
+        }
+    }
+
+    async pollForUpdates() {
+        if (!sessionId) return;
+
+        try {
+            // Get current game state
+            const response = await fetch(`/api/get_scores?session_id=${sessionId}`);
+            if (!response.ok) return;
+            
+            const currentState = await response.json();
+            
+            // Get session status to check for updates
+            const statusResponse = await fetch(`/api/session_status/${sessionId}`);
+            if (!statusResponse.ok) return;
+            
+            const status = await statusResponse.json();
+            
+            // Check if there are updates since last sync
+            if (this.lastSyncTime && status.last_updated && new Date(status.last_updated) <= new Date(this.lastSyncTime)) {
+                return; // No updates
+            }
+            
+            console.log('Polling detected updates, syncing...');
+            this.lastSyncTime = new Date().toISOString();
+            
+            // Update the UI with new state
+            this.updateGameStateFromPolling(currentState, status);
+            
+        } catch (error) {
+            console.log('Polling sync error:', error);
+        }
+    }
+
+    updateGameStateFromPolling(gameState, status) {
+        // Update scores
+        if (gameState.scores) {
+            this.updateScoresDisplay(gameState.scores);
+        }
+        
+        // Update round information
+        if (gameState.current_round) {
+            this.updateRoundInfo(gameState.current_round);
+        }
+        
+        // Update voting state if needed
+        if (status.voting_state) {
+            this.updateVotingStateFromPolling(status.voting_state);
+        }
+        
+        // Update connected devices
+        if (status.connected_devices) {
+            this.updateConnectedDevicesList(status.connected_devices);
+        }
+        
+        // Show sync indicator
+        this.updateSyncIndicator(true);
+        setTimeout(() => this.updateSyncIndicator(false), 1000);
+    }
+
+    updateRoundInfo(roundData) {
+        const roundNumberElement = document.getElementById('round-number');
+        if (roundNumberElement && roundData.round_number) {
+            roundNumberElement.textContent = roundData.round_number;
+        }
+        
+        // Update matchup names
+        if (roundData.leads && roundData.leads.length >= 2) {
+            const lead1Name = document.getElementById('lead1-name');
+            const lead2Name = document.getElementById('lead2-name');
+            if (lead1Name) lead1Name.textContent = roundData.leads[0];
+            if (lead2Name) lead2Name.textContent = roundData.leads[1];
+        }
+        
+        if (roundData.follows && roundData.follows.length >= 2) {
+            const follow1Name = document.getElementById('follow1-name');
+            const follow2Name = document.getElementById('follow2-name');
+            if (follow1Name) follow1Name.textContent = roundData.follows[0];
+            if (follow2Name) follow2Name.textContent = roundData.follows[1];
+        }
+    }
+
+    updateVotingStateFromPolling(votingState) {
+        // Update voting UI based on polling data
+        if (votingState.is_voting_active) {
+            // Ensure voting UI is set up
+            if (typeof window.setupVotingUI === 'function') {
+                window.setupVotingUI();
+            }
+        }
+        
+        // Update voting results if available
+        if (votingState.results) {
+            this.handleVotingResults(votingState.results);
+        }
     }
 }
 
