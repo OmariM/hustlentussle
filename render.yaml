@@ -5,7 +5,7 @@ services:
     env: python
     plan: free # or starter
     buildCommand: pip install -r requirements.prod.txt
-    startCommand: gunicorn wsgi:application
+    startCommand: gunicorn --worker-class eventlet wsgi:application
     envVars:
       - key: FLASK_ENV
         value: production

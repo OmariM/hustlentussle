@@ -37,7 +37,17 @@ app = Flask(__name__,
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# Configure Socket.IO for production with eventlet
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='eventlet',
+    logger=True, 
+    engineio_logger=True,
+    ping_timeout=60,
+    ping_interval=25
+)
 games = {}  # Store active games by session ID
 session_sharing = {}  # Store session sharing data: share_code -> session_id
 device_sessions = {}  # Store device to session mapping: device_id -> session_id
