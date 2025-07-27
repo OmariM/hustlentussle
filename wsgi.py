@@ -13,8 +13,9 @@ os.environ['FLASK_ENV'] = 'production'
 from web.app import app, socketio
 
 # For production with Gunicorn, we need to use the socketio application
-# instead of the regular Flask app to support WebSocket connections
-application = socketio
+# The socketio object is WSGI-compatible and handles both HTTP and WebSocket requests
+# We need to use the __call__ method or the app property
+application = socketio.app
 
 if __name__ == "__main__":
     # This block will be executed if this script is run directly
