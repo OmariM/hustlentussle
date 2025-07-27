@@ -16,14 +16,10 @@ from web.app import app, socketio
 # The socketio object is WSGI-compatible when used with eventlet worker
 # This provides full WebSocket support in production
 # We need to use the __call__ method to make it properly callable
-class WSGIApplication:
-    def __init__(self, socketio_app):
-        self.socketio_app = socketio_app
-    
-    def __call__(self, environ, start_response):
-        return self.socketio_app(environ, start_response)
+def create_app(environ, start_response):
+    return socketio(environ, start_response)
 
-application = WSGIApplication(socketio)
+application = create_app
 
 if __name__ == "__main__":
     # This block will be executed if this script is run directly
