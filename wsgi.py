@@ -17,7 +17,20 @@ from web.app import app, socketio
 # This provides full WebSocket support in production
 # We need to use the __call__ method to make it properly callable
 def create_app(environ, start_response):
-    return socketio(environ, start_response)
+    print(f"DEBUG: Request path: {environ.get('PATH_INFO', 'unknown')}")
+    print(f"DEBUG: Request method: {environ.get('REQUEST_METHOD', 'unknown')}")
+    
+    # Check if this is a Socket.IO request
+    path_info = environ.get('PATH_INFO', '')
+    if path_info.startswith('/socket.io/'):
+        try:
+            return socketio(environ, start_response)
+        except Exception as e:
+            print(f"Socket.IO error: {e}")
+            return app(environ, start_response)
+    else:
+        # For regular HTTP requests, use the Flask app
+        return app(environ, start_response)
 
 application = create_app
 
