@@ -769,41 +769,66 @@ class CrossDeviceManager {
                              (!followJudgesContainer || followJudgesContainer.children.length === 0);
         
         // Check if contestant names have changed (for existing voting UI)
-        const currentLead1 = lead1Name ? lead1Name.textContent : '';
-        const currentFollow1 = follow1Name ? follow1Name.textContent : '';
-        const currentLead2 = lead2Name ? lead2Name.textContent : '';
-        const currentFollow2 = follow2Name ? follow2Name.textContent : '';
+        // We need to compare against the actual voting button text, not the DOM elements
+        // since the DOM elements may have already been updated by handleNextRound
+        const leadVotingButtons = leadJudgesContainer ? leadJudgesContainer.querySelectorAll('.vote-btn') : [];
+        const followVotingButtons = followJudgesContainer ? followJudgesContainer.querySelectorAll('.vote-btn') : [];
         
-        const contestantNamesChanged = leadJudgesContainer && followJudgesContainer && 
-                                      leadJudgesContainer.children.length > 0 && 
-                                      followJudgesContainer.children.length > 0 &&
-                                      lead1Name && follow1Name && lead2Name && follow2Name &&
-                                      (currentLead1 !== data.pair_1[0] || 
-                                       currentFollow1 !== data.pair_1[1] || 
-                                       currentLead2 !== data.pair_2[0] || 
-                                       currentFollow2 !== data.pair_2[1]);
+        let contestantNamesChanged = false;
         
-        console.log('Contestant name comparison:', {
-            current: { lead1: currentLead1, follow1: currentFollow1, lead2: currentLead2, follow2: currentFollow2 },
-            new: { lead1: data.pair_1[0], follow1: data.pair_1[1], lead2: data.pair_2[0], follow2: data.pair_2[1] },
-            changed: contestantNamesChanged
-        });
+        if (leadVotingButtons.length > 0 && followVotingButtons.length > 0) {
+            // Get the first two unique button texts from lead voting (should be the contestant names)
+            const leadButtonTexts = Array.from(leadVotingButtons)
+                .map(btn => btn.textContent)
+                .filter((text, index, arr) => arr.indexOf(text) === index)
+                .slice(0, 2);
+            
+            // Get the first two unique button texts from follow voting (should be the contestant names)
+            const followButtonTexts = Array.from(followVotingButtons)
+                .map(btn => btn.textContent)
+                .filter((text, index, arr) => arr.indexOf(text) === index)
+                .slice(0, 2);
+            
+            // Compare with the new data
+            contestantNamesChanged = (leadButtonTexts[0] !== data.pair_1[0] || 
+                                     leadButtonTexts[1] !== data.pair_2[0] ||
+                                     followButtonTexts[0] !== data.pair_1[1] || 
+                                     followButtonTexts[1] !== data.pair_2[1]);
+            
+            console.log('Contestant name comparison:', {
+                currentLeadButtons: leadButtonTexts,
+                currentFollowButtons: followButtonTexts,
+                new: { lead1: data.pair_1[0], lead2: data.pair_2[0], follow1: data.pair_1[1], follow2: data.pair_2[1] },
+                changed: contestantNamesChanged
+            });
+        }
         
         // Check if voting results are currently visible
         const votingResults = document.getElementById('voting-results');
         const votingResultsVisible = votingResults && !votingResults.classList.contains('hidden');
         
-        // Only recreate voting UI if voting results are not visible
-        // This prevents interfering with the voting results display
-        if (!votingResultsVisible) {
-            if (typeof setupVotingUI === 'function') {
-                setupVotingUI();
-                console.log('Setup voting UI called from voting_state_sync (voting state updated)');
+        // Check if this is a new round (round number changed)
+        const roundNumberElement = document.getElementById('round-number');
+        const currentRound = roundNumberElement ? parseInt(roundNumberElement.textContent) : 0;
+        const newRound = data.round;
+        const isNewRound = currentRound !== newRound;
+        
+        // Always recreate voting UI for new rounds, or if contestant names have changed
+        // For same round, only recreate if voting results are not visible or names changed
+        if (isNewRound || contestantNamesChanged || !votingResultsVisible) {
+            console.log('CrossDevice: About to call setupVotingUI. isNewRound:', isNewRound, 'votingResultsVisible:', votingResultsVisible);
+            console.log('CrossDevice: Lead names before setupVotingUI:', lead1Name?.textContent, lead2Name?.textContent);
+            console.log('CrossDevice: Follow names before setupVotingUI:', follow1Name?.textContent, follow2Name?.textContent);
+            
+            if (typeof window.setupVotingUI === 'function') {
+                window.setupVotingUI();
+                console.log('Setup voting UI called from voting_state_sync', 
+                           isNewRound ? '(new round)' : '(voting state updated)');
             } else {
-                console.log('setupVotingUI function not available');
+                console.log('setupVotingUI function not available on window object');
             }
         } else {
-            console.log('Voting results are visible, skipping voting UI setup to preserve results');
+            console.log('Voting results are visible and same round, skipping voting UI setup to preserve results');
         }
 
         // For joined devices, we don't need to reset voting state since they're just joining

@@ -444,6 +444,12 @@ function updateRoundUI(data) {
 }
 
 function setupVotingUI() {
+    console.log('App: setupVotingUI called');
+    console.log('App: lead1Name.textContent:', lead1Name?.textContent);
+    console.log('App: lead2Name.textContent:', lead2Name?.textContent);
+    console.log('App: follow1Name.textContent:', follow1Name?.textContent);
+    console.log('App: follow2Name.textContent:', follow2Name?.textContent);
+    
     // Clear previous voting UI
     leadJudgesContainer.innerHTML = '';
     followJudgesContainer.innerHTML = '';
@@ -494,6 +500,8 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     
     const option1Name = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
     const option2Name = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
+    
+    console.log('App: createJudgeVotingCard for', voteType, '- option1Name:', option1Name, 'option2Name:', option2Name);
     
     // Option 1 button
     const option1Btn = document.createElement('button');
