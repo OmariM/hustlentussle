@@ -37,7 +37,7 @@ app = Flask(__name__,
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 games = {}  # Store active games by session ID
 session_sharing = {}  # Store session sharing data: share_code -> session_id
 device_sessions = {}  # Store device to session mapping: device_id -> session_id
@@ -46,6 +46,16 @@ connected_devices = {}  # Store connected devices per session: session_id -> [de
 @app.route('/')
 def index():
     return render_template('index.html', config=app.config)
+
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint for production debugging"""
+    return jsonify({
+        'status': 'healthy',
+        'games_count': len(games),
+        'session_sharing_count': len(session_sharing),
+        'connected_devices_count': len(connected_devices)
+    })
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
@@ -1196,12 +1206,16 @@ def generate_qr_code_data(data):
 @app.route('/api/create_share_code', methods=['POST'])
 def create_share_code():
     """Create a shareable code for cross-device access"""
+    print(f"DEBUG: create_share_code called with data: {request.get_json()}")
     data = request.get_json()
     if not data:
+        print("DEBUG: No JSON data provided")
         return jsonify({'error': 'No JSON data provided'}), 400
     
     session_id = data.get('session_id')
+    print(f"DEBUG: session_id: {session_id}, games: {list(games.keys())}")
     if not session_id or session_id not in games:
+        print(f"DEBUG: Invalid session ID: {session_id}")
         return jsonify({'error': 'Invalid session ID'}), 400
     
     # Generate share code
@@ -1336,6 +1350,8 @@ def get_connected_devices(session_id):
 @socketio.on('connect')
 def handle_connect():
     print(f'Client connected: {request.sid}')
+    print(f'DEBUG: Socket.IO connect - request.sid: {request.sid}')
+    print(f'DEBUG: Socket.IO connect - request.environ: {dict(request.environ)}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
