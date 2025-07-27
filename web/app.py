@@ -46,7 +46,9 @@ socketio = SocketIO(
     logger=True, 
     engineio_logger=True,
     ping_timeout=60,
-    ping_interval=25
+    ping_interval=25,
+    allow_upgrades=True,
+    transports=['polling', 'websocket']
 )
 games = {}  # Store active games by session ID
 session_sharing = {}  # Store session sharing data: share_code -> session_id

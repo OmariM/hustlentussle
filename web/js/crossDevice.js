@@ -27,43 +27,67 @@ class CrossDeviceManager {
 
     initializeSocketIO() {
         if (typeof io !== 'undefined') {
-            this.socket = io();
-            
-            this.socket.on('connect', () => {
-                console.log('Connected to server for real-time sync');
-                this.isConnected = true;
-                this.updateSyncIndicator(true);
-                // Only join session room if we have a session ID
-                if (sessionId) {
-                    this.joinSessionRoom();
-                }
-            });
+            try {
+                this.socket = io({
+                    transports: ['polling', 'websocket'],
+                    timeout: 20000,
+                    forceNew: true
+                });
+                
+                this.socket.on('connect', () => {
+                    console.log('Connected to server for real-time sync');
+                    this.isConnected = true;
+                    this.updateSyncIndicator(true);
+                    // Only join session room if we have a session ID
+                    if (sessionId) {
+                        this.joinSessionRoom();
+                    }
+                });
 
-            this.socket.on('disconnect', () => {
-                console.log('Disconnected from server');
+                this.socket.on('disconnect', () => {
+                    console.log('Disconnected from server');
+                    this.isConnected = false;
+                    this.updateSyncIndicator(false);
+                });
+
+                this.socket.on('connect_error', (error) => {
+                    console.log('Socket.IO connection error:', error);
+                    this.isConnected = false;
+                    this.updateSyncIndicator(false);
+                    // Show a notification that real-time sync is not available
+                    this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
+                });
+
+                this.socket.on('game_update', (data) => {
+                    console.log('Received game update:', data);
+                    console.log('Current sessionId:', sessionId, 'Device ID:', this.deviceId);
+                    this.handleGameUpdate(data);
+                });
+
+                this.socket.on('session_joined', (data) => {
+                    console.log('Joined session room:', data);
+                });
+
+                this.socket.on('device_joined', (data) => {
+                    console.log('Device joined:', data);
+                    this.updateConnectedDevicesList(data.connected_devices);
+                });
+
+                this.socket.on('device_left', (data) => {
+                    console.log('Device left:', data);
+                    this.updateConnectedDevicesList(data.connected_devices);
+                });
+            } catch (error) {
+                console.log('Failed to initialize Socket.IO:', error);
                 this.isConnected = false;
                 this.updateSyncIndicator(false);
-            });
-
-            this.socket.on('game_update', (data) => {
-                console.log('Received game update:', data);
-                console.log('Current sessionId:', sessionId, 'Device ID:', this.deviceId);
-                this.handleGameUpdate(data);
-            });
-
-            this.socket.on('session_joined', (data) => {
-                console.log('Joined session room:', data);
-            });
-
-            this.socket.on('device_joined', (data) => {
-                console.log('Device joined:', data);
-                this.updateConnectedDevicesList(data.connected_devices);
-            });
-
-            this.socket.on('device_left', (data) => {
-                console.log('Device left:', data);
-                this.updateConnectedDevicesList(data.connected_devices);
-            });
+                this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
+            }
+        } else {
+            console.log('Socket.IO not available');
+            this.isConnected = false;
+            this.updateSyncIndicator(false);
+            this.showNotification('Real-time sync not available. Cross-device features will be limited.', 'warning');
         }
     }
 
@@ -577,11 +601,14 @@ class CrossDeviceManager {
     }
 
     joinSessionRoom() {
-        if (this.socket && sessionId) {
+        if (this.socket && this.isConnected && sessionId) {
+            console.log('Joining session room:', sessionId);
             this.socket.emit('join_session_room', {
                 session_id: sessionId,
                 device_id: this.deviceId
             });
+        } else {
+            console.log('Cannot join session room - Socket.IO not available or not connected');
         }
     }
 
