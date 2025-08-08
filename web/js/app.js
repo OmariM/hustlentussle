@@ -819,6 +819,9 @@ async function goToNextRound() {
         updateRoundUI(data);
         setupVotingUI();
         
+        // Scroll to top so current contestants are visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
         // Fetch and update current scores
         await fetchScores();
     } catch (error) {
