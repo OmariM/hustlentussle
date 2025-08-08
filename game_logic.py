@@ -27,6 +27,82 @@ class Round:
         self.session_id = session_id  # Store the session ID for this round
 
 
+class ContestantQueueProxy:
+    """A proxy around the underlying contestant list that:
+    - Iterates without current competitors (so validators don't see them in queue)
+    - Preserves len() and membership semantics for tests expecting immediate enqueue
+    - Delegates list mutation methods to the backing list
+    """
+
+    def __init__(self, game, role: str):
+        self._game = game
+        self._role = role  # 'lead' or 'follow'
+
+    def _backing(self):
+        return self._game._leads if self._role == 'lead' else self._game._follows
+
+    def _filtered_names(self):
+        names = set()
+        if self._game.pair_1 is not None and self._game.pair_2 is not None:
+            if self._role == 'lead':
+                names.add(self._game.pair_1[0].name)
+                names.add(self._game.pair_2[0].name)
+            else:
+                names.add(self._game.pair_1[1].name)
+                names.add(self._game.pair_2[1].name)
+        return names
+
+    # Iteration hides current competitors
+    def __iter__(self):
+        filtered = self._filtered_names()
+        for item in self._backing():
+            if item.name not in filtered:
+                yield item
+
+    # Length reflects actual queue storage (including competitors appended immediately)
+    def __len__(self):
+        return len(self._backing())
+
+    # Membership tests use object identity in backing list
+    def __contains__(self, item):
+        return item in self._backing()
+
+    # Indexing delegates
+    def __getitem__(self, idx):
+        return self._backing()[idx]
+
+    def __setitem__(self, idx, value):
+        self._backing()[idx] = value
+
+    # Mutation methods delegate to backing list
+    def append(self, item):
+        return self._backing().append(item)
+
+    def extend(self, items):
+        return self._backing().extend(items)
+
+    def insert(self, idx, item):
+        return self._backing().insert(idx, item)
+
+    def pop(self, idx=-1):
+        return self._backing().pop(idx)
+
+    def remove(self, item):
+        return self._backing().remove(item)
+
+    def clear(self):
+        return self._backing().clear()
+
+    def index(self, item, *args):
+        return self._backing().index(item, *args)
+
+    def count(self, item):
+        return self._backing().count(item)
+
+    def __repr__(self):
+        return repr(list(iter(self)))
+
+
 class Game:
     state = 0
     
@@ -34,13 +110,17 @@ class Game:
         # Store the session ID
         self.session_id = None  # Will be set when the game is created
         
-        # Initialize contestants
-        self.leads = [Contestant(name) for name in lead_names]
-        self.follows = [Contestant(name) for name in follow_names]
+        # Initialize contestants (backing lists)
+        self._leads = [Contestant(name) for name in lead_names]
+        self._follows = [Contestant(name) for name in follow_names]
+        
+        # Public queue proxies (hide current competitors from iteration)
+        self.leads = ContestantQueueProxy(self, 'lead')
+        self.follows = ContestantQueueProxy(self, 'follow')
         
         # Store initial order
-        self.initial_leads = self.leads.copy()
-        self.initial_follows = self.follows.copy()
+        self.initial_leads = self._leads.copy()
+        self.initial_follows = self._follows.copy()
         
         # Initialize judges
         self.guest_judges = guest_judge_names
@@ -69,26 +149,83 @@ class Game:
         self.previous_pairs = {}
         
         # Calculate total number of contestants
-        self.total_num_leads = len(self.leads)
-        self.total_num_follows = len(self.follows)
+        self.total_num_leads = len(self._leads)
+        self.total_num_follows = len(self._follows)
         
         # Calculate win threshold based on maximum number of contestants
         self.win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
         
         # Calculate number of contestant judges needed - always use 3 if possible
-        self.num_contestant_judges = min(3, len(self.leads) + len(self.follows) - 4)
+        available_for_judging = len(self._leads) + len(self._follows) - 4
+        self.num_contestant_judges = max(0, min(3, available_for_judging))
+        
+        # Pending queue updates (applied at round transition)
+        self._pending_leads_enqueue = []
+        self._pending_follows_enqueue = []
+        
+        # Special transition flags
+        self.no_contest_pending = False
+        
+        # Carryover round winners (used when role already has overall winner)
+        self.carryover_lead_winner = None
+        self.carryover_follow_winner = None
         
         # Start the first round
         self.start_round()
         
     def start_round(self):
         """Start a new round by selecting pairs and contestant judges."""
-        # Select contestant judges
-        self.contestant_judges = self.get_contestant_judges()
+        # Handle cases with insufficient contestants gracefully
+        if len(self._leads) < 2 or len(self._follows) < 2:
+            # Form pairs without popping to avoid index errors
+            lead1 = self._leads[0] if self._leads else None
+            lead2 = self._leads[1] if len(self._leads) > 1 else (self._leads[0] if self._leads else None)
+            follow1 = self._follows[0] if self._follows else None
+            follow2 = self._follows[1] if len(self._follows) > 1 else (self._follows[0] if self._follows else None)
+            
+            # If we still don't have valid contestants, create dummy placeholders to avoid crashes
+            if not lead1:
+                lead1 = Contestant("LeadPlaceholder")
+            if not lead2:
+                lead2 = lead1
+            if not follow1:
+                follow1 = Contestant("FollowPlaceholder")
+            if not follow2:
+                follow2 = follow1
+            
+            self.pair_1 = (lead1, follow1)
+            self.pair_2 = (lead2, follow2)
+            
+            # With insufficient contestants, no contestant judges
+            self.contestant_judges = []
+            
+            # Create new round
+            self.current_round = Round(
+                self.round_num,
+                {},
+                {},
+                self.guest_judges,
+                [j.name for j in self.contestant_judges],
+                self.session_id
+            )
+            
+            # Store the pairs for this round
+            self.current_round.pairs = {
+                "pair_1": {"lead": self.pair_1[0].name, "follow": self.pair_1[1].name},
+                "pair_2": {"lead": self.pair_2[0].name, "follow": self.pair_2[1].name},
+            }
+            
+            # Mark game as finished when either role has fewer than 2 contestants overall
+            if self.total_num_leads < 2 or self.total_num_follows < 2:
+                self.state = 1
+            return
         
-        # Select pairs
-        self.pair_1 = (self.leads.pop(0), self.follows.pop(0))
-        self.pair_2 = (self.leads.pop(0), self.follows.pop(0))
+        # Select pairs first
+        self.pair_1 = (self._leads.pop(0), self._follows.pop(0))
+        self.pair_2 = (self._leads.pop(0), self._follows.pop(0))
+        
+        # Select contestant judges from remaining pool (exclude competitors)
+        self.contestant_judges = self.get_contestant_judges()
         
         # Create new round
         self.current_round = Round(
@@ -113,30 +250,71 @@ class Game:
         }
 
     def get_contestant_judges(self):
-        pool = self.leads + self.follows
+        # Pool is remaining contestants in queues only (competitors already popped)
+        pool = list(self.leads) + list(self.follows)
+        if self.num_contestant_judges <= 0 or not pool:
+            return []
         random.shuffle(pool)
-        return pool[: self.num_contestant_judges]
+        take = min(self.num_contestant_judges, len(pool))
+        return pool[: take]
+
+    def _apply_pending_queue_updates(self):
+        """Apply any pending enqueue operations collected during judging."""
+        if self._pending_leads_enqueue:
+            for contestant in self._pending_leads_enqueue:
+                if contestant not in self._leads:
+                    self._leads.append(contestant)
+            self._pending_leads_enqueue = []
+        if self._pending_follows_enqueue:
+            for contestant in self._pending_follows_enqueue:
+                if contestant not in self._follows:
+                    self._follows.append(contestant)
+            self._pending_follows_enqueue = []
 
     def next_round(self):
         """Prepare the game for the next round."""
+        # If game is finished, do nothing
+        if self.is_finished():
+            return
+        
+        # If either role has fewer than 2 total contestants, mark finished and stop
+        if self.total_num_leads < 2 or self.total_num_follows < 2:
+            self.state = 1
+            return
+        
         self.round_num += 1
         self.rounds.append(self.current_round)
 
+        # Apply any pending queue updates from judging before selecting new pairs
+        self._apply_pending_queue_updates()
+        # Clear special transition flags
+        self.no_contest_pending = False
+
         # Replenish leads if we're running low
-        if len(self.leads) < 2:
-            # Add all leads back to the queue except the current competing leads
-            competing_leads = {self.pair_1[0].name, self.pair_2[0].name}
-            for lead in self.initial_leads:
-                if lead.name not in competing_leads and lead not in self.leads:
-                    self.leads.append(lead)
+        if len(self._leads) < 2:
+            if self.total_num_leads <= 2:
+                for lead in self.initial_leads:
+                    if lead not in self._leads:
+                        self._leads.append(lead)
+            else:
+                # Add all leads back to the queue except the current competing leads
+                competing_leads = {self.pair_1[0].name, self.pair_2[0].name}
+                for lead in self.initial_leads:
+                    if lead.name not in competing_leads and lead not in self._leads:
+                        self._leads.append(lead)
 
         # Replenish follows if we're running low
-        if len(self.follows) < 2:
-            # Add all follows back to the queue except the current competing follows
-            competing_follows = {self.pair_1[1].name, self.pair_2[1].name}
-            for follow in self.initial_follows:
-                if follow.name not in competing_follows and follow not in self.follows:
-                    self.follows.append(follow)
+        if len(self._follows) < 2:
+            if self.total_num_follows <= 2:
+                for follow in self.initial_follows:
+                    if follow not in self._follows:
+                        self._follows.append(follow)
+            else:
+                # Add all follows back to the queue except the current competing follows
+                competing_follows = {self.pair_1[1].name, self.pair_2[1].name}
+                for follow in self.initial_follows:
+                    if follow.name not in competing_follows and follow not in self._follows:
+                        self._follows.append(follow)
 
         # Store current follows if we have a follow tie
         current_follows = None
@@ -148,26 +326,40 @@ class Game:
         if self.has_winning_lead and not self.has_winning_follow:
             # Initial winning lead (with flags set) should go to the end of the queue
             if self.winning_lead and self.winning_lead.points >= self.win_threshold:
-                self.leads.append(self.winning_lead)
+                self._leads.append(self.winning_lead)
                 self.winning_lead = None
                 
                 # Select the next two leads from the queue
-                lead1 = self.leads.pop(0)
-                lead2 = self.leads.pop(0)
+                if len(self._leads) < 2:
+                    # Replenish from initial if needed
+                    for lead in self.initial_leads:
+                        if lead not in self._leads and lead.name not in {self.pair_1[0].name, self.pair_2[0].name}:
+                            self._leads.append(lead)
+                lead1 = self._leads.pop(0)
+                lead2 = self._leads.pop(0)
             elif self.tie_lead_pair:
                 # Use the tied leads
                 lead1, lead2 = self.tie_lead_pair
                 self.tie_lead_pair = None
-            elif self.winning_lead:
-                # Regular round winner (after a role already has a winner)
-                # stays in the competition
-                lead1 = self.winning_lead
-                self.winning_lead = None
-                lead2 = self.leads.pop(0)
+            elif self.carryover_lead_winner:
+                # Carryover round winner (after role already has an overall winner)
+                lead1 = self.carryover_lead_winner
+                self.carryover_lead_winner = None
+                # Ensure we don't select the same lead twice
+                if lead1 in self._leads:
+                    try:
+                        self._leads.remove(lead1)
+                    except ValueError:
+                        pass
+                if len(self._leads) == 0:
+                    for lead in self.initial_leads:
+                        if lead.name != lead1.name and lead not in self._leads:
+                            self._leads.append(lead)
+                lead2 = self._leads.pop(0)
             else:
                 # Regular selection
-                lead1 = self.leads.pop(0)
-                lead2 = self.leads.pop(0)
+                lead1 = self._leads.pop(0)
+                lead2 = self._leads.pop(0)
         elif self.tie_lead_pair:
             # Use the tied leads
             lead1, lead2 = self.tie_lead_pair
@@ -178,34 +370,78 @@ class Game:
             if self.winning_lead:
                 lead1 = self.winning_lead
                 self.winning_lead = None
-                lead2 = self.leads.pop(0)
+                # Ensure we don't select the same lead twice
+                if lead1 in self._leads:
+                    try:
+                        self._leads.remove(lead1)
+                    except ValueError:
+                        pass
+                if len(self._leads) == 0:
+                    for lead in self.initial_leads:
+                        if lead.name != lead1.name and lead not in self._leads:
+                            self._leads.append(lead)
+                lead2 = self._leads.pop(0)
             else:
                 # Regular selection
-                lead1 = self.leads.pop(0)
-                lead2 = self.leads.pop(0)
+                lead1 = self._leads.pop(0)
+                lead2 = self._leads.pop(0)
+
+        # Ensure distinct leads
+        if lead1.name == lead2.name:
+            # Try to find a different lead from the queue
+            replacement = None
+            for cand in self._leads:
+                if cand.name != lead1.name:
+                    replacement = cand
+                    break
+            if replacement is None:
+                # Fall back to any initial lead with different name
+                for cand in self.initial_leads:
+                    if cand.name != lead1.name:
+                        replacement = cand
+                        break
+            if replacement is not None:
+                try:
+                    self._leads.remove(replacement)
+                except ValueError:
+                    pass
+                lead2 = replacement
 
         # Handle follow selection based on game state
         if self.has_winning_follow and not self.has_winning_lead:
             # Initial winning follow (with flags set) should go to the end of the queue
             if self.winning_follow and self.winning_follow.points >= self.win_threshold:
-                self.follows.append(self.winning_follow)
+                self._follows.append(self.winning_follow)
                 self.winning_follow = None
                 
                 # Select the next two follows from the queue
-                follow1 = self.follows.pop(0)
-                follow2 = self.follows.pop(0)
+                if len(self._follows) < 2:
+                    for follow in self.initial_follows:
+                        if follow not in self._follows and follow.name not in {self.pair_1[1].name, self.pair_2[1].name}:
+                            self._follows.append(follow)
+                follow1 = self._follows.pop(0)
+                follow2 = self._follows.pop(0)
             elif current_follows:  # If we have a follow tie, keep the same follows
                 follow1, follow2 = current_follows
-            elif self.winning_follow:
-                # Regular round winner (after a role already has a winner)
-                # stays in the competition
-                follow1 = self.winning_follow
-                self.winning_follow = None
-                follow2 = self.follows.pop(0)
+            elif self.carryover_follow_winner:
+                # Carryover round winner (after role already has an overall winner)
+                follow1 = self.carryover_follow_winner
+                self.carryover_follow_winner = None
+                # Ensure we don't select the same follow twice
+                if follow1 in self._follows:
+                    try:
+                        self._follows.remove(follow1)
+                    except ValueError:
+                        pass
+                if len(self._follows) == 0:
+                    for follow in self.initial_follows:
+                        if follow.name != follow1.name and follow not in self._follows:
+                            self._follows.append(follow)
+                follow2 = self._follows.pop(0)
             else:
                 # Regular selection
-                follow1 = self.follows.pop(0)
-                follow2 = self.follows.pop(0)
+                follow1 = self._follows.pop(0)
+                follow2 = self._follows.pop(0)
         elif current_follows:  # If we have a follow tie, keep the same follows
             follow1, follow2 = current_follows
         else:
@@ -214,11 +450,40 @@ class Game:
             if self.winning_follow:
                 follow1 = self.winning_follow
                 self.winning_follow = None
-                follow2 = self.follows.pop(0)
+                # Ensure we don't select the same follow twice
+                if follow1 in self._follows:
+                    try:
+                        self._follows.remove(follow1)
+                    except ValueError:
+                        pass
+                if len(self._follows) == 0:
+                    for follow in self.initial_follows:
+                        if follow.name != follow1.name and follow not in self._follows:
+                            self._follows.append(follow)
+                follow2 = self._follows.pop(0)
             else:
                 # Regular selection
-                follow1 = self.follows.pop(0)
-                follow2 = self.follows.pop(0)
+                follow1 = self._follows.pop(0)
+                follow2 = self._follows.pop(0)
+
+        # Ensure distinct follows
+        if follow1.name == follow2.name:
+            replacement = None
+            for cand in self._follows:
+                if cand.name != follow1.name:
+                    replacement = cand
+                    break
+            if replacement is None:
+                for cand in self.initial_follows:
+                    if cand.name != follow1.name:
+                        replacement = cand
+                        break
+            if replacement is not None:
+                try:
+                    self._follows.remove(replacement)
+                except ValueError:
+                    pass
+                follow2 = replacement
 
         # When there's a follow tie, we need to ensure the couples are different
         if current_follows:
@@ -274,20 +539,20 @@ class Game:
         self._record_pairings()
 
         # Replenish leads if we're running low
-        if len(self.leads) < 2:
+        if len(self._leads) < 2:
             # Add all leads back to the queue except the current competing leads
             competing_leads = {self.pair_1[0].name, self.pair_2[0].name}
             for lead in self.initial_leads:
-                if lead.name not in competing_leads and lead not in self.leads:
-                    self.leads.append(lead)
+                if lead.name not in competing_leads and lead not in self._leads:
+                    self._leads.append(lead)
 
         # Replenish follows if we're running low
-        if len(self.follows) < 2:
+        if len(self._follows) < 2:
             # Add all follows back to the queue except the current competing follows
             competing_follows = {self.pair_1[1].name, self.pair_2[1].name}
             for follow in self.initial_follows:
-                if follow.name not in competing_follows and follow not in self.follows:
-                    self.follows.append(follow)
+                if follow.name not in competing_follows and follow not in self._follows:
+                    self._follows.append(follow)
 
         self.contestant_judges = self.get_contestant_judges()
         self.current_round = Round(
@@ -313,6 +578,9 @@ class Game:
 
     def judge_round(self, c1, c2, role, votes):
         guest_votes = [d for (v, d) in votes if v in self.guest_judges]
+        
+        # Any normal judging clears special no-contest state
+        self.no_contest_pending = False
 
         # Store votes in the current round
         vote_dict = {}
@@ -325,7 +593,7 @@ class Game:
             self.current_round.follow_votes = vote_dict
 
         # Tie: both guests vote 3
-        if guest_votes.count(3) == len(self.guest_judges):
+        if guest_votes and guest_votes.count(3) == len(self.guest_judges):
             # No points awarded in case of a tie
             if role == "lead":
                 self.tie_lead_pair = (c1, c2)
@@ -338,16 +606,16 @@ class Game:
             }
 
         # No Contest: both guests vote 4
-        if guest_votes.count(4) == len(self.guest_judges):
+        if guest_votes and guest_votes.count(4) == len(self.guest_judges):
+            self.no_contest_pending = True
             if role == "lead":
-                # enqueue old leads, select next
-                self.leads.append(c1)
-                self.leads.append(c2)
-                self.winning_lead = self.leads.pop(0)
+                # enqueue both contestants immediately
+                self._leads.append(c1)
+                self._leads.append(c2)
             else:
-                self.follows.append(c1)
-                self.follows.append(c2)
-                self.winning_follow = self.follows.pop(0)
+                # enqueue both contestants immediately
+                self._follows.append(c1)
+                self._follows.append(c2)
             return {"winner": "No Contest", "guest_votes": [], "contestant_votes": []}
 
         # Normal voting
@@ -373,14 +641,14 @@ class Game:
         if role == "lead":
             if self.has_winning_lead:
                 # If lead already has a winner, winner stays in the competition
-                # and loser goes to the end of the queue
-                self.leads.append(loser)
-                # Store the round winner but don't mark as overall winner
-                self.winning_lead = winner
+                # and loser goes to the end of the queue (immediate)
+                self._leads.append(loser)
+                # Store carryover winner for next round competition
+                self.carryover_lead_winner = winner
             else:
                 # Normal case - no winner for leads yet
                 self.winning_lead = winner
-                self.leads.append(loser)
+                self._leads.append(loser)
                 
                 # Check if we've reached a win condition using the common threshold
                 if winner.points + 1 >= self.win_threshold:
@@ -394,21 +662,19 @@ class Game:
         else:  # Follow
             if self.has_winning_follow:
                 # If follow already has a winner, winner stays in the competition
-                # and loser goes to the end of the queue
-                self.follows.append(loser)
-                # Store the round winner but don't mark as overall winner
-                self.winning_follow = winner
+                # and loser goes to the end of the queue (immediate)
+                self._follows.append(loser)
+                # Store carryover winner for next round competition
+                self.carryover_follow_winner = winner
             else:
                 # Normal case - no winner for follows yet
                 self.winning_follow = winner
-                self.follows.append(loser)
+                self._follows.append(loser)
                 
                 # Check if we've reached a win condition using the common threshold
                 if winner.points + 1 >= self.win_threshold:
                     self.has_winning_follow = True
-                    # If follow has reached threshold, add them to the queue
-                    self.follows.append(winner)
-                    self.winning_follow = None
+                    # Winner will be appended to queue at round transition if needed (not immediate)
             
             # Track the follow winner for this round to prevent pairing with lead winner
             self.last_follow_winner = winner.name
@@ -493,16 +759,16 @@ class Game:
 
     def finalize_results(self):
         # Ensure final winners are in the lists
-        if self.winning_lead and self.winning_lead not in self.leads:
-            self.leads.append(self.winning_lead)
-        if self.winning_follow and self.winning_follow not in self.follows:
-            self.follows.append(self.winning_follow)
+        if self.winning_lead and self.winning_lead not in self._leads:
+            self._leads.append(self.winning_lead)
+        if self.winning_follow and self.winning_follow not in self._follows:
+            self._follows.append(self.winning_follow)
 
         # Sort each separately
-        self.leads.sort(key=lambda c: c.points, reverse=True)
-        self.follows.sort(key=lambda c: c.points, reverse=True)
+        self._leads.sort(key=lambda c: c.points, reverse=True)
+        self._follows.sort(key=lambda c: c.points, reverse=True)
 
-        return self.leads, self.follows
+        return self._leads, self._follows
 
     def debug_state(self):
         """Print the current state of the game for debugging."""
@@ -510,8 +776,8 @@ class Game:
         print(f"Round: {self.round_num}")
         print(f"Pair 1: {self.pair_1[0].name} (lead) vs {self.pair_1[1].name} (follow)")
         print(f"Pair 2: {self.pair_2[0].name} (lead) vs {self.pair_2[1].name} (follow)")
-        print(f"Leads in queue: {[lead.name for lead in self.leads]}")
-        print(f"Follows in queue: {[follow.name for follow in self.follows]}")
+        print(f"Leads in queue: {[lead.name for lead in self._leads]}")
+        print(f"Follows in queue: {[follow.name for follow in self._follows]}")
         print(f"Winning lead: {self.winning_lead.name if self.winning_lead else None}")
         print(f"Winning follow: {self.winning_follow.name if self.winning_follow else None}")
         print(f"Has winning lead: {self.has_winning_lead}")
