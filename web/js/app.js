@@ -14,6 +14,7 @@ let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
+let pointsToWinInput;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
 let currentLeadScores, currentFollowScores;
 let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     leadNamesInput = document.getElementById('lead-names');
     followNamesInput = document.getElementById('follow-names');
     judgeNamesInput = document.getElementById('judge-names');
+    pointsToWinInput = document.getElementById('points-to-win');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
 
@@ -283,6 +285,8 @@ async function startCompetition() {
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
+    const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
+    const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -293,7 +297,7 @@ async function startCompetition() {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges })
+            body: JSON.stringify({ leads, follows, judges, points_to_win })
         });
         
         const data = await response.json();
@@ -818,6 +822,9 @@ async function goToNextRound() {
         // Update UI with new round data
         updateRoundUI(data);
         setupVotingUI();
+        
+        // Scroll to top so current contestants are visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         
         // Fetch and update current scores
         await fetchScores();
