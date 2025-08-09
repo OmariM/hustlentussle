@@ -47,6 +47,7 @@ def start_game():
     lead_names = data.get('leads', '').split(',')
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
+    points_to_win = data.get('points_to_win', None)
     
     # Filter out any empty names
     lead_names = [name.strip() for name in lead_names if name.strip()]
@@ -61,6 +62,15 @@ def start_game():
     session_id = f"game_{len(games) + 1}"
     game = Game(lead_names, follow_names, judge_names)
     game.session_id = session_id  # Set the session ID on the game object
+    # If a custom points_to_win is provided and valid, override the win_threshold
+    try:
+        if points_to_win is not None:
+            # Accept integers >= 1; otherwise ignore
+            parsed = int(points_to_win)
+            if parsed >= 1:
+                game.win_threshold = parsed
+    except (ValueError, TypeError):
+        pass
     games[session_id] = game
     
     # Set session ID for the first round
@@ -97,11 +107,9 @@ def get_scores():
     # Helper function to determine if a contestant has earned a crown
     def has_earned_crown(contestant, role):
         if role == "lead":
-            # A lead earns a crown if they have reached the winning threshold
-            return contestant.points >= game.total_num_leads - 1 and game.has_winning_lead
+            return contestant.points >= game.win_threshold and game.has_winning_lead
         else:  # role == "follow"
-            # A follow earns a crown if they have reached the winning threshold
-            return contestant.points >= game.total_num_follows - 1 and game.has_winning_follow
+            return contestant.points >= game.win_threshold and game.has_winning_follow
     
     # Add current pair contestants
     lead_dict[game.pair_1[0].name] = {
