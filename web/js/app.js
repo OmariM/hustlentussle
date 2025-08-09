@@ -278,6 +278,86 @@ function updateSessionIdDisplay() {
     }
 }
 
+async function refreshFromServerState() {
+    if (!sessionId) return;
+    try {
+        const resp = await fetch(`/api/games/${encodeURIComponent(sessionId)}/state`);
+        if (!resp.ok) return;
+        const state = await resp.json();
+        hydrateFromUnifiedState(state);
+    } catch (e) {
+        console.error('Failed to refresh unified state:', e);
+    }
+}
+
+function hydrateFromUnifiedState(state) {
+    try {
+        // Session and round
+        if (state.session_id) {
+            sessionId = state.session_id;
+            updateSessionIdDisplay();
+        }
+        if (typeof state.round === 'number') {
+            roundNumber.textContent = state.round;
+        }
+        // Pairs
+        if (state.pairs) {
+            if (state.pairs.pair_1) {
+                lead1Name.textContent = state.pairs.pair_1.lead || '';
+                follow1Name.textContent = state.pairs.pair_1.follow || '';
+            }
+            if (state.pairs.pair_2) {
+                lead2Name.textContent = state.pairs.pair_2.lead || '';
+                follow2Name.textContent = state.pairs.pair_2.follow || '';
+            }
+        }
+        // Judges
+        guestJudges = Array.isArray(state.guest_judges) ? state.guest_judges : [];
+        guestJudgesList.innerHTML = '';
+        if (guestJudges.length === 0) {
+            const noJudges = document.createElement('div');
+            noJudges.className = 'judge-item';
+            noJudges.textContent = 'No guest judges assigned';
+            guestJudgesList.appendChild(noJudges);
+        } else {
+            guestJudges.forEach(judge => {
+                const judgeItem = document.createElement('div');
+                judgeItem.className = 'judge-item guest';
+                judgeItem.textContent = judge;
+                guestJudgesList.appendChild(judgeItem);
+            });
+        }
+        contestantJudgesList.innerHTML = '';
+        const cj = Array.isArray(state.contestant_judges) ? state.contestant_judges : [];
+        if (cj.length === 0) {
+            const noJudges = document.createElement('div');
+            noJudges.className = 'judge-item';
+            noJudges.textContent = 'No contestant judges assigned';
+            contestantJudgesList.appendChild(noJudges);
+        } else {
+            cj.forEach(judge => {
+                const judgeItem = document.createElement('div');
+                judgeItem.className = 'judge-item contestant';
+                judgeItem.textContent = judge;
+                contestantJudgesList.appendChild(judgeItem);
+            });
+        }
+        // Scores
+        if (Array.isArray(state.leads) && Array.isArray(state.follows)) {
+            currentLeads = state.leads;
+            currentFollows = state.follows;
+            updateScoresDisplay();
+        }
+        // Initial orders for results page use
+        if (Array.isArray(state.initial_leads)) initialLeads = state.initial_leads;
+        if (Array.isArray(state.initial_follows)) initialFollows = state.initial_follows;
+        // Rebuild voting UI based on refreshed judges and pairs
+        setupVotingUI();
+    } catch (e) {
+        console.error('Error hydrating unified state:', e);
+    }
+}
+
 // Update the startCompetition function
 async function startCompetition() {
     const leads = leadNamesInput.value.trim();
@@ -315,6 +395,9 @@ async function startCompetition() {
         
         // Show round screen
         showScreen(roundScreen);
+        
+        // Refresh from unified state for consistency
+        await refreshFromServerState();
     } catch (error) {
         console.error('Error starting game:', error);
         alert('Failed to start the competition. Please try again.');
@@ -796,6 +879,8 @@ async function submitCombinedVotes() {
         
         // Update scores after voting
         await fetchScores();
+        // Refresh unified state
+        await refreshFromServerState();
     } catch (error) {
         console.error('Error submitting combined votes:', error);
         alert('Failed to submit votes. Please try again.');
@@ -821,6 +906,8 @@ async function goToNextRound() {
         
         // Fetch and update current scores
         await fetchScores();
+        // Refresh unified state
+        await refreshFromServerState();
     } catch (error) {
         console.error('Error starting next round:', error);
         alert('Failed to start the next round. Please try again.');

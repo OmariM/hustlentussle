@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 import uuid
 import tempfile
 import shutil
+from repository.games import InMemoryGameRepository
+from services.game_service import GameService
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,11 +34,25 @@ app = Flask(__name__,
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 CORS(app)
+# Replace raw dict with repository + service
+_repo = InMemoryGameRepository()
+_service = GameService(_repo)
+
+# Back-compat: keep in-memory dict for legacy functions, but write-through to repo
 games = {}  # Store active games by session ID
 
 @app.route('/')
 def index():
     return render_template('index.html', config=app.config)
+
+@app.route('/api/games/<session_id>/state', methods=['GET'])
+def get_game_state(session_id):
+    try:
+        game = _service.get_or_404(session_id)
+    except KeyError:
+        return jsonify({'error': 'Game not found'}), 404
+    state_view = _service.build_state(game)
+    return jsonify(state_view.to_json())
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
@@ -57,19 +73,11 @@ def start_game():
     random.shuffle(lead_names)
     random.shuffle(follow_names)
     
-    # Create a new game with the randomized order
-    session_id = f"game_{len(games) + 1}"
-    game = Game(lead_names, follow_names, judge_names)
-    game.session_id = session_id  # Set the session ID on the game object
-    games[session_id] = game
+    # Create a new game via service
+    session_id, game = _service.create_game(lead_names, follow_names, judge_names)
+    games[session_id] = game  # write-through for legacy endpoints
     
-    # Set session ID for the first round
-    if game.current_round:
-        game.current_round.session_id = session_id
-    
-    # Get initial game state
     state = game.get_game_state()
-    
     return jsonify({
         'session_id': session_id,
         'round': state['round'],
@@ -77,8 +85,8 @@ def start_game():
         'pair_2': state['pair_2'],
         'contestant_judges': state['contestant_judges'],
         'guest_judges': game.guest_judges,
-        'initial_leads': lead_names,  # Now contains the randomized order
-        'initial_follows': follow_names  # Now contains the randomized order
+        'initial_leads': [c for c in lead_names],
+        'initial_follows': [c for c in follow_names]
     })
 
 @app.route('/api/get_scores', methods=['GET'])
