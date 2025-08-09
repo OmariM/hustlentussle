@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import uuid
 import tempfile
 import shutil
+import threading
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,11 +33,156 @@ app = Flask(__name__,
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
 CORS(app)
-games = {}  # Store active games by session ID
+
+
+class GameRepository:
+    """Thread-safe in-memory repository for active games."""
+
+    def __init__(self) -> None:
+        self._games = {}
+        self._lock = threading.RLock()
+
+    def create(self, game: Game) -> str:
+        with self._lock:
+            session_id = uuid.uuid4().hex
+            game.session_id = session_id
+            # Also stamp the current round with session id if present
+            if getattr(game, 'current_round', None):
+                game.current_round.session_id = session_id
+            self._games[session_id] = game
+            return session_id
+
+    def get(self, session_id: str) -> Game | None:
+        with self._lock:
+            return self._games.get(session_id)
+
+    def exists(self, session_id: str) -> bool:
+        with self._lock:
+            return session_id in self._games
+
+
+repo = GameRepository()
+# Backwards compatibility for tests that import `games`
+# Expose the internal storage dict for now; prefer using `repo` going forward.
+games = repo._games
+
+
+def serialize_state(game: Game) -> dict:
+    """Build a canonical renderable game state snapshot for the UI."""
+    # Determine crown status using current game flags/threshold
+    def has_earned_crown(contestant: Contestant, role: str) -> bool:
+        if role == "lead":
+            return contestant.points >= game.win_threshold and game.has_winning_lead
+        return contestant.points >= game.win_threshold and game.has_winning_follow
+
+    # Build unique contestant maps including current pairs, queues and tracked winners
+    lead_dict: dict[str, dict] = {}
+    follow_dict: dict[str, dict] = {}
+
+    # Add current pair contestants first
+    if game.pair_1 and game.pair_2:
+        lead_dict[game.pair_1[0].name] = {
+            'name': game.pair_1[0].name,
+            'points': game.pair_1[0].points,
+            'is_winner': has_earned_crown(game.pair_1[0], 'lead')
+        }
+        lead_dict[game.pair_2[0].name] = {
+            'name': game.pair_2[0].name,
+            'points': game.pair_2[0].points,
+            'is_winner': has_earned_crown(game.pair_2[0], 'lead')
+        }
+        follow_dict[game.pair_1[1].name] = {
+            'name': game.pair_1[1].name,
+            'points': game.pair_1[1].points,
+            'is_winner': has_earned_crown(game.pair_1[1], 'follow')
+        }
+        follow_dict[game.pair_2[1].name] = {
+            'name': game.pair_2[1].name,
+            'points': game.pair_2[1].points,
+            'is_winner': has_earned_crown(game.pair_2[1], 'follow')
+        }
+
+    # Add contestants from queues (proxies iterate without current competitors)
+    for lead in game.leads:
+        lead_dict[lead.name] = {
+            'name': lead.name,
+            'points': lead.points,
+            'is_winner': has_earned_crown(lead, 'lead')
+        }
+    for follow in game.follows:
+        follow_dict[follow.name] = {
+            'name': follow.name,
+            'points': follow.points,
+            'is_winner': has_earned_crown(follow, 'follow')
+        }
+
+    # Include tracked winners if present
+    if getattr(game, 'winning_lead', None):
+        lead_dict[game.winning_lead.name] = {
+            'name': game.winning_lead.name,
+            'points': game.winning_lead.points,
+            'is_winner': has_earned_crown(game.winning_lead, 'lead')
+        }
+    if getattr(game, 'winning_follow', None):
+        follow_dict[game.winning_follow.name] = {
+            'name': game.winning_follow.name,
+            'points': game.winning_follow.points,
+            'is_winner': has_earned_crown(game.winning_follow, 'follow')
+        }
+
+    # Sort for stable rendering
+    lead_list = sorted(list(lead_dict.values()), key=lambda x: (-x['points'], x['name']))
+    follow_list = sorted(list(follow_dict.values()), key=lambda x: (-x['points'], x['name']))
+
+    # Judges
+    contestant_judges = [j.name for j in game.contestant_judges]
+
+    state = {
+        'session_id': game.session_id,
+        'round': {
+            'number': game.round_num,
+            'pairs': {
+                'pair_1': {'lead': game.pair_1[0].name, 'follow': game.pair_1[1].name},
+                'pair_2': {'lead': game.pair_2[0].name, 'follow': game.pair_2[1].name},
+            },
+            'judges': {
+                'guest': game.guest_judges,
+                'contestant': contestant_judges,
+            },
+        },
+        'scoreboard': {
+            'leads': lead_list,
+            'follows': follow_list,
+        },
+        'thresholds': {
+            'win': game.win_threshold,
+        },
+        'flags': {
+            'has_winning_lead': game.has_winning_lead,
+            'has_winning_follow': game.has_winning_follow,
+            'finished': game.is_finished(),
+        },
+        'initial_order': {
+            'leads': [c.name for c in getattr(game, 'initial_leads', [])],
+            'follows': [c.name for c in getattr(game, 'initial_follows', [])],
+        },
+    }
+    return state
+
 
 @app.route('/')
 def index():
     return render_template('index.html', config=app.config)
+
+@app.route('/api/state', methods=['GET'])
+def get_state():
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
+    return jsonify(serialize_state(game))
 
 @app.route('/api/start_game', methods=['POST'])
 def start_game():
@@ -59,23 +205,17 @@ def start_game():
     random.shuffle(follow_names)
     
     # Create a new game with the randomized order
-    session_id = f"game_{len(games) + 1}"
     game = Game(lead_names, follow_names, judge_names)
-    game.session_id = session_id  # Set the session ID on the game object
     # If a custom points_to_win is provided and valid, override the win_threshold
     try:
         if points_to_win is not None:
-            # Accept integers >= 1; otherwise ignore
             parsed = int(points_to_win)
             if parsed >= 1:
                 game.win_threshold = parsed
     except (ValueError, TypeError):
         pass
-    games[session_id] = game
-    
-    # Set session ID for the first round
-    if game.current_round:
-        game.current_round.session_id = session_id
+
+    session_id = repo.create(game)
     
     # Get initial game state
     state = game.get_game_state()
@@ -87,92 +227,23 @@ def start_game():
         'pair_2': state['pair_2'],
         'contestant_judges': state['contestant_judges'],
         'guest_judges': game.guest_judges,
-        'initial_leads': lead_names,  # Now contains the randomized order
-        'initial_follows': follow_names  # Now contains the randomized order
+        'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
+        'initial_follows': [c.name for c in game.initial_follows]  # Now contains the randomized order
     })
 
 @app.route('/api/get_scores', methods=['GET'])
 def get_scores():
     session_id = request.args.get('session_id')
     
-    if session_id not in games:
+    game = repo.get(session_id) if session_id else None
+    if not game:
         return jsonify({'error': 'Game not found'}), 404
-    
-    game = games[session_id]
-    
-    # Create dictionaries to track unique contestants by name
-    lead_dict = {}
-    follow_dict = {}
-    
-    # Helper function to determine if a contestant has earned a crown
-    def has_earned_crown(contestant, role):
-        if role == "lead":
-            return contestant.points >= game.win_threshold and game.has_winning_lead
-        else:  # role == "follow"
-            return contestant.points >= game.win_threshold and game.has_winning_follow
-    
-    # Add current pair contestants
-    lead_dict[game.pair_1[0].name] = {
-        'name': game.pair_1[0].name, 
-        'points': game.pair_1[0].points,
-        'is_winner': has_earned_crown(game.pair_1[0], "lead")
-    }
-    
-    lead_dict[game.pair_2[0].name] = {
-        'name': game.pair_2[0].name, 
-        'points': game.pair_2[0].points,
-        'is_winner': has_earned_crown(game.pair_2[0], "lead")
-    }
-    
-    follow_dict[game.pair_1[1].name] = {
-        'name': game.pair_1[1].name, 
-        'points': game.pair_1[1].points,
-        'is_winner': has_earned_crown(game.pair_1[1], "follow")
-    }
-    
-    follow_dict[game.pair_2[1].name] = {
-        'name': game.pair_2[1].name, 
-        'points': game.pair_2[1].points,
-        'is_winner': has_earned_crown(game.pair_2[1], "follow")
-    }
-    
-    # Add contestants from the queue (only if not already added)
-    for lead in game.leads:
-        lead_dict[lead.name] = {
-            'name': lead.name, 
-            'points': lead.points,
-            'is_winner': has_earned_crown(lead, "lead")
-        }
-    
-    for follow in game.follows:
-        follow_dict[follow.name] = {
-            'name': follow.name, 
-            'points': follow.points,
-            'is_winner': has_earned_crown(follow, "follow")
-        }
-    
-    # Check if we have winning lead/follow and add them if they exist and aren't already included
-    if hasattr(game, 'winning_lead') and game.winning_lead:
-        lead_dict[game.winning_lead.name] = {
-            'name': game.winning_lead.name, 
-            'points': game.winning_lead.points,
-            'is_winner': has_earned_crown(game.winning_lead, "lead")
-        }
-    
-    if hasattr(game, 'winning_follow') and game.winning_follow:
-        follow_dict[game.winning_follow.name] = {
-            'name': game.winning_follow.name, 
-            'points': game.winning_follow.points,
-            'is_winner': has_earned_crown(game.winning_follow, "follow")
-        }
-    
-    # Convert dictionaries to lists for the response
-    lead_list = list(lead_dict.values())
-    follow_list = list(follow_dict.values())
-    
+
+    # Reuse canonical scoreboard
+    canon = serialize_state(game)
     return jsonify({
-        'leads': lead_list,
-        'follows': follow_list
+        'leads': canon['scoreboard']['leads'],
+        'follows': canon['scoreboard']['follows']
     })
 
 @app.route('/api/judge_leads', methods=['POST'])
@@ -185,7 +256,7 @@ def judge_leads():
     if not session_id or not votes:
         return jsonify({'error': 'Missing session_id or votes'}), 400
     
-    game = games.get(session_id)
+    game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     
@@ -212,7 +283,7 @@ def judge_follows():
     if not session_id or not votes:
         return jsonify({'error': 'Missing session_id or votes'}), 400
     
-    game = games.get(session_id)
+    game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     
@@ -245,7 +316,7 @@ def judge_combined():
     if not session_id or not lead_votes or not follow_votes:
         return jsonify({'error': 'Missing session_id, lead_votes, or follow_votes'}), 400
     
-    game = games.get(session_id)
+    game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     
@@ -284,7 +355,7 @@ def next_round():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games.get(session_id)
+    game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
@@ -308,7 +379,7 @@ def end_game():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
     
-    game = games.get(session_id)
+    game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     leads, follows = game.finalize_results()
@@ -410,10 +481,10 @@ def export_battle_data():
     session_id = request.args.get('session_id')
     format_type = request.args.get('format', 'excel')  # Default to excel format
     
-    if session_id not in games:
+    if not repo.exists(session_id):
         return jsonify({'error': 'Game not found'}), 404
     
-    game = games[session_id]
+    game = repo.get(session_id)
     
     # Get all rounds data
     all_rounds = []
@@ -521,7 +592,7 @@ def export_battle_data():
             summary_sheet[f'A{results_start_row+2+i}'] = f"{medal} {lead.name}{crown}"
             summary_sheet[f'B{results_start_row+2+i}'] = f"{lead.points} points"
         follow_winners_start = results_start_row + 2 + len(leads[:3]) + 2
-        summary_sheet[f'A{follow_winners_start}'] = "Follow Winners:"
+        summary_sheet['A' + str(follow_winners_start)] = "Follow Winners:"
         for i, follow in enumerate(follows[:3], 1):
             medal = ["🥇", "🥈", "🥉"][i-1]
             is_winner = hasattr(game, 'last_follow_winner') and game.last_follow_winner == follow.name
@@ -884,7 +955,7 @@ def process_uploaded_file():
                 header = round_sheet.cell(row=1, column=col).value
                 if header:
                     headers[col] = header
-                    
+            
             # Count how many judges (every 3 columns after column 5)
             judge_count = (round_sheet.max_column - 5) // 3
             

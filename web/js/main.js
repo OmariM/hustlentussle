@@ -66,3 +66,19 @@ function showScreen(screenId) {
         document.getElementById('follows-initial-order').innerHTML = '';
     }
 } 
+
+window.addEventListener('load', async () => {
+  try {
+    const existing = localStorage.getItem('sessionId');
+    if (existing) {
+      window.sessionId = existing;
+      const sessionIdDisplay = document.getElementById('session-id-display');
+      if (sessionIdDisplay) sessionIdDisplay.textContent = `Session: ${existing}`;
+      if (typeof refreshCanonicalState === 'function') {
+        await refreshCanonicalState();
+      }
+    }
+  } catch (e) {
+    console.error('Bootstrap failed:', e);
+  }
+}); 
