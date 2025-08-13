@@ -144,6 +144,22 @@ textarea {
     font-family: inherit;
 }
 
+/* Match the number input (Points to win) with textarea styling on setup */
+#setup-screen input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+}
+
+#setup-screen input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
 #start-competition {
     margin-top: 20px;
 }
