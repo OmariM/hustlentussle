@@ -228,6 +228,70 @@ class DebugTools {
         // Round Navigation
         this.addSection('Round Navigation');
         this.addButton('Next Round', () => this.nextRound());
+        // Simulate N Rounds controls
+        const simulateContainer = document.createElement('div');
+        simulateContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+        `;
+        const simulateLabel = document.createElement('span');
+        simulateLabel.textContent = 'Simulate rounds:';
+        simulateLabel.style.cssText = 'color: white; font-size: 12px;';
+        const simulateInput = document.createElement('input');
+        simulateInput.type = 'number';
+        simulateInput.min = '1';
+        simulateInput.max = '100';
+        simulateInput.value = localStorage.getItem('debug.simRounds') || '5';
+        simulateInput.style.cssText = `
+            width: 60px;
+            padding: 2px 4px;
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+        `;
+        simulateInput.onchange = () => {
+            const v = Math.max(1, Math.min(100, parseInt(simulateInput.value) || 1));
+            simulateInput.value = String(v);
+            localStorage.setItem('debug.simRounds', String(v));
+        };
+
+        // Checkbox: end game after simulation
+        const endAfterContainer = document.createElement('label');
+        endAfterContainer.style.cssText = 'display:flex; align-items:center; gap:6px; color:white; font-size:12px;';
+        const endAfterChk = document.createElement('input');
+        endAfterChk.type = 'checkbox';
+        endAfterChk.checked = (localStorage.getItem('debug.simEndAfter') || 'false') === 'true';
+        endAfterChk.onchange = () => localStorage.setItem('debug.simEndAfter', endAfterChk.checked ? 'true' : 'false');
+        const endAfterLbl = document.createElement('span');
+        endAfterLbl.textContent = 'end after';
+        endAfterContainer.appendChild(endAfterChk);
+        endAfterContainer.appendChild(endAfterLbl);
+
+        const simulateBtn = document.createElement('button');
+        simulateBtn.textContent = 'Run';
+        simulateBtn.style.cssText = `
+            padding: 4px 8px;
+            background: #333;
+            color: white;
+            border: 1px solid #4CAF50;
+            border-radius: 3px;
+            cursor: pointer;
+        `;
+        simulateBtn.onclick = async () => {
+            const count = Math.max(1, Math.min(100, parseInt(simulateInput.value) || 1));
+            await this.simulateNRounds(count);
+            if (endAfterChk.checked) {
+                await this.tryEndGame();
+            }
+        };
+        simulateContainer.appendChild(simulateLabel);
+        simulateContainer.appendChild(simulateInput);
+        simulateContainer.appendChild(endAfterContainer);
+        simulateContainer.appendChild(simulateBtn);
+        this.panel.appendChild(simulateContainer);
         
         // Add Auto-Advance Toggle and Interval Setting
         const autoAdvanceContainer = document.createElement('div');
@@ -871,6 +935,65 @@ class DebugTools {
         } catch (error) {
             console.error('Error in next round process:', error);
             alert(`Failed to complete next round process: ${error.message}`);
+        }
+    }
+
+    // Determine if advancing to next round is possible from current UI state
+    async canAdvance() {
+        const nextRoundButton = document.getElementById('next-round');
+        const submitBtn = document.getElementById('submit-votes');
+        // If neither submit nor next-round controls are present, likely finished or not on battle screen
+        if (!submitBtn && !nextRoundButton) return false;
+        // If next round button exists but is disabled and no submit button, we're likely finished
+        if (nextRoundButton && nextRoundButton.disabled && !submitBtn) return false;
+        return true;
+    }
+
+    async tryEndGame() {
+        try {
+            if (typeof endGame === 'function') {
+                endGame();
+                return;
+            }
+        } catch (_) {}
+        try {
+            const sid = window.sessionId || localStorage.getItem('sessionId');
+            if (!sid) return;
+            await fetch('/api/end_game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sid })
+            });
+        } catch (e) {
+            console.warn('Failed to end game via API:', e);
+        }
+    }
+
+    // Simulate at most N rounds; stop early if game ends, and end the game explicitly
+    async simulateNRounds(n) {
+        const sessionId = localStorage.getItem('sessionId');
+        if (!sessionId) {
+            alert('No active session. Please start a battle first.');
+            return;
+        }
+        const total = Math.max(1, Math.min(100, n | 0));
+        for (let i = 0; i < total; i++) {
+            // If cannot advance, end the game
+            if (!(await this.canAdvance())) {
+                console.log('Game appears finished before reaching target rounds. Ending game.');
+                await this.tryEndGame();
+                break;
+            }
+            console.log(`Simulating round ${i + 1} of ${total}...`);
+            await this.nextRound();
+            // Small pause to allow UI/state to settle
+            await new Promise(r => setTimeout(r, 300));
+            // If after running this round we cannot advance further, end game and stop
+            if (!(await this.canAdvance())) {
+                console.log('Game finished early during simulation. Ending game.');
+                await this.tryEndGame();
+                break;
+            }
         }
     }
 
