@@ -716,6 +716,96 @@ textarea {
     margin: 0 auto;
 }
 
+/* Battle Graphic */
+.battle-graphic-section {
+    margin: 30px 0;
+    padding: 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.battle-graphic {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.graphic-column {
+    flex: 1;
+}
+
+.graphic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.graphic-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.graphic-rank {
+    width: 22px;
+    text-align: right;
+    color: var(--light-text);
+}
+
+.graphic-name {
+    position: relative;
+    font-weight: 600;
+    min-width: 140px;
+}
+
+.graphic-name .crown-icon {
+    position: absolute;
+    top: -14px;
+    left: -18px;
+}
+
+.round-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1;
+    background: #fff;
+}
+
+.badge.win {
+    border-radius: 50%;
+    border: 2px solid var(--primary-color);
+    font-weight: 700;
+}
+
+[data-theme="dark"] .battle-graphic-section {
+    background: var(--panel-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .badge {
+    background: var(--panel-bg);
+    border: none;
+}
+
+[data-theme="dark"] .badge.win {
+    /* Higher-contrast outline for wins in dark mode */
+    border: 3px solid #ffffff;
+}
+
 /* Add these styles for locked judge cards and buttons */
 
 .judge-card.locked {

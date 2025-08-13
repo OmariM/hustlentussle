@@ -1032,8 +1032,10 @@ async function displayResults(data) {
     const roundsContainer = document.getElementById('rounds-accordion');
     const leadsInitialOrder = document.getElementById('leads-initial-order');
     const followsInitialOrder = document.getElementById('follows-initial-order');
+    const leadGraphic = document.getElementById('lead-graphic');
+    const followGraphic = document.getElementById('follow-graphic');
     
-    if (!leadResultsBody || !followResultsBody || !roundsContainer || !leadsInitialOrder || !followsInitialOrder) {
+    if (!leadResultsBody || !followResultsBody || !roundsContainer) {
         console.error('Could not find required elements for results display');
         return;
     }
@@ -1042,37 +1044,16 @@ async function displayResults(data) {
     leadResultsBody.innerHTML = '';
     followResultsBody.innerHTML = '';
     roundsContainer.innerHTML = '';
-    leadsInitialOrder.innerHTML = '';
-    followsInitialOrder.innerHTML = '';
+    if (leadsInitialOrder) leadsInitialOrder.innerHTML = '';
+    if (followsInitialOrder) followsInitialOrder.innerHTML = '';
+    if (leadGraphic) leadGraphic.innerHTML = '';
+    if (followGraphic) followGraphic.innerHTML = '';
     
     // Always use the initial order from the server response
-    const initialLeadsData = data.initial_leads;
-    const initialFollowsData = data.initial_follows;
-    
+    const initialLeadsData = data.initial_leads || [];
+    const initialFollowsData = data.initial_follows || [];
     console.log('Using initial leads from server:', initialLeadsData);
     console.log('Using initial follows from server:', initialFollowsData);
-    
-    // Add leads to initial order
-    if (initialLeadsData && Array.isArray(initialLeadsData)) {
-        initialLeadsData.forEach((lead, index) => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span>${index + 1}.</span><span>${lead}</span>`;
-            leadsInitialOrder.appendChild(li);
-        });
-    } else {
-        console.warn('No initial leads data available from server');
-    }
-    
-    // Add follows to initial order
-    if (initialFollowsData && Array.isArray(initialFollowsData)) {
-        initialFollowsData.forEach((follow, index) => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span>${index + 1}.</span><span>${follow}</span>`;
-            followsInitialOrder.appendChild(li);
-        });
-    } else {
-        console.warn('No initial follows data available from server');
-    }
     
     console.log('Lead results:', data.leads);
     console.log('Follow results:', data.follows);
@@ -1134,6 +1115,76 @@ async function displayResults(data) {
         });
     } else {
         console.warn('No follow results data available');
+    }
+
+    // Build battle graphic data: map contestant to rounds and wins
+    if (Array.isArray(data.rounds) && data.rounds.length > 0 && leadGraphic && followGraphic) {
+        const leadMap = new Map();
+        const followMap = new Map();
+        const totalRounds = data.rounds.length;
+        data.rounds.forEach(r => {
+            const pair1Lead = r.pairs?.pair_1?.lead;
+            const pair1Follow = r.pairs?.pair_1?.follow;
+            const pair2Lead = r.pairs?.pair_2?.lead;
+            const pair2Follow = r.pairs?.pair_2?.follow;
+            const leadWinner = r.lead_winner;
+            const followWinner = r.follow_winner;
+            const roundNum = r.round_num;
+            if (pair1Lead) {
+                if (!leadMap.has(pair1Lead)) leadMap.set(pair1Lead, []);
+                leadMap.get(pair1Lead).push({ round: roundNum, win: leadWinner === pair1Lead });
+            }
+            if (pair2Lead) {
+                if (!leadMap.has(pair2Lead)) leadMap.set(pair2Lead, []);
+                leadMap.get(pair2Lead).push({ round: roundNum, win: leadWinner === pair2Lead });
+            }
+            if (pair1Follow) {
+                if (!followMap.has(pair1Follow)) followMap.set(pair1Follow, []);
+                followMap.get(pair1Follow).push({ round: roundNum, win: followWinner === pair1Follow });
+            }
+            if (pair2Follow) {
+                if (!followMap.has(pair2Follow)) followMap.set(pair2Follow, []);
+                followMap.get(pair2Follow).push({ round: roundNum, win: followWinner === pair2Follow });
+            }
+        });
+
+        // Helper to render a column by initial order
+        const renderGraphicColumn = (initialOrder, dataMap, topName, container) => {
+            initialOrder.forEach((name, idx) => {
+                const row = document.createElement('div');
+                row.className = 'graphic-row';
+                const rank = document.createElement('div');
+                rank.className = 'graphic-rank';
+                rank.textContent = `${idx + 1}.`;
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'graphic-name';
+                nameDiv.textContent = name;
+                if (topName && name === topName) {
+                    const crown = document.createElement('span');
+                    crown.className = 'crown-icon';
+                    crown.textContent = '👑';
+                    nameDiv.appendChild(crown);
+                }
+                const badges = document.createElement('div');
+                badges.className = 'round-badges';
+                const rounds = dataMap.get(name) || [];
+                // Sort rounds ascending by round number
+                rounds.sort((a, b) => a.round - b.round);
+                rounds.forEach(info => {
+                    const b = document.createElement('div');
+                    b.className = 'badge' + (info.win ? ' win' : '');
+                    b.textContent = info.round;
+                    badges.appendChild(b);
+                });
+                row.appendChild(rank);
+                row.appendChild(nameDiv);
+                row.appendChild(badges);
+                container.appendChild(row);
+            });
+        };
+
+        renderGraphicColumn(initialLeadsData || [], leadMap, topLeadName, leadGraphic);
+        renderGraphicColumn(initialFollowsData || [], followMap, topFollowName, followGraphic);
     }
     
     console.log('Round history:', data.rounds);
