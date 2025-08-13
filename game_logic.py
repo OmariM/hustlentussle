@@ -758,17 +758,27 @@ class Game:
         return self.state == 1
 
     def finalize_results(self):
-        # Ensure final winners are in the lists
-        if self.winning_lead and self.winning_lead not in self._leads:
-            self._leads.append(self.winning_lead)
-        if self.winning_follow and self.winning_follow not in self._follows:
-            self._follows.append(self.winning_follow)
+        """Return complete, point-accurate leaderboards for both roles.
 
-        # Sort each separately
-        self._leads.sort(key=lambda c: c.points, reverse=True)
-        self._follows.sort(key=lambda c: c.points, reverse=True)
+        Critical detail: contestants may be temporarily removed from the working
+        queues (e.g., current competitors popped, winners held aside), so the
+        backing lists `self._leads`/`self._follows` might not contain everyone
+        at this exact moment. However, `self.initial_leads` and
+        `self.initial_follows` contain the canonical Contestant objects used
+        throughout the game, and their `points` fields have been updated in
+        place. To avoid returning incomplete leaderboards or dropping points,
+        we build the final results from the initial lists and sort by points.
+        """
 
-        return self._leads, self._follows
+        # Use the canonical contestant objects from the initial order
+        all_leads = list(self.initial_leads)
+        all_follows = list(self.initial_follows)
+
+        # Sort by points (descending)
+        all_leads.sort(key=lambda c: c.points, reverse=True)
+        all_follows.sort(key=lambda c: c.points, reverse=True)
+
+        return all_leads, all_follows
 
     def debug_state(self):
         """Print the current state of the game for debugging."""

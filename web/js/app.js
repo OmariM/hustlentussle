@@ -324,8 +324,13 @@ function updateLiveGraphicFromState(state) {
         });
     };
 
-    const orderedLeads = (state.initial_order?.leads) || currentLeads.map(l=>l.name);
-    const orderedFollows = (state.initial_order?.follows) || currentFollows.map(f=>f.name);
+    // Strictly follow initial order; fall back to scoreboard names if absent
+    const orderedLeads = Array.isArray(state.initial_order?.leads)
+        ? state.initial_order.leads
+        : (leads || []).map(l => l.name);
+    const orderedFollows = Array.isArray(state.initial_order?.follows)
+        ? state.initial_order.follows
+        : (follows || []).map(f => f.name);
     renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
 }
