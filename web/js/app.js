@@ -4,8 +4,9 @@ let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
 let votingLocked = { lead: false, follow: false }; // Track if voting is locked
-let currentLeads = []; // Store current lead contestants with points
-let currentFollows = []; // Store current follow contestants with points
+    let currentLeads = []; // Store current lead contestants with points
+    let currentFollows = []; // Store current follow contestants with points
+    let liveRounds = []; // Accumulate round records for live battle graphic
 let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 
@@ -16,7 +17,8 @@ let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, upload
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
 let pointsToWinInput;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
-let currentLeadScores, currentFollowScores;
+    let currentLeadScores, currentFollowScores;
+    let liveLeadGraphic, liveFollowGraphic;
 let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
 let leadResults, followResults, leadWinner, followWinner;
 let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
@@ -66,6 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
     guestJudgesList = document.getElementById('guest-judges-list');
     currentLeadScores = document.getElementById('current-lead-scores');
     currentFollowScores = document.getElementById('current-follow-scores');
+    liveLeadGraphic = document.getElementById('live-lead-graphic');
+    liveFollowGraphic = document.getElementById('live-follow-graphic');
 
 // Voting elements
     leadVotingSection = document.getElementById('lead-voting');
@@ -231,7 +235,7 @@ function renderFromState(state) {
     }
 
     // Scoreboard
-    updateScoreboardFromState(state);
+    updateLiveGraphicFromState(state);
 
     // Reset voting UI for the current round
     votingResults.classList.add('hidden');
@@ -246,28 +250,84 @@ function renderFromState(state) {
     setupVotingUI();
 }
 
-function updateScoreboardFromState(state) {
+function updateLiveGraphicFromState(state) {
     if (!state || !state.scoreboard) return;
     const leads = state.scoreboard.leads || [];
     const follows = state.scoreboard.follows || [];
+    const rounds = state.rounds || [];
 
-    // Current scores lists
-    if (currentLeadScores) currentLeadScores.innerHTML = '';
-    if (currentFollowScores) currentFollowScores.innerHTML = '';
+    // Cache current arrays for possible other uses
+    currentLeads = leads;
+    currentFollows = follows;
+    liveRounds = rounds;
 
-    const sortedLeads = [...leads].sort((a, b) => b.points - a.points);
-    const sortedFollows = [...follows].sort((a, b) => b.points - a.points);
+    if (!liveLeadGraphic || !liveFollowGraphic) return;
 
-    sortedLeads.forEach(lead => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${lead.name}${lead.is_winner ? ' 👑' : ''}</span><span class="score-points">${lead.points}</span>`;
-        currentLeadScores.appendChild(li);
+    // Determine crown holders: only first to reach threshold per backend flags
+    const winnerLeadName = state.winners && state.winners.lead ? state.winners.lead : null;
+    const winnerFollowName = state.winners && state.winners.follow ? state.winners.follow : null;
+
+    // Build quick lookups for current points
+    const leadPointsMap = Object.fromEntries((leads || []).map(l => [l.name, l.points]));
+    const followPointsMap = Object.fromEntries((follows || []).map(f => [f.name, f.points]));
+    const winThreshold = (state.thresholds && typeof state.thresholds.win === 'number') ? state.thresholds.win : Infinity;
+    const canShowLeadCrown = Boolean(state.flags && state.flags.has_winning_lead && winnerLeadName && (leadPointsMap[winnerLeadName] || 0) >= winThreshold);
+    const canShowFollowCrown = Boolean(state.flags && state.flags.has_winning_follow && winnerFollowName && (followPointsMap[winnerFollowName] || 0) >= winThreshold);
+
+    // Build participation maps from accumulated rounds
+    const leadMap = new Map();
+    const followMap = new Map();
+    rounds.forEach(r => {
+        const rn = r.round_num;
+        const l1 = r.pairs?.pair_1?.lead; const f1 = r.pairs?.pair_1?.follow;
+        const l2 = r.pairs?.pair_2?.lead; const f2 = r.pairs?.pair_2?.follow;
+        if (l1) { if (!leadMap.has(l1)) leadMap.set(l1, []); leadMap.get(l1).push({round: rn, win: r.lead_winner===l1}); }
+        if (l2) { if (!leadMap.has(l2)) leadMap.set(l2, []); leadMap.get(l2).push({round: rn, win: r.lead_winner===l2}); }
+        if (f1) { if (!followMap.has(f1)) followMap.set(f1, []); followMap.get(f1).push({round: rn, win: r.follow_winner===f1}); }
+        if (f2) { if (!followMap.has(f2)) followMap.set(f2, []); followMap.get(f2).push({round: rn, win: r.follow_winner===f2}); }
     });
-    sortedFollows.forEach(follow => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${follow.name}${follow.is_winner ? ' 👑' : ''}</span><span class="score-points">${follow.points}</span>`;
-        currentFollowScores.appendChild(li);
-    });
+
+    // Clear containers
+    liveLeadGraphic.innerHTML = '';
+    liveFollowGraphic.innerHTML = '';
+
+    const renderColumn = (ordered, map, crownName, container, showCrown) => {
+        ordered.forEach((entry, idx) => {
+            const name = typeof entry === 'string' ? entry : entry.name;
+            const row = document.createElement('div');
+            row.className = 'graphic-row';
+            const rank = document.createElement('div');
+            rank.className = 'graphic-rank';
+            rank.textContent = `${idx + 1}.`;
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'graphic-name';
+            nameDiv.textContent = name;
+            if (showCrown && crownName && name === crownName) {
+                const crown = document.createElement('span');
+                crown.className = 'crown-icon';
+                crown.textContent = '👑';
+                nameDiv.appendChild(crown);
+            }
+            const badges = document.createElement('div');
+            badges.className = 'round-badges';
+            const roundsFor = (map.get(name) || []).slice().sort((a,b)=>a.round-b.round);
+            roundsFor.forEach(info => {
+                const b = document.createElement('div');
+                b.className = 'badge' + (info.win ? ' win' : '');
+                b.textContent = info.round;
+                badges.appendChild(b);
+            });
+            row.appendChild(rank);
+            row.appendChild(nameDiv);
+            row.appendChild(badges);
+            container.appendChild(row);
+        });
+    };
+
+    const orderedLeads = (state.initial_order?.leads) || currentLeads.map(l=>l.name);
+    const orderedFollows = (state.initial_order?.follows) || currentFollows.map(f=>f.name);
+    renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
+    renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
 }
 
 async function refreshCanonicalState() {
@@ -910,8 +970,11 @@ async function submitCombinedVotes() {
             nextRoundBtn.disabled = true;
         }
         
-        // Update only the scoreboard; keep results visible until Next Round
-        fetchScores();
+        // Update live graphic immediately with the latest canonical state
+        try {
+            const state = await fetchCanonicalState();
+            if (state) updateLiveGraphicFromState(state);
+        } catch (_) {}
     } catch (error) {
         console.error('Error submitting combined votes:', error);
         alert('Failed to submit votes. Please try again.');

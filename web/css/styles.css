@@ -193,17 +193,16 @@ textarea {
 }
 
 .scores-display {
-    flex: 2;
-    min-width: 300px;
+    flex: 3; /* allow wider live battle graphic */
+    min-width: 420px;
     padding: 15px 10px;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    overflow: hidden;
-    align-self: center;
+    overflow: visible; /* allow multi-line badges to expand */
+    align-self: stretch;
     display: flex;
     flex-direction: column;
-    justify-content: center;
 }
 
 .scores-display h3 {
@@ -727,12 +726,13 @@ textarea {
 
 .battle-graphic {
     display: flex;
-    gap: 24px;
+    gap: 32px; /* more horizontal space */
     align-items: flex-start;
+    flex-wrap: wrap;
 }
 
 .graphic-column {
-    flex: 1;
+    flex: 1 1 48%; /* allow each column to grow wider */
 }
 
 .graphic-list {
@@ -743,8 +743,8 @@ textarea {
 
 .graphic-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: flex-start; /* align top so multi-line badges don't overlap name */
+    gap: 6px;
 }
 
 .graphic-rank {
@@ -753,10 +753,19 @@ textarea {
     color: var(--light-text);
 }
 
+/* Reduce any unexpected spacing between name and badges */
+.graphic-name + .round-badges {
+    margin-left: 4px;
+}
+
 .graphic-name {
     position: relative;
     font-weight: 600;
-    min-width: 140px;
+    min-width: 0; /* allow badges to start immediately after the name */
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap; /* keep name on one line */
+    flex-shrink: 0; /* prevent name from shrinking under badges */
 }
 
 .graphic-name .crown-icon {
@@ -766,9 +775,10 @@ textarea {
 }
 
 .round-badges {
-    display: flex;
+    display: inline-flex;
     gap: 6px;
     flex-wrap: wrap;
+    align-content: flex-start;
 }
 
 .badge {
@@ -904,6 +914,7 @@ td span.crown {
     .round-content, .scores-display {
         width: 100%;
         min-width: 100%;
+        flex: 1 1 auto;
     }
     
     .round-content {

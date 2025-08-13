@@ -137,6 +137,29 @@ def serialize_state(game: Game) -> dict:
     # Judges
     contestant_judges = [j.name for j in game.contestant_judges]
 
+    # Build lightweight rounds summary for live UI (include completed + current)
+    rounds_data: list[dict] = []
+    try:
+        for r in getattr(game, 'rounds', []):
+            rounds_data.append({
+                'round_num': getattr(r, 'round_num', None),
+                'pairs': getattr(r, 'pairs', None),
+                'lead_winner': getattr(r, 'lead_winner', None),
+                'follow_winner': getattr(r, 'follow_winner', None),
+            })
+        cr = getattr(game, 'current_round', None)
+        if cr and cr not in getattr(game, 'rounds', []):
+            rounds_data.append({
+                'round_num': getattr(cr, 'round_num', None),
+                'pairs': getattr(cr, 'pairs', None),
+                'lead_winner': getattr(cr, 'lead_winner', None),
+                'follow_winner': getattr(cr, 'follow_winner', None),
+            })
+        rounds_data = [rd for rd in rounds_data if rd.get('round_num') is not None]
+        rounds_data.sort(key=lambda x: x['round_num'])
+    except Exception:
+        rounds_data = []
+
     state = {
         'session_id': game.session_id,
         'round': {
@@ -154,6 +177,7 @@ def serialize_state(game: Game) -> dict:
             'leads': lead_list,
             'follows': follow_list,
         },
+        'rounds': rounds_data,
         'thresholds': {
             'win': game.win_threshold,
         },
@@ -161,6 +185,10 @@ def serialize_state(game: Game) -> dict:
             'has_winning_lead': game.has_winning_lead,
             'has_winning_follow': game.has_winning_follow,
             'finished': game.is_finished(),
+        },
+        'winners': {
+            'lead': getattr(game, 'winning_lead', None).name if getattr(game, 'winning_lead', None) else None,
+            'follow': getattr(game, 'winning_follow', None).name if getattr(game, 'winning_follow', None) else None,
         },
         'initial_order': {
             'leads': [c.name for c in getattr(game, 'initial_leads', [])],
