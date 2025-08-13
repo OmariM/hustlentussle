@@ -891,8 +891,8 @@ async function submitCombinedVotes() {
             nextRoundBtn.disabled = true;
         }
         
-        // Refresh canonical state and scoreboard after voting
-        await refreshCanonicalState();
+        // Update only the scoreboard; keep results visible until Next Round
+        fetchScores();
     } catch (error) {
         console.error('Error submitting combined votes:', error);
         alert('Failed to submit votes. Please try again.');
