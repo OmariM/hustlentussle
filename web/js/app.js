@@ -263,16 +263,21 @@ function updateLiveGraphicFromState(state) {
 
     if (!liveLeadGraphic || !liveFollowGraphic) return;
 
-    // Determine crown holders: only first to reach threshold per backend flags
-    const winnerLeadName = state.winners && state.winners.lead ? state.winners.lead : null;
-    const winnerFollowName = state.winners && state.winners.follow ? state.winners.follow : null;
-
     // Build quick lookups for current points
     const leadPointsMap = Object.fromEntries((leads || []).map(l => [l.name, l.points]));
     const followPointsMap = Object.fromEntries((follows || []).map(f => [f.name, f.points]));
     const winThreshold = (state.thresholds && typeof state.thresholds.win === 'number') ? state.thresholds.win : Infinity;
-    const canShowLeadCrown = Boolean(state.flags && state.flags.has_winning_lead && winnerLeadName && (leadPointsMap[winnerLeadName] || 0) >= winThreshold);
-    const canShowFollowCrown = Boolean(state.flags && state.flags.has_winning_follow && winnerFollowName && (followPointsMap[winnerFollowName] || 0) >= winThreshold);
+    
+    // Determine crown holders: first to reach threshold per role. We rely on flags
+    // to indicate a winner exists, then pick the contestant at/above threshold.
+    const winnerLeadName = (state.flags && state.flags.has_winning_lead)
+        ? (leads.find(l => (l.points || 0) >= winThreshold)?.name || null)
+        : null;
+    const winnerFollowName = (state.flags && state.flags.has_winning_follow)
+        ? (follows.find(f => (f.points || 0) >= winThreshold)?.name || null)
+        : null;
+    const canShowLeadCrown = Boolean(winnerLeadName);
+    const canShowFollowCrown = Boolean(winnerFollowName);
 
     // Build participation maps from accumulated rounds
     const leadMap = new Map();
