@@ -8,6 +8,8 @@
     --border-color: #e9ecef;
     --text-color: #212529;
     --light-text: #6c757d;
+    --panel-bg: #ffffff;
+    --muted-bg: #f8f9fa;
 }
 
 * {
@@ -21,6 +23,20 @@ body {
     line-height: 1.6;
     color: var(--text-color);
     background-color: var(--background-color);
+}
+
+/* Dark mode variables */
+[data-theme="dark"] {
+    --primary-color: #7aa2ff;
+    --secondary-color: #b693ff;
+    --lead-color: #5dd4ff;
+    --follow-color: #ff4fa2;
+    --background-color: #0b1220;
+    --border-color: #223047;
+    --text-color: #e6e9ef;
+    --light-text: #9aa4b2;
+    --panel-bg: #0f172a;
+    --muted-bg: #111827;
 }
 
 .container {
@@ -1238,3 +1254,77 @@ td span.crown {
     margin-top: 0.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 } 
+
+/* Dark mode component overrides */
+[data-theme="dark"] .round-header,
+[data-theme="dark"] .scores-display,
+[data-theme="dark"] .matchup,
+[data-theme="dark"] .judges-section,
+[data-theme="dark"] .combined-voting-section,
+[data-theme="dark"] .voting-section,
+[data-theme="dark"] .result-section,
+[data-theme="dark"] .judge-card,
+[data-theme="dark"] .results,
+[data-theme="dark"] .starting-order-section,
+[data-theme="dark"] .leads-board,
+[data-theme="dark"] .follows-board,
+[data-theme="dark"] .welcome-section,
+[data-theme="dark"] .upload-form,
+[data-theme="dark"] .format-guide,
+[data-theme="dark"] .file-upload-label,
+[data-theme="dark"] .file-name,
+[data-theme="dark"] .initial-order,
+[data-theme="dark"] .song-input-container,
+[data-theme="dark"] .round-song,
+[data-theme="dark"] .accordion-content {
+    background-color: var(--panel-bg);
+}
+
+[data-theme="dark"] .accordion-header,
+[data-theme="dark"] .judge-item,
+[data-theme="dark"] .voting-section,
+[data-theme="dark"] .score-table tr:nth-child(even),
+[data-theme="dark"] .results-table tr:nth-child(even) {
+    background-color: var(--muted-bg);
+}
+
+[data-theme="dark"] .accordion-header:hover,
+[data-theme="dark"] .score-table tr:hover,
+[data-theme="dark"] .results-table tr:hover {
+    background-color: rgba(255,255,255,0.08);
+}
+
+[data-theme="dark"] .judge-card.voted {
+    background-color: rgba(67,97,238,0.12);
+}
+
+/* Inputs and textareas in dark mode */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="url"] {
+    background-color: var(--muted-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+    color: var(--light-text);
+    opacity: 0.9;
+}
+
+/* Starting order items in dark mode */
+[data-theme="dark"] #leads-initial-order li,
+[data-theme="dark"] #follows-initial-order li {
+    background-color: var(--muted-bg);
+    border-color: var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Round history participants items in dark mode */
+[data-theme="dark"] .match-pair {
+    background-color: var(--muted-bg);
+    border: 1px solid var(--border-color);
+}
