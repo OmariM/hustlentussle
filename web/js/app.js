@@ -1232,6 +1232,8 @@ function displayRoundHistory(rounds) {
         // Add round details
         const details = document.createElement('div');
         details.className = 'round-details';
+        const topRow = document.createElement('div');
+        topRow.className = 'round-top-row';
         
         // Add song information if available
         if (round.song_info) {
@@ -1273,7 +1275,7 @@ function displayRoundHistory(rounds) {
             }
             
             songSection.innerHTML = songHTML;
-            details.appendChild(songSection);
+            topRow.appendChild(songSection);
         }
         
         // Participants section
@@ -1310,16 +1312,19 @@ function displayRoundHistory(rounds) {
         }
         
         participants.innerHTML = participantsHTML;
-        details.appendChild(participants);
+        topRow.appendChild(participants);
+        // Ensure the top row (participants + song) is above judge votes
+        details.appendChild(topRow);
 
         // Add judge votes section
         const judgeVotes = document.createElement('div');
         judgeVotes.className = 'judge-votes';
         let judgeVotesHTML = '<h4>Judge Votes</h4>';
+        judgeVotesHTML += '<div class="vote-sections">';
 
         // Lead votes
         if (round.lead_votes) {
-            judgeVotesHTML += '<div class="vote-section"><h5>Lead Votes</h5>';
+            judgeVotesHTML += '<div class="vote-section lead"><h5>Lead Votes</h5>';
             
             // Sort votes to show guest judges first
             const sortedVotes = Object.entries(round.lead_votes).sort((a, b) => {
@@ -1330,22 +1335,25 @@ function displayRoundHistory(rounds) {
                 return 0;
             });
 
+            judgeVotesHTML += '<table class="judge-votes-table"><thead><tr><th>Judge</th><th>Type</th><th>Vote</th></tr></thead><tbody>';
             sortedVotes.forEach(([judge, vote]) => {
                 const isGuest = guestJudges.includes(judge);
                 const voteText = getVoteText(vote, round);
+                const judgeType = isGuest ? 'Guest' : 'Contestant';
                 judgeVotesHTML += `
-                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
-                        <span class="judge-name">${judge}</span>
-                        <span class="vote">${voteText}</span>
-                    </div>
+                    <tr class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <td class="judge-name">${judge}</td>
+                        <td><span class="judge-type ${isGuest ? 'guest' : 'contestant'}">${judgeType}</span></td>
+                        <td class="vote">${voteText}</td>
+                    </tr>
                 `;
             });
-            judgeVotesHTML += '</div>';
+            judgeVotesHTML += '</tbody></table></div>';
         }
 
         // Follow votes
         if (round.follow_votes) {
-            judgeVotesHTML += '<div class="vote-section"><h5>Follow Votes</h5>';
+            judgeVotesHTML += '<div class="vote-section follow"><h5>Follow Votes</h5>';
             
             // Sort votes to show guest judges first
             const sortedVotes = Object.entries(round.follow_votes).sort((a, b) => {
@@ -1356,28 +1364,28 @@ function displayRoundHistory(rounds) {
                 return 0;
             });
 
+            judgeVotesHTML += '<table class="judge-votes-table"><thead><tr><th>Judge</th><th>Type</th><th>Vote</th></tr></thead><tbody>';
             sortedVotes.forEach(([judge, vote]) => {
                 const isGuest = guestJudges.includes(judge);
                 const voteText = getFollowVoteText(vote, round);
+                const judgeType = isGuest ? 'Guest' : 'Contestant';
                 judgeVotesHTML += `
-                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
-                        <span class="judge-name">${judge}</span>
-                        <span class="vote">${voteText}</span>
-                    </div>
+                    <tr class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <td class="judge-name">${judge}</td>
+                        <td><span class="judge-type ${isGuest ? 'guest' : 'contestant'}">${judgeType}</span></td>
+                        <td class="vote">${voteText}</td>
+                    </tr>
                 `;
             });
-            judgeVotesHTML += '</div>';
+            judgeVotesHTML += '</tbody></table></div>';
         }
-
+        judgeVotesHTML += '</div>';
         judgeVotes.innerHTML = judgeVotesHTML;
         details.appendChild(judgeVotes);
         
-        // Add session ID to the round details
-        const sessionIdDiv = document.createElement('div');
-        sessionIdDiv.className = 'round-session-id';
-        sessionIdDiv.textContent = `Session: ${round.session_id}`;
-        details.appendChild(sessionIdDiv);
+        // Session ID removed from round cell for cleaner display
         
+        // Append assembled sections
         content.appendChild(details);
         accordionItem.appendChild(header);
         accordionItem.appendChild(content);

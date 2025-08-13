@@ -884,6 +884,100 @@ td span.crown {
     text-align: center;
 }
 
+/* Improved readability for round history judge votes */
+.judge-votes {
+    margin-top: 16px;
+}
+
+.vote-sections {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.vote-section {
+    margin-top: 12px;
+    flex: 1 1 300px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: #fff;
+}
+
+.vote-section h5 {
+    margin: 0 0 8px 0;
+}
+
+.vote-section.lead {
+    border-left: 4px solid var(--lead-color);
+}
+
+.vote-section.follow {
+    border-left: 4px solid var(--follow-color);
+}
+
+.judge-votes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+}
+
+.judge-votes-table th,
+.judge-votes-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    vertical-align: top;
+}
+
+.judge-votes-table th {
+    font-weight: 600;
+}
+
+.judge-votes-table thead th {
+    background: var(--muted-bg);
+}
+
+.judge-votes-table .judge-name {
+    font-weight: 500;
+}
+
+.judge-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.judge-votes-table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Dark mode support for judge votes tables */
+[data-theme="dark"] .vote-section {
+    background-color: var(--panel-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .judge-votes-table th,
+[data-theme="dark"] .judge-votes-table td {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .judge-votes-table thead th {
+    background: var(--muted-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .judge-votes-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .judge-type {
+    border-color: var(--border-color);
+}
+
 .accordion {
     width: 100%;
 }
@@ -930,14 +1024,24 @@ td span.crown {
 
 .round-details {
     display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.round-participants, .round-voting {
-    flex: 1;
-    min-width: 250px;
+.round-top-row {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    flex-wrap: wrap;
 }
+
+.round-participants, .round-song {
+    flex: 1 1 300px;
+}
+
+/* Ensure participants is placed before song and expands first on wrap */
+.round-participants { order: 0; }
+.round-song { order: 1; }
 
 .round-participants h4, .round-voting h4 {
     color: var(--primary-color);
