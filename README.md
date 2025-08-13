@@ -31,7 +31,7 @@ Now available with both a CLI and Web interface!
    ```bash
    python3 -m venv venv
    source venv/bin/activate   # Mac/Linux
-   venv\\Scripts\\activate    # Windows
+   venv\Scripts\activate    # Windows
    ```
 3. Install dependencies:
    ```bash
@@ -50,10 +50,14 @@ python web/app.py
 
 Then open your browser to http://localhost:5000
 
-- **Enter** lead names, follow names, and guest judge names.
-- **Vote** each round for leads and follows through an intuitive interface.
-- **Track** scores in real-time with a visual leaderboard.
-- **View** winners with crown emojis (👑) highlighting champions.
+- Home: Start a new battle or upload a previously saved results file
+- Setup: Enter lead names, follow names, and guest judge names; optionally set a points-to-win override
+- Voting: Cast votes for Leads and Follows (combined view) and Submit All Votes; live battle graphic updates
+- Song: Optionally paste a Spotify track URL; metadata will be fetched if Spotify credentials are configured
+- Results: View leaderboards, round history, and Download Battle Data (Excel or JSON)
+- Upload: Upload a previously downloaded .xlsx results file to visualize battle summaries and leaderboards
+- UI: Toggle Theme (light/dark) from the header
+- Debug (optional): Enable debug tools via env, query `?debug=1`, or hotkey Alt+Shift+D
 
 ### Run the Interactive CLI
 
@@ -61,18 +65,18 @@ Then open your browser to http://localhost:5000
 python main.py
 ```
 
-- **Enter** lead names, follow names, and guest judge names (comma-separated).
-- **Vote** each round for Leads (with Tie/No Contest options for guests) and for Follows.
-- **Results** and points update automatically until winners are determined, or you end the battle early.
+- Enter lead names, follow names, and guest judge names (comma-separated).
+- Vote each round for Leads (with Tie/No Contest options for guests) and for Follows.
+- Results and points update automatically until winners are determined, or you end the battle early.
 
 ### Run Automated Tests
 
 ```bash
-python test_simulation.py
+python run_complete_test_suite.py
 ```
 
-- Validates tie handling, no contest logic, split votes, sweeps, queue behavior, and early exit functionality.
-- Outputs a PASS/FAIL summary for all test scenarios.
+- Runs core battle rules, voting rules, pairing rules, stress tests, and integration simulations.
+- Outputs a concise PASS/FAIL summary and a breakdown report.
 
 ### Run Simple Simulation
 
@@ -80,7 +84,7 @@ python test_simulation.py
 python simulate_test.py
 ```
 
-- Walks through 3 rounds of simulated winners to demonstrate pairing logic.
+- Walks through several rounds of simulated winners to demonstrate pairing logic.
 
 ---
 
@@ -107,15 +111,19 @@ Hustle n' Tussle can be easily deployed to [Render](https://render.com) using th
      - Name: hustlentussle (or your preferred name)
      - Build Command: `pip install -r requirements.prod.txt`
      - Start Command: `gunicorn wsgi:application`
-   - Add environment variables:
-     - `FLASK_ENV`: `production`
-     - `SECRET_KEY`: Generate a secure random string
 
-5. **Deploy the service**:
+5. **Environment variables**:
+   - `FLASK_ENV`: `production`
+   - `SECRET_KEY`: Generate a secure random string
+   - Optional (for Spotify metadata on results and round history):
+     - `SPOTIFY_CLIENT_ID`: your client ID
+     - `SPOTIFY_CLIENT_SECRET`: your client secret
+
+6. **Deploy the service**:
    - Click "Create Web Service"
    - Wait for the build and deployment to complete
 
-6. **Connect your custom domain**:
+7. **Connect your custom domain**:
    - In your service dashboard, go to "Settings"
    - Scroll to "Custom Domains"
    - Click "Add Custom Domain"
@@ -127,15 +135,18 @@ For more details, see the [Render documentation](https://render.com/docs).
 
 ## ⚙️ Features
 
-- **Random Pairing**: Each round pairs one Lead with one Follow.
-- **Guest & Contestant Judges**: Guests can choose Tie or No Contest; contestants must pick a winner.
-- **Tie Handling**: Both tied dancers gain +1 point and continue to the next round with fresh opponents.
-- **No Contest**: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected.
-- **Winner Recognition**: Crown emoji (👑) highlights the first contestant to reach the winning threshold.
-- **Early Exit**: Option to end the battle early and finalize leaderboards based on current points.
-- **Scoring**: Points awarded per win; tracked individually and sorted.
-- **Final Leaderboards**: Displays separate Top Leads and Top Follows sorted by points.
-- **Multiple Interfaces**: Choose between CLI or Web interface depending on your needs.
+- Random Pairing: Each round pairs one Lead with one Follow
+- Guest & Contestant Judges: Guests can choose Tie or No Contest; contestants must pick a winner
+- Tie Handling: Both tied dancers gain +1 point and continue to the next round with fresh opponents
+- No Contest: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected
+- Winner Recognition: Crown emoji (👑) highlights the first contestant to reach the winning threshold
+- Scoring & Leaderboards: Points tracked individually and sorted for Leads and Follows
+- Multiple Interfaces: Choose between CLI or Web interface
+- Download Battle Data: Export to multi-sheet Excel or JSON, including round history and votes
+- Upload Results Viewer: Upload a previous .xlsx export to visualize summary, leaderboards, and rounds
+- Spotify Track Metadata (optional): Paste a track URL; artist/title auto-fetched when credentials are configured
+- Theme Toggle: Light/dark theming from the header
+- Debug Tools (dev): Optional utilities for simulation and auto-advance
 
 ---
 
@@ -143,19 +154,30 @@ For more details, see the [Render documentation](https://render.com/docs).
 
 ```
 hustle-n-tussle/
-├── game_logic.py         # Core game engine
-├── main.py               # CLI frontend
-├── test_simulation.py    # Automated tests with PASS/FAIL summary
-├── simulate_test.py      # Simple round simulation script
-├── requirements.txt      # External dependencies
-├── web/                  # Web interface files
-│   ├── app.py            # Flask backend API
-│   ├── index.html        # Web UI HTML
-│   ├── css/              # Stylesheets
-│   ├── js/               # JavaScript files
-│   └── README.md         # Web interface documentation
+├── game_logic.py                 # Core game engine
+├── main.py                       # CLI frontend
+├── simulate_test.py              # Simple round simulation script
+├── run_complete_test_suite.py    # Runs all rule and integration tests
+├── unit_tests.py                 # Extensive unit and API tests
+├── battle_rules_test_suite.py    # Core battle rules tests
+├── pairing_rules_tests.py        # Pairing and queue tests
+├── voting_rules_tests.py         # Voting rules tests
+├── requirements.txt              # Dev dependencies
+├── requirements.prod.txt         # Production dependencies
+├── wsgi.py                       # WSGI entrypoint for prod
+├── render.yaml                   # Render deployment config
+├── web/                          # Web interface files
+│   ├── app.py                    # Flask backend + API
+│   ├── index.html                # Web UI
+│   ├── config.py                 # Env-aware configuration
+│   ├── css/                      # Stylesheets
+│   ├── js/                       # JavaScript and components
+│   └── README.md                 # Web interface documentation
+├── docs/
+│   ├── render-deployment.md      # Detailed Render guide
+│   └── screenshots/              # UI screenshots and guidance
 ├── .gitignore
-└── README.md             # Project documentation
+└── README.md                     # Project documentation
 ```
 
 ---
@@ -168,10 +190,9 @@ Feel free to submit pull requests or open issues on GitHub. All enhancements and
 
 ## 📝 Future Enhancements
 
-1. **Quality of life features**:
+1. Quality of life features:
    - Implement save and load states
    - Allow results to be exported to CSV/PDF
-   - Add Spotify integration for music and logging which song was played for the round
    - Battle history page on website
    - Authentication for judges
    - Mobile application
