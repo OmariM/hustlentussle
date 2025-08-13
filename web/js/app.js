@@ -1077,12 +1077,34 @@ async function displayResults(data) {
     console.log('Lead results:', data.leads);
     console.log('Follow results:', data.follows);
     
+    // Determine the single top-scoring lead and follow for crown display
+    let topLeadName = null;
+    if (Array.isArray(data.leads) && data.leads.length > 0) {
+        const topLead = data.leads.reduce((best, contestant) => {
+            const bestPoints = Number(best.points) || 0;
+            const contestantPoints = Number(contestant.points) || 0;
+            return contestantPoints > bestPoints ? contestant : best;
+        }, data.leads[0]);
+        topLeadName = topLead && topLead.name ? topLead.name : null;
+    }
+    
+    let topFollowName = null;
+    if (Array.isArray(data.follows) && data.follows.length > 0) {
+        const topFollow = data.follows.reduce((best, contestant) => {
+            const bestPoints = Number(best.points) || 0;
+            const contestantPoints = Number(contestant.points) || 0;
+            return contestantPoints > bestPoints ? contestant : best;
+        }, data.follows[0]);
+        topFollowName = topFollow && topFollow.name ? topFollow.name : null;
+    }
+
     // Display lead results
     if (data.leads && Array.isArray(data.leads)) {
         data.leads.forEach(lead => {
             const row = document.createElement('tr');
             const nameCell = document.createElement('td');
-            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
+            const leadCrown = (topLeadName && lead.name === topLeadName) ? ' 👑' : '';
+            nameCell.textContent = `${lead.name}${leadCrown}`.trim();
             
             const pointsCell = document.createElement('td');
             pointsCell.textContent = lead.points;
@@ -1100,7 +1122,8 @@ async function displayResults(data) {
         data.follows.forEach(follow => {
             const row = document.createElement('tr');
             const nameCell = document.createElement('td');
-            nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
+            const followCrown = (topFollowName && follow.name === topFollowName) ? ' 👑' : '';
+            nameCell.textContent = `${follow.name}${followCrown}`.trim();
             
             const pointsCell = document.createElement('td');
             pointsCell.textContent = follow.points;
