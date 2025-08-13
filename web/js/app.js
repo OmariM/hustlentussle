@@ -967,8 +967,8 @@ function resetCompetition() {
 // Update score table with current standings
 function updateScoreTable(leads, follows) {
     // Clear existing scores
-    const leadScoreBody = document.getElementById('lead-score-body');
-    const followScoreBody = document.getElementById('follow-score-body');
+    const leadScoreBody = document.getElementById('lead-results-body');
+    const followScoreBody = document.getElementById('follow-results-body');
     leadScoreBody.innerHTML = '';
     followScoreBody.innerHTML = '';
 
