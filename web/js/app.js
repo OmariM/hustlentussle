@@ -168,6 +168,103 @@ function showScreen(screen) {
     uploadError.classList.remove('visible');
 }
 
+// Canonical state helpers
+async function fetchCanonicalState() {
+    if (!sessionId) return null;
+    const resp = await fetch(`/api/state?session_id=${sessionId}`);
+    if (!resp.ok) throw new Error('Failed to fetch canonical state');
+    return await resp.json();
+}
+
+function renderFromState(state) {
+    if (!state || !state.round || !state.round.pairs) return;
+
+    // Round number
+    if (roundNumber) roundNumber.textContent = state.round.number;
+
+    // Pairs
+    if (lead1Name) lead1Name.textContent = state.round.pairs.pair_1.lead;
+    if (follow1Name) follow1Name.textContent = state.round.pairs.pair_1.follow;
+    if (lead2Name) lead2Name.textContent = state.round.pairs.pair_2.lead;
+    if (follow2Name) follow2Name.textContent = state.round.pairs.pair_2.follow;
+
+    // Judges
+    if (guestJudgesList) {
+        guestJudgesList.innerHTML = '';
+        const gj = state.round.judges.guest || [];
+        gj.forEach(judge => {
+            const el = document.createElement('div');
+            el.className = 'judge-item guest';
+            el.textContent = judge;
+            guestJudgesList.appendChild(el);
+        });
+        guestJudges = gj; // keep local cache for previews
+    }
+    if (contestantJudgesList) {
+        contestantJudgesList.innerHTML = '';
+        const cj = state.round.judges.contestant || [];
+        cj.forEach(judge => {
+            const el = document.createElement('div');
+            el.className = 'judge-item contestant';
+            el.textContent = judge;
+            contestantJudgesList.appendChild(el);
+        });
+    }
+
+    // Scoreboard
+    updateScoreboardFromState(state);
+
+    // Reset voting UI for the current round
+    votingResults.classList.add('hidden');
+    roundResultsSection.classList.add('hidden');
+    winMessages.innerHTML = '';
+    leadWinnerPreview.classList.add('hidden');
+    followWinnerPreview.classList.add('hidden');
+    leadVotes = {}; followVotes = {}; votingLocked = { lead: false, follow: false };
+    submitVotesBtn.disabled = false;
+
+    // Rebuild voting cards based on current state
+    setupVotingUI();
+}
+
+function updateScoreboardFromState(state) {
+    if (!state || !state.scoreboard) return;
+    const leads = state.scoreboard.leads || [];
+    const follows = state.scoreboard.follows || [];
+
+    // Current scores lists
+    if (currentLeadScores) currentLeadScores.innerHTML = '';
+    if (currentFollowScores) currentFollowScores.innerHTML = '';
+
+    const sortedLeads = [...leads].sort((a, b) => b.points - a.points);
+    const sortedFollows = [...follows].sort((a, b) => b.points - a.points);
+
+    sortedLeads.forEach(lead => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="score-name">${lead.name}${lead.is_winner ? ' 👑' : ''}</span><span class="score-points">${lead.points}</span>`;
+        currentLeadScores.appendChild(li);
+    });
+    sortedFollows.forEach(follow => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="score-name">${follow.name}${follow.is_winner ? ' 👑' : ''}</span><span class="score-points">${follow.points}</span>`;
+        currentFollowScores.appendChild(li);
+    });
+}
+
+async function refreshCanonicalState() {
+    try {
+        const state = await fetchCanonicalState();
+        if (state) {
+            // Keep initial order for results use
+            if (Array.isArray(state.initial_order?.leads)) initialLeads = state.initial_order.leads;
+            if (Array.isArray(state.initial_order?.follows)) initialFollows = state.initial_order.follows;
+            renderFromState(state);
+        }
+    } catch (e) {
+        console.error('refreshCanonicalState failed:', e);
+    }
+}
+
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (file) {
@@ -310,12 +407,8 @@ async function startCompetition() {
         // Update session ID display
         updateSessionIdDisplay();
         
-        // Get initial scores
-        await fetchScores();
-        
-        // Update UI with initial round data
-        updateRoundUI(data);
-        setupVotingUI();
+        // Render from canonical state
+        await refreshCanonicalState();
         
         // Show round screen
         showScreen(roundScreen);
@@ -798,8 +891,8 @@ async function submitCombinedVotes() {
             nextRoundBtn.disabled = true;
         }
         
-        // Update scores after voting
-        await fetchScores();
+        // Update only the scoreboard; keep results visible until Next Round
+        fetchScores();
     } catch (error) {
         console.error('Error submitting combined votes:', error);
         alert('Failed to submit votes. Please try again.');
@@ -817,17 +910,13 @@ async function goToNextRound() {
             body: JSON.stringify({ session_id: sessionId })
         });
         
-        const data = await response.json();
+        await response.json();
         
-        // Update UI with new round data
-        updateRoundUI(data);
-        setupVotingUI();
+        // Render from canonical state
+        await refreshCanonicalState();
         
         // Scroll to top so current contestants are visible
         window.scrollTo({ top: 0, behavior: 'smooth' });
-        
-        // Fetch and update current scores
-        await fetchScores();
     } catch (error) {
         console.error('Error starting next round:', error);
         alert('Failed to start the next round. Please try again.');
@@ -878,8 +967,8 @@ function resetCompetition() {
 // Update score table with current standings
 function updateScoreTable(leads, follows) {
     // Clear existing scores
-    const leadScoreBody = document.getElementById('lead-score-body');
-    const followScoreBody = document.getElementById('follow-score-body');
+    const leadScoreBody = document.getElementById('lead-results-body');
+    const followScoreBody = document.getElementById('follow-results-body');
     leadScoreBody.innerHTML = '';
     followScoreBody.innerHTML = '';
 
