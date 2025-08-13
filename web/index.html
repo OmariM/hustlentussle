@@ -286,8 +286,35 @@
     </div>
 
     <script>
-        // Set debug flag based on environment
-        window.ENABLE_DEBUG_TOOLS = {{ 'true' if config.ENABLE_DEBUG_TOOLS else 'false' }};
+        // Set debug flag based on environment plus query/localStorage override
+        (function() {
+            try {
+                const url = new URL(window.location.href);
+                const qp = url.searchParams.get('debug');
+                if (qp === '1' || qp === 'true') {
+                    localStorage.setItem('debug.enable', 'true');
+                } else if (qp === '0' || qp === 'false') {
+                    localStorage.removeItem('debug.enable');
+                }
+            } catch (e) {}
+            var envEnabled = {{ 'true' if config.ENABLE_DEBUG_TOOLS else 'false' }};
+            var localEnabled = localStorage.getItem('debug.enable') === 'true';
+            window.ENABLE_DEBUG_TOOLS = envEnabled || localEnabled;
+            // Lightweight hotkey to enable at runtime even if disabled by env: Alt+Shift+D
+            window.addEventListener('keydown', function(e) {
+                if ((e.altKey && e.shiftKey) && (e.key === 'D' || e.key === 'd')) {
+                    localStorage.setItem('debug.enable', 'true');
+                    if (!window.ENABLE_DEBUG_TOOLS) {
+                        window.ENABLE_DEBUG_TOOLS = true;
+                        // Lazy-load DebugTools if script already loaded
+                        if (window.DebugTools && !window.debugTools) {
+                            window.debugTools = new window.DebugTools();
+                        }
+                    }
+                    e.preventDefault();
+                }
+            });
+        })();
     </script>
     <script src="js/components/DebugTools.js"></script>
     <script src="js/app.js"></script>
