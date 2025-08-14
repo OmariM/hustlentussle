@@ -5,12 +5,11 @@ import time
 from io import BytesIO
 from pathlib import Path
 from typing import List
-
 import requests
 from PIL import Image
-
 # Use Playwright sync API
 from playwright.sync_api import sync_playwright
+import random
 
 
 WORKSPACE = Path('/workspace')
@@ -76,10 +75,10 @@ def generate_screenshots() -> None:
 			page.click('#go-to-battle')
 			page.wait_for_selector('#setup-screen.active')
 
-			# Fill sample data: 5 leads, 5 follows, 3 guests; set high points-to-win to avoid early finish
+			# Fill sample data: 5 leads, 5 follows, 2 guests; set high points-to-win to avoid early finish
 			page.fill('#lead-names', 'John, Michael, David, James, Robert')
 			page.fill('#follow-names', 'Emma, Olivia, Sophia, Isabella, Ava')
-			page.fill('#judge-names', 'Alex, Jordan, Sam')
+			page.fill('#judge-names', 'Alex, Jordan')
 			page.fill('#points-to-win', '10')
 
 			# Capture setup screen
@@ -99,16 +98,26 @@ def generate_screenshots() -> None:
 				# Initial round view
 				frames.append(pil_from_bytes(page.screenshot(full_page=True)))
 
-				# Click votes for each judge on leads (option 1)
-				lead_vote_buttons = page.locator('#lead-judges-container .judge-card .vote-option-1')
-				for i in range(lead_vote_buttons.count()):
-					lead_vote_buttons.nth(i).click()
+				# Randomize votes for leads (choose between option-1 and option-2)
+				lead_judges = page.locator('#lead-judges-container .judge-card')
+				lead_count = lead_judges.count()
+				for i in range(lead_count):
+					card = lead_judges.nth(i)
+					if random.random() < 0.5:
+						card.locator('.vote-option-1').click()
+					else:
+						card.locator('.vote-option-2').click()
 					time.sleep(0.1)
 
-				# Click votes for each judge on follows (option 2)
-				follow_vote_buttons = page.locator('#follow-judges-container .judge-card .vote-option-2')
-				for i in range(follow_vote_buttons.count()):
-					follow_vote_buttons.nth(i).click()
+				# Randomize votes for follows (choose between option-1 and option-2)
+				follow_judges = page.locator('#follow-judges-container .judge-card')
+				follow_count = follow_judges.count()
+				for i in range(follow_count):
+					card = follow_judges.nth(i)
+					if random.random() < 0.5:
+						card.locator('.vote-option-1').click()
+					else:
+						card.locator('.vote-option-2').click()
 					time.sleep(0.1)
 
 				# Submit votes
