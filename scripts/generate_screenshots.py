@@ -35,7 +35,7 @@ def pil_from_bytes(png_bytes: bytes) -> Image.Image:
 	return Image.open(BytesIO(png_bytes)).convert('RGB')
 
 
-def save_gif(frames: List[Image.Image], out_path: Path, duration_ms: int = 300) -> None:
+def save_gif(frames: List[Image.Image], out_path: Path, duration_ms: int = 250) -> None:
 	if not frames:
 		raise ValueError('No frames provided for GIF')
 	frames[0].save(
@@ -76,10 +76,11 @@ def generate_screenshots() -> None:
 			page.click('#go-to-battle')
 			page.wait_for_selector('#setup-screen.active')
 
-			# Fill sample data (keep small to minimize number of judges for fast interactions)
-			page.fill('#lead-names', 'John, Michael')
-			page.fill('#follow-names', 'Emma, Olivia')
-			page.fill('#judge-names', 'Alex, Jordan')
+			# Fill sample data: 5 leads, 5 follows, 3 guests; set high points-to-win to avoid early finish
+			page.fill('#lead-names', 'John, Michael, David, James, Robert')
+			page.fill('#follow-names', 'Emma, Olivia, Sophia, Isabella, Ava')
+			page.fill('#judge-names', 'Alex, Jordan, Sam')
+			page.fill('#points-to-win', '10')
 
 			# Capture setup screen
 			setup_el = page.locator('#setup-screen')
@@ -92,39 +93,43 @@ def generate_screenshots() -> None:
 			page.wait_for_selector('#lead-judges-container .judge-card')
 			page.wait_for_selector('#follow-judges-container .judge-card')
 
-			# Prepare frames for GIF
+			# Prepare frames for GIF across first 5 rounds
 			frames: List[Image.Image] = []
-			frames.append(pil_from_bytes(page.screenshot(full_page=True)))
-
-			# Click votes for each judge on leads
-			lead_vote_buttons = page.locator('#lead-judges-container .judge-card .vote-option-1')
-			count = lead_vote_buttons.count()
-			for i in range(count):
-				lead_vote_buttons.nth(i).click()
-				time.sleep(0.15)
+			for round_index in range(1, 6):
+				# Initial round view
 				frames.append(pil_from_bytes(page.screenshot(full_page=True)))
 
-			# Click votes for each judge on follows
-			follow_vote_buttons = page.locator('#follow-judges-container .judge-card .vote-option-2')
-			count_f = follow_vote_buttons.count()
-			for i in range(count_f):
-				follow_vote_buttons.nth(i).click()
-				time.sleep(0.15)
+				# Click votes for each judge on leads (option 1)
+				lead_vote_buttons = page.locator('#lead-judges-container .judge-card .vote-option-1')
+				for i in range(lead_vote_buttons.count()):
+					lead_vote_buttons.nth(i).click()
+					time.sleep(0.1)
+
+				# Click votes for each judge on follows (option 2)
+				follow_vote_buttons = page.locator('#follow-judges-container .judge-card .vote-option-2')
+				for i in range(follow_vote_buttons.count()):
+					follow_vote_buttons.nth(i).click()
+					time.sleep(0.1)
+
+				# Submit votes
+				page.wait_for_function("document.getElementById('submit-votes') && !document.getElementById('submit-votes').disabled")
+				page.click('#submit-votes')
+				page.wait_for_selector('#voting-results:not(.hidden)')
+				time.sleep(0.2)
 				frames.append(pil_from_bytes(page.screenshot(full_page=True)))
 
-			# Submit votes
-			submit = page.locator('#submit-votes')
-			# Wait until enabled
-			page.wait_for_function("el => !el.disabled", arg=submit.element_handle())
-			submit.click()
-			page.wait_for_selector('#voting-results:not(.hidden)')
-			time.sleep(0.2)
-			frames.append(pil_from_bytes(page.screenshot(full_page=True)))
+				# Proceed to next round unless this was round 5
+				if round_index < 5:
+					page.click('#next-round')
+					# Wait for results to hide and next round to render
+					page.wait_for_selector('#voting-results.hidden', state='attached')
+					page.wait_for_selector('#lead-judges-container .judge-card')
+					time.sleep(0.2)
 
 			# Save GIF
 			save_gif(frames, SCREEN_DIR / 'voting-screen.gif', duration_ms=250)
 
-			# End battle -> Results
+			# End battle -> Results screenshot
 			page.click('#end-battle')
 			page.wait_for_selector('#results-screen')
 			# Give a moment for tables to fill
