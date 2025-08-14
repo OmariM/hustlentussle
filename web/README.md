@@ -19,11 +19,14 @@ This is a modern web interface for the Hustle n' Tussle Dance Competition Manage
 ## Features
 
 - All the functionality of the CLI version in a user-friendly web interface
+- Combined voting flow for Leads and Follows with a single Submit All Votes
+- Battle Graphic and real-time score updates
 - Crown emoji (👑) highlights the first contestant to reach the winning threshold
-- Responsive design works on desktop and mobile
-- Real-time updates as judges vote
-- Visual tables and leaderboards for tracking scores and final results
-- Medal emojis (🥇, 🥈, 🥉) for top performers
+- Upload Results page to visualize a previously downloaded .xlsx export
+- Download Battle Data (Excel multi-sheet or JSON)
+- Optional Spotify metadata for songs (track title/artist from pasted Spotify URL)
+- Theme toggle (light/dark)
+- Responsive design
 
 ## Setup and Installation
 
@@ -34,7 +37,6 @@ This is a modern web interface for the Hustle n' Tussle Dance Competition Manage
 
 2. Run the Flask application:
    ```bash
-   cd to/project/directory
    python web/app.py
    ```
 
@@ -45,40 +47,31 @@ This is a modern web interface for the Hustle n' Tussle Dance Competition Manage
 
 ## How to Use
 
-1. **Setup Screen**:
-   - Enter lead names (comma-separated)
-   - Enter follow names (comma-separated)
-   - Enter guest judge names (comma-separated)
-   - Click "Start Competition"
+1. Home:
+   - Start Battle or Upload Results
 
-2. **Round Screen**:
-   - View the current matchups
-   - Track scores in real-time in the header tables
-   - For each judge, select their vote for leads
-   - After all lead votes are submitted, select votes for follows
-   - View the results of each voting round
-   - See crown emojis (👑) next to winners when they reach the threshold
-   - Choose to proceed to the next round or end the battle
+2. Setup:
+   - Enter lead, follow, and guest judge names (comma-separated)
+   - Optional: set a custom points-to-win value
 
-3. **Results Screen**:
-   - View the final leaderboards for leads and follows
-   - See medal emojis (🥇, 🥈, 🥉) for top three contestants
-   - Crown emojis (👑) highlight the first contestants to reach the winning threshold
-   - Start a new competition if desired
+3. Battle:
+   - View current matchups and judges
+   - Paste a Spotify track URL (optional)
+   - Cast votes for Leads and Follows, then Submit All Votes
+   - See live results and proceed to Next Round or End Battle
+
+4. Results:
+   - View leaderboards for Leads and Follows, round history, and download battle data
+
+5. Upload:
+   - Upload a previously downloaded .xlsx battle results file to view summary and leaderboards
 
 ## Technical Details
 
-- **Frontend**: Pure HTML, CSS, and JavaScript (no frameworks)
-- **Backend**: Flask API that interfaces with the original game_logic.py
-- **Data Flow**: The web UI makes fetch API calls to the Flask backend, which manages the game state
-- **Responsive Design**: Adapts to different screen sizes from desktop to mobile
-
-## UI Components
-
-- **Score Tables**: Real-time updated tables showing contestant points
-- **Voting Cards**: Interactive cards for judges to cast their votes
-- **Results Display**: Final leaderboards with medals and crown recognition
-- **Responsive Layout**: Adapts to different screen sizes for optimal viewing
+- Frontend: HTML, CSS, and JavaScript (no frameworks)
+- Backend: Flask API that interfaces with `game_logic.py`
+- Data Flow: Fetch API calls manage the game state on the server
+- Debug Tools: Enable via env, append `?debug=1`, or press Alt+Shift+D
 
 ## Browser Compatibility
 
