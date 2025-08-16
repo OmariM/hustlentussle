@@ -1355,12 +1355,47 @@ def spotify_authorize():
     if tokens and tokens.get('expires_at', 0) > _now():
         return jsonify({'message': 'User already authenticated for this session.'})
 
-    # Generate a random state to prevent CSRF
-    state = uuid.uuid4().hex
-    # Store state to retrieve it after authorization
     redirect_uri = _get_redirect_uri()
-    auth_url = f"https://accounts.spotify.com/authorize?response_type=code&client_id={os.getenv('SPOTIFY_CLIENT_ID')}&scope=user-read-private user-read-email user-read-playback-state user-modify-playback-state&redirect_uri={urllib.parse.quote(redirect_uri)}&state={state}"
+    client_id = os.getenv('SPOTIFY_CLIENT_ID')
+    if not client_id:
+        return jsonify({'error': 'Spotify client ID not configured'}), 500
+
+    scopes = [
+        'user-read-private',
+        'user-read-email',
+        'user-read-playback-state',
+        'user-modify-playback-state',
+        'streaming'
+    ]
+    scope_str = ' '.join(scopes)
+
+    query = {
+        'response_type': 'code',
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': scope_str,
+        'state': session_id,
+    }
+    # urlencode will encode spaces as '+', which Spotify accepts; to be safe, pre-encode redirect_uri and scope
+    query['redirect_uri'] = urllib.parse.quote(redirect_uri, safe='')
+    query['scope'] = urllib.parse.quote(scope_str, safe='')
+    auth_url = f"https://accounts.spotify.com/authorize?client_id={query['client_id']}&response_type=code&redirect_uri={query['redirect_uri']}&scope={query['scope']}&state={urllib.parse.quote(session_id, safe='')}"
     return redirect(auth_url)
+
+@app.route('/api/spotify/user_token', methods=['GET'])
+def spotify_user_token():
+    """Expose the current user's access token for the Web Playback SDK."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'Not authorized'}), 401
+    tokens = _get_user_tokens(session_id) or {}
+    return jsonify({
+        'access_token': access_token,
+        'expires_at': tokens.get('expires_at'),
+    })
 
 @app.route('/api/spotify/current_track', methods=['GET'])
 def spotify_current_track():
@@ -1427,6 +1462,7 @@ def spotify_play_track():
     
     session_id = data.get('session_id')
     track_uri = data.get('track_uri')
+    device_id = data.get('device_id')
     
     if not session_id or not track_uri:
         return jsonify({'error': 'Missing session_id or track_uri'}), 400
@@ -1437,30 +1473,24 @@ def spotify_play_track():
 
     try:
         headers = {'Authorization': f'Bearer {access_token}'}
-        resp = requests.put(
-            f'https://api.spotify.com/v1/me/player/play?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-            headers=headers,
-            json={'uris': [track_uri]}
-        )
+        url = 'https://api.spotify.com/v1/me/player/play'
+        if device_id:
+            url += f"?device_id={device_id}"
+        resp = requests.put(url, headers=headers, json={'uris': [track_uri]})
         if resp.status_code == 204:
-            return jsonify({'message': 'Track queued successfully.'})
+            return jsonify({'message': 'Track started successfully.'})
         elif resp.status_code == 401:
-            # Token might be expired, try to refresh
             access_token = _refresh_user_token(session_id)
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
-            resp = requests.put(
-                f'https://api.spotify.com/v1/me/player/play?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-                headers=headers,
-                json={'uris': [track_uri]}
-            )
+            resp = requests.put(url, headers=headers, json={'uris': [track_uri]})
             if resp.status_code == 204:
-                return jsonify({'message': 'Track queued successfully after refresh.'})
+                return jsonify({'message': 'Track started successfully after refresh.'})
             else:
-                return jsonify({'error': 'Failed to queue track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+                return jsonify({'error': 'Failed to start track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
         else:
-            return jsonify({'error': 'Failed to queue track', 'status': resp.status_code, 'details': resp.json()}), 502
+            return jsonify({'error': 'Failed to start track', 'status': resp.status_code, 'details': resp.json()}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1468,6 +1498,7 @@ def spotify_play_track():
 def spotify_pause_track():
     """Pauses the user's Spotify account."""
     session_id = request.args.get('session_id')
+    device_id = request.args.get('device_id')
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
@@ -1477,22 +1508,18 @@ def spotify_pause_track():
 
     try:
         headers = {'Authorization': f'Bearer {access_token}'}
-        resp = requests.put(
-            f'https://api.spotify.com/v1/me/player/pause?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-            headers=headers
-        )
+        url = 'https://api.spotify.com/v1/me/player/pause'
+        if device_id:
+            url += f"?device_id={device_id}"
+        resp = requests.put(url, headers=headers)
         if resp.status_code == 204:
             return jsonify({'message': 'Track paused successfully.'})
         elif resp.status_code == 401:
-            # Token might be expired, try to refresh
             access_token = _refresh_user_token(session_id)
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
-            resp = requests.put(
-                f'https://api.spotify.com/v1/me/player/pause?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-                headers=headers
-            )
+            resp = requests.put(url, headers=headers)
             if resp.status_code == 204:
                 return jsonify({'message': 'Track paused successfully after refresh.'})
             else:
@@ -1506,6 +1533,7 @@ def spotify_pause_track():
 def spotify_next_track():
     """Skips to the next track on the user's Spotify account."""
     session_id = request.args.get('session_id')
+    device_id = request.args.get('device_id')
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
@@ -1515,22 +1543,18 @@ def spotify_next_track():
 
     try:
         headers = {'Authorization': f'Bearer {access_token}'}
-        resp = requests.post(
-            f'https://api.spotify.com/v1/me/player/next?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-            headers=headers
-        )
+        url = 'https://api.spotify.com/v1/me/player/next'
+        if device_id:
+            url += f"?device_id={device_id}"
+        resp = requests.post(url, headers=headers)
         if resp.status_code == 204:
             return jsonify({'message': 'Track skipped successfully.'})
         elif resp.status_code == 401:
-            # Token might be expired, try to refresh
             access_token = _refresh_user_token(session_id)
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
-            resp = requests.post(
-                f'https://api.spotify.com/v1/me/player/next?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-                headers=headers
-            )
+            resp = requests.post(url, headers=headers)
             if resp.status_code == 204:
                 return jsonify({'message': 'Track skipped successfully after refresh.'})
             else:
@@ -1544,6 +1568,7 @@ def spotify_next_track():
 def spotify_previous_track():
     """Goes back to the previous track on the user's Spotify account."""
     session_id = request.args.get('session_id')
+    device_id = request.args.get('device_id')
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
@@ -1553,22 +1578,18 @@ def spotify_previous_track():
 
     try:
         headers = {'Authorization': f'Bearer {access_token}'}
-        resp = requests.post(
-            f'https://api.spotify.com/v1/me/player/previous?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-            headers=headers
-        )
+        url = 'https://api.spotify.com/v1/me/player/previous'
+        if device_id:
+            url += f"?device_id={device_id}"
+        resp = requests.post(url, headers=headers)
         if resp.status_code == 204:
             return jsonify({'message': 'Track went back successfully.'})
         elif resp.status_code == 401:
-            # Token might be expired, try to refresh
             access_token = _refresh_user_token(session_id)
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
-            resp = requests.post(
-                f'https://api.spotify.com/v1/me/player/previous?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
-                headers=headers
-            )
+            resp = requests.post(url, headers=headers)
             if resp.status_code == 204:
                 return jsonify({'message': 'Track went back successfully after refresh.'})
             else:
