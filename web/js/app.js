@@ -1665,29 +1665,17 @@ async function getSpotifyToken() {
 }
 
 async function fetchPlaylistTracks(offset = 0) {
-    const token = await getSpotifyToken();
-    const limit = 100;
-    const resp = await fetchJson(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!resp.ok) throw new Error(`Failed to fetch playlist tracks: ${resp.status}`);
-    const data = await resp.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    const newTracks = items
-        .map(item => item && item.track)
-        .filter(Boolean)
-        .map(t => ({ id: t.id, name: t.name, artists: (t.artists || []).map(a => a.name).join(', ') }));
-    const seen = new Set(playlistTracks.map(t => t.id));
-    newTracks.forEach(t => { if (t.id && !seen.has(t.id)) playlistTracks.push(t); });
-    if (data.next) {
-        try {
-            const nextUrl = new URL(data.next);
-            const nextOffset = Number(nextUrl.searchParams.get('offset')) || (offset + limit);
-            await fetchPlaylistTracks(nextOffset);
-        } catch (_) {
-            // If parsing next fails, stop pagination
-        }
+    // Use server proxy to avoid client-side CORS and centralize token handling
+    const resp = await fetch(`/api/spotify/playlist_tracks?playlist_id=${encodeURIComponent(playlistId)}`);
+    if (!resp.ok) {
+        let details = '';
+        try { const j = await resp.json(); details = j && j.error ? j.error : ''; } catch (_) {}
+        throw new Error(`Failed to fetch playlist tracks: ${resp.status} ${details}`);
     }
+    const data = await resp.json();
+    const newTracks = Array.isArray(data.tracks) ? data.tracks : [];
+    const existingIds = new Set(playlistTracks.map(t => t.id));
+    newTracks.forEach(t => { if (t && t.id && !existingIds.has(t.id)) playlistTracks.push(t); });
 }
 
 async function preparePlaylistSongForRound(roundNum) {

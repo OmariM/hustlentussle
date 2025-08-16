@@ -1220,5 +1220,82 @@ def get_spotify_token():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/spotify/playlist_tracks', methods=['GET'])
+def spotify_playlist_tracks():
+    """Server-side proxy to fetch all tracks for a public Spotify playlist.
+    Returns a simplified JSON structure: { tracks: [ { id, name, artists } ] }
+    """
+    try:
+        playlist_id = request.args.get('playlist_id')
+        if not playlist_id:
+            return jsonify({'error': 'Missing playlist_id'}), 400
+
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        if not client_id or not client_secret:
+            return jsonify({'error': 'Spotify credentials not configured'}), 500
+
+        # Get access token
+        token_resp = requests.post(
+            'https://accounts.spotify.com/api/token',
+            auth=(client_id, client_secret),
+            data={'grant_type': 'client_credentials'}
+        )
+        if token_resp.status_code != 200:
+            return jsonify({'error': 'Failed to get Spotify access token'}), 500
+        access_token = token_resp.json().get('access_token')
+        headers = {'Authorization': f'Bearer {access_token}'}
+
+        # Fetch tracks (paginate)
+        url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit=100'
+        tracks = []
+        visited = set()
+        while url and url not in visited:
+            visited.add(url)
+            resp = requests.get(url, headers=headers)
+            if resp.status_code == 401:
+                # Try to refresh token once
+                token_resp = requests.post(
+                    'https://accounts.spotify.com/api/token',
+                    auth=(client_id, client_secret),
+                    data={'grant_type': 'client_credentials'}
+                )
+                if token_resp.status_code != 200:
+                    return jsonify({'error': 'Failed to refresh Spotify token'}), 500
+                access_token = token_resp.json().get('access_token')
+                headers = {'Authorization': f'Bearer {access_token}'}
+                resp = requests.get(url, headers=headers)
+            if resp.status_code != 200:
+                try:
+                    return jsonify({'error': 'Failed to fetch playlist tracks', 'status': resp.status_code, 'details': resp.json()}), 502
+                except Exception:
+                    return jsonify({'error': 'Failed to fetch playlist tracks', 'status': resp.status_code}), 502
+            data = resp.json()
+            items = data.get('items', [])
+            for item in items:
+                t = (item or {}).get('track') or {}
+                tid = t.get('id')
+                if not tid:
+                    continue
+                tracks.append({
+                    'id': tid,
+                    'name': t.get('name', ''),
+                    'artists': ', '.join([a.get('name', '') for a in t.get('artists', []) if a])
+                })
+            url = data.get('next')
+
+        # Deduplicate by id
+        unique = []
+        seen = set()
+        for t in tracks:
+            if t['id'] in seen:
+                continue
+            seen.add(t['id'])
+            unique.append(t)
+
+        return jsonify({'tracks': unique})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
