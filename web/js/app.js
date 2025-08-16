@@ -1718,6 +1718,31 @@ function renderPlaylistEmbed(track) {
     iframe.allow = 'encrypted-media';
     iframe.className = 'spotify-embed';
     playlistEmbedContainer.appendChild(iframe);
+
+    // Add an action to open the full track in Spotify (app or web)
+    const actions = document.createElement('div');
+    actions.style.marginTop = '6px';
+
+    const openBtn = document.createElement('button');
+    openBtn.textContent = 'Play full song in Spotify';
+    openBtn.className = 'btn secondary';
+    openBtn.onclick = (e) => {
+        e.preventDefault();
+        const appUri = `spotify:track:${track.id}`;
+        const webUrl = `https://open.spotify.com/track/${track.id}`;
+        // Try app URI first; fallback to web
+        let didNavigate = false;
+        try {
+            window.location.href = appUri;
+            didNavigate = true;
+        } catch (_) {}
+        setTimeout(() => {
+            if (!didNavigate) window.open(webUrl, '_blank');
+        }, 600);
+    };
+    actions.appendChild(openBtn);
+
+    playlistEmbedContainer.appendChild(actions);
 }
 
 async function downloadBattleData() {
