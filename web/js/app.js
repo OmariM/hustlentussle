@@ -1700,6 +1700,8 @@ async function preparePlaylistSongForRound(roundNum) {
         currentRoundTrack = track;
         lastPreparedSongRoundNumber = roundNum;
         renderPlaylistEmbed(track);
+        // Attempt to start full playback via Spotify
+        playCurrentRoundTrackViaSpotify();
     } catch (e) {
         console.warn('preparePlaylistSongForRound error:', e);
         disablePlaylistMode('Error preparing playlist track.');
@@ -1719,30 +1721,48 @@ function renderPlaylistEmbed(track) {
     iframe.className = 'spotify-embed';
     playlistEmbedContainer.appendChild(iframe);
 
-    // Add an action to open the full track in Spotify (app or web)
-    const actions = document.createElement('div');
-    actions.style.marginTop = '6px';
+    // Controls
+    const controls = document.createElement('div');
+    controls.style.marginTop = '6px';
+    controls.style.display = 'flex';
+    controls.style.gap = '8px';
 
+    const playBtn = document.createElement('button');
+    playBtn.textContent = 'Play Full';
+    playBtn.className = 'btn secondary';
+    playBtn.onclick = (e) => {
+        e.preventDefault();
+        playCurrentRoundTrackViaSpotify();
+    };
+
+    const pauseBtn = document.createElement('button');
+    pauseBtn.textContent = 'Pause';
+    pauseBtn.className = 'btn secondary';
+    pauseBtn.onclick = async (e) => {
+        e.preventDefault();
+        try {
+            await fetch(`/api/spotify/pause_track?session_id=${sessionId}`, { method: 'POST' });
+        } catch (_) {}
+    };
+
+    controls.appendChild(playBtn);
+    controls.appendChild(pauseBtn);
+
+    // Add an action to open the full track in Spotify (app or web)
     const openBtn = document.createElement('button');
-    openBtn.textContent = 'Play full song in Spotify';
+    openBtn.textContent = 'Open in Spotify';
     openBtn.className = 'btn secondary';
     openBtn.onclick = (e) => {
         e.preventDefault();
         const appUri = `spotify:track:${track.id}`;
         const webUrl = `https://open.spotify.com/track/${track.id}`;
-        // Try app URI first; fallback to web
         let didNavigate = false;
-        try {
-            window.location.href = appUri;
-            didNavigate = true;
-        } catch (_) {}
-        setTimeout(() => {
-            if (!didNavigate) window.open(webUrl, '_blank');
-        }, 600);
+        try { window.location.href = appUri; didNavigate = true; } catch (_) {}
+        setTimeout(() => { if (!didNavigate) window.open(webUrl, '_blank'); }, 600);
     };
-    actions.appendChild(openBtn);
+    controls.appendChild(openBtn);
 
-    playlistEmbedContainer.appendChild(actions);
+    playlistEmbedContainer.appendChild(controls);
 }
 
 async function downloadBattleData() {
@@ -1933,4 +1953,76 @@ function disablePlaylistMode(reason) {
     if (songInputSection) songInputSection.style.display = '';
     if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
     if (reason) console.warn('Playlist mode disabled:', reason);
+} 
+
+// Spotify Web Playback SDK integration
+let spotifyPlayer = null;
+let spotifyDeviceId = null;
+let webPlaybackReady = false;
+
+function loadSpotifySDK() {
+    return new Promise((resolve, reject) => {
+        if (window.Spotify) return resolve();
+        const script = document.createElement('script');
+        script.src = 'https://sdk.scdn.co/spotify-player.js';
+        script.onload = () => resolve();
+        script.onerror = reject;
+        document.body.appendChild(script);
+    });
+}
+
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        // Attempt to see if we already have a valid token on server
+        const resp = await fetch(`/api/spotify/current_track?session_id=${sessionId}`);
+        if (resp.status === 200) return true;
+    } catch (_) {}
+    // Kick off OAuth by navigating
+    window.location.href = `/api/spotify/authorize?session_id=${encodeURIComponent(sessionId)}`;
+    return false;
+}
+
+async function initWebPlaybackPlayer() {
+    await loadSpotifySDK();
+    if (!await ensureUserAuthForPlayback()) return;
+    if (spotifyPlayer) return;
+
+    window.onSpotifyWebPlaybackSDKReady = () => {};
+
+    // We will use server-side play endpoint; the SDK here mainly registers a device
+    // Spotify requires user auth; token is held server-side, so we create a lightweight player without client token
+    try {
+        spotifyPlayer = new Spotify.Player({ name: 'Battle Manager Player', getOAuthToken: cb => cb('') });
+    } catch (e) {
+        console.warn('Failed to create Spotify Player:', e);
+        return;
+    }
+
+    spotifyPlayer.addListener('ready', ({ device_id }) => {
+        spotifyDeviceId = device_id;
+        webPlaybackReady = true;
+        console.log('Spotify Web Playback SDK ready with device:', device_id);
+    });
+    spotifyPlayer.addListener('not_ready', ({ device_id }) => {
+        console.log('Spotify Device went offline:', device_id);
+        webPlaybackReady = false;
+    });
+
+    try { await spotifyPlayer.connect(); } catch (_) {}
+}
+
+async function playCurrentRoundTrackViaSpotify() {
+    if (!playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
+    await initWebPlaybackPlayer();
+    // Use server endpoint to start playback on the active device (requires a user device playing)
+    try {
+        await fetch('/api/spotify/play_track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, track_uri: `spotify:track:${currentRoundTrack.id}` })
+        });
+    } catch (e) {
+        console.warn('Failed to start Spotify playback:', e);
+    }
 } 

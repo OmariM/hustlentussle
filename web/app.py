@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, redirect
 import sys
 import os
 import pandas as pd
@@ -15,6 +15,8 @@ import uuid
 import tempfile
 import shutil
 import threading
+import time
+import urllib.parse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,6 +67,78 @@ repo = GameRepository()
 # Backwards compatibility for tests that import `games`
 # Expose the internal storage dict for now; prefer using `repo` going forward.
 games = repo._games
+
+# In-memory user OAuth token store keyed by game session_id
+# Structure: { session_id: { access_token, refresh_token, expires_at } }
+_spotify_user_tokens: dict[str, dict] = {}
+_spotify_user_tokens_lock = threading.RLock()
+
+
+def _get_redirect_uri() -> str:
+    # Prefer explicit env var; else infer from request
+    env_uri = os.getenv('SPOTIFY_REDIRECT_URI')
+    if env_uri:
+        return env_uri
+    try:
+        base = request.host_url.rstrip('/')
+        return f"{base}/api/spotify/callback"
+    except Exception:
+        # Fallback localhost
+        return "http://localhost:5000/api/spotify/callback"
+
+
+def _now() -> float:
+    return time.time()
+
+
+def _store_user_tokens(session_id: str, access_token: str, refresh_token: str | None, expires_in: int) -> None:
+    with _spotify_user_tokens_lock:
+        _spotify_user_tokens[session_id] = {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_at': _now() + max(1, int(expires_in) - 30)  # refresh a bit early
+        }
+
+
+def _get_user_tokens(session_id: str) -> dict | None:
+    with _spotify_user_tokens_lock:
+        return _spotify_user_tokens.get(session_id)
+
+
+def _refresh_user_token(session_id: str) -> str | None:
+    tokens = _get_user_tokens(session_id)
+    if not tokens or not tokens.get('refresh_token'):
+        return None
+    client_id = os.getenv('SPOTIFY_CLIENT_ID')
+    client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+    if not client_id or not client_secret:
+        return None
+    resp = requests.post(
+        'https://accounts.spotify.com/api/token',
+        auth=(client_id, client_secret),
+        data={
+            'grant_type': 'refresh_token',
+            'refresh_token': tokens['refresh_token']
+        }
+    )
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    access_token = data.get('access_token')
+    expires_in = int(data.get('expires_in', 3600))
+    # Spotify may or may not return a new refresh token
+    refresh_token = data.get('refresh_token', tokens['refresh_token'])
+    _store_user_tokens(session_id, access_token, refresh_token, expires_in)
+    return access_token
+
+
+def _ensure_user_access_token(session_id: str) -> str | None:
+    tokens = _get_user_tokens(session_id)
+    if not tokens:
+        return None
+    if tokens.get('expires_at', 0) <= _now():
+        return _refresh_user_token(session_id)
+    return tokens.get('access_token')
 
 
 def serialize_state(game: Game) -> dict:
@@ -1217,6 +1291,290 @@ def get_spotify_token():
             return jsonify({'error': 'Failed to get Spotify access token'}), 500
         
         return jsonify(auth_response.json())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/callback', methods=['GET'])
+def spotify_callback():
+    """Spotify OAuth callback endpoint."""
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+
+    if error:
+        return f"Authentication failed: {error}"
+
+    if not code or not state:
+        return "Authentication failed: Missing code or state."
+
+    session_id = urllib.parse.unquote(state)
+    if not session_id:
+        return "Authentication failed: Invalid state."
+
+    try:
+        # Exchange the authorization code for an access token
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        if not client_id or not client_secret:
+            return "Spotify credentials not configured."
+
+        token_resp = requests.post(
+            'https://accounts.spotify.com/api/token',
+            auth=(client_id, client_secret),
+            data={
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': _get_redirect_uri()
+            }
+        )
+        if token_resp.status_code != 200:
+            return f"Failed to exchange code for token: {token_resp.status_code} - {token_resp.text}"
+
+        tokens = token_resp.json()
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        expires_in = int(tokens.get('expires_in', 3600))
+
+        if not access_token:
+            return "Authentication failed: No access token received."
+
+        _store_user_tokens(session_id, access_token, refresh_token, expires_in)
+        return redirect(f"{request.host_url}?session_id={session_id}")
+    except Exception as e:
+        return f"Authentication failed: {str(e)}"
+
+@app.route('/api/spotify/authorize', methods=['GET'])
+def spotify_authorize():
+    """Initiates Spotify OAuth flow."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    # Check if user is already authenticated for this session
+    tokens = _get_user_tokens(session_id)
+    if tokens and tokens.get('expires_at', 0) > _now():
+        return jsonify({'message': 'User already authenticated for this session.'})
+
+    # Generate a random state to prevent CSRF
+    state = uuid.uuid4().hex
+    # Store state to retrieve it after authorization
+    redirect_uri = _get_redirect_uri()
+    auth_url = f"https://accounts.spotify.com/authorize?response_type=code&client_id={os.getenv('SPOTIFY_CLIENT_ID')}&scope=user-read-private user-read-email user-read-playback-state user-modify-playback-state&redirect_uri={urllib.parse.quote(redirect_uri)}&state={state}"
+    return redirect(auth_url)
+
+@app.route('/api/spotify/current_track', methods=['GET'])
+def spotify_current_track():
+    """Gets the currently playing track from the user's Spotify account."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'User not authenticated or token expired.'}), 401
+
+    try:
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.get('https://api.spotify.com/v1/me/player/currently-playing', headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            item = data.get('item')
+            if item:
+                return jsonify({
+                    'is_playing': data.get('is_playing'),
+                    'track_name': item.get('name'),
+                    'artist_name': ', '.join([a.get('name') for a in item.get('artists', []) if a]),
+                    'spotify_url': item.get('external_urls', {}).get('spotify'),
+                    'duration_ms': item.get('duration_ms'),
+                    'progress_ms': data.get('progress_ms')
+                })
+            else:
+                return jsonify({'is_playing': False, 'track_name': None, 'artist_name': None})
+        elif resp.status_code == 401:
+            # Token might be expired, try to refresh
+            access_token = _refresh_user_token(session_id)
+            if not access_token:
+                return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
+            headers = {'Authorization': f'Bearer {access_token}'}
+            resp = requests.get('https://api.spotify.com/v1/me/player/currently-playing', headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                item = data.get('item')
+                if item:
+                    return jsonify({
+                        'is_playing': data.get('is_playing'),
+                        'track_name': item.get('name'),
+                        'artist_name': ', '.join([a.get('name') for a in item.get('artists', []) if a]),
+                        'spotify_url': item.get('external_urls', {}).get('spotify'),
+                        'duration_ms': item.get('duration_ms'),
+                        'progress_ms': data.get('progress_ms')
+                    })
+                else:
+                    return jsonify({'is_playing': False, 'track_name': None, 'artist_name': None})
+            else:
+                return jsonify({'error': 'Failed to fetch currently playing track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+        else:
+            return jsonify({'error': 'Failed to fetch currently playing track', 'status': resp.status_code, 'details': resp.json()}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/play_track', methods=['POST'])
+def spotify_play_track():
+    """Plays a track on the user's Spotify account."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    session_id = data.get('session_id')
+    track_uri = data.get('track_uri')
+    
+    if not session_id or not track_uri:
+        return jsonify({'error': 'Missing session_id or track_uri'}), 400
+
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'User not authenticated or token expired.'}), 401
+
+    try:
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.put(
+            f'https://api.spotify.com/v1/me/player/play?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+            headers=headers,
+            json={'uris': [track_uri]}
+        )
+        if resp.status_code == 204:
+            return jsonify({'message': 'Track queued successfully.'})
+        elif resp.status_code == 401:
+            # Token might be expired, try to refresh
+            access_token = _refresh_user_token(session_id)
+            if not access_token:
+                return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
+            headers = {'Authorization': f'Bearer {access_token}'}
+            resp = requests.put(
+                f'https://api.spotify.com/v1/me/player/play?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+                headers=headers,
+                json={'uris': [track_uri]}
+            )
+            if resp.status_code == 204:
+                return jsonify({'message': 'Track queued successfully after refresh.'})
+            else:
+                return jsonify({'error': 'Failed to queue track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+        else:
+            return jsonify({'error': 'Failed to queue track', 'status': resp.status_code, 'details': resp.json()}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/pause_track', methods=['POST'])
+def spotify_pause_track():
+    """Pauses the user's Spotify account."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'User not authenticated or token expired.'}), 401
+
+    try:
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.put(
+            f'https://api.spotify.com/v1/me/player/pause?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+            headers=headers
+        )
+        if resp.status_code == 204:
+            return jsonify({'message': 'Track paused successfully.'})
+        elif resp.status_code == 401:
+            # Token might be expired, try to refresh
+            access_token = _refresh_user_token(session_id)
+            if not access_token:
+                return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
+            headers = {'Authorization': f'Bearer {access_token}'}
+            resp = requests.put(
+                f'https://api.spotify.com/v1/me/player/pause?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+                headers=headers
+            )
+            if resp.status_code == 204:
+                return jsonify({'message': 'Track paused successfully after refresh.'})
+            else:
+                return jsonify({'error': 'Failed to pause track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+        else:
+            return jsonify({'error': 'Failed to pause track', 'status': resp.status_code, 'details': resp.json()}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/next_track', methods=['POST'])
+def spotify_next_track():
+    """Skips to the next track on the user's Spotify account."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'User not authenticated or token expired.'}), 401
+
+    try:
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.post(
+            f'https://api.spotify.com/v1/me/player/next?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+            headers=headers
+        )
+        if resp.status_code == 204:
+            return jsonify({'message': 'Track skipped successfully.'})
+        elif resp.status_code == 401:
+            # Token might be expired, try to refresh
+            access_token = _refresh_user_token(session_id)
+            if not access_token:
+                return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
+            headers = {'Authorization': f'Bearer {access_token}'}
+            resp = requests.post(
+                f'https://api.spotify.com/v1/me/player/next?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+                headers=headers
+            )
+            if resp.status_code == 204:
+                return jsonify({'message': 'Track skipped successfully after refresh.'})
+            else:
+                return jsonify({'error': 'Failed to skip track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+        else:
+            return jsonify({'error': 'Failed to skip track', 'status': resp.status_code, 'details': resp.json()}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/previous_track', methods=['POST'])
+def spotify_previous_track():
+    """Goes back to the previous track on the user's Spotify account."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    access_token = _ensure_user_access_token(session_id)
+    if not access_token:
+        return jsonify({'error': 'User not authenticated or token expired.'}), 401
+
+    try:
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.post(
+            f'https://api.spotify.com/v1/me/player/previous?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+            headers=headers
+        )
+        if resp.status_code == 204:
+            return jsonify({'message': 'Track went back successfully.'})
+        elif resp.status_code == 401:
+            # Token might be expired, try to refresh
+            access_token = _refresh_user_token(session_id)
+            if not access_token:
+                return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
+            headers = {'Authorization': f'Bearer {access_token}'}
+            resp = requests.post(
+                f'https://api.spotify.com/v1/me/player/previous?device_id={os.getenv("SPOTIFY_DEVICE_ID")}',
+                headers=headers
+            )
+            if resp.status_code == 204:
+                return jsonify({'message': 'Track went back successfully after refresh.'})
+            else:
+                return jsonify({'error': 'Failed to go back track after refresh.', 'status': resp.status_code, 'details': resp.json()}), 502
+        else:
+            return jsonify({'error': 'Failed to go back track', 'status': resp.status_code, 'details': resp.json()}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
