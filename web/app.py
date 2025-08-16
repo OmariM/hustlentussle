@@ -1369,17 +1369,14 @@ def spotify_authorize():
     ]
     scope_str = ' '.join(scopes)
 
-    query = {
+    params = {
         'response_type': 'code',
         'client_id': client_id,
         'redirect_uri': redirect_uri,
         'scope': scope_str,
         'state': session_id,
     }
-    # urlencode will encode spaces as '+', which Spotify accepts; to be safe, pre-encode redirect_uri and scope
-    query['redirect_uri'] = urllib.parse.quote(redirect_uri, safe='')
-    query['scope'] = urllib.parse.quote(scope_str, safe='')
-    auth_url = f"https://accounts.spotify.com/authorize?client_id={query['client_id']}&response_type=code&redirect_uri={query['redirect_uri']}&scope={query['scope']}&state={urllib.parse.quote(session_id, safe='')}"
+    auth_url = 'https://accounts.spotify.com/authorize?' + urllib.parse.urlencode(params)
     return redirect(auth_url)
 
 @app.route('/api/spotify/user_token', methods=['GET'])
