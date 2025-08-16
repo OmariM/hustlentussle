@@ -10,6 +10,17 @@ let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 
+// Playlist mode state
+let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
+let playlistModeEnabled = false;
+let playlistUrl = '';
+let playlistId = '';
+let playlistTracks = [];
+let usedTrackIds = new Set();
+let currentRoundTrack = null;
+let lastPreparedSongRoundNumber = null;
+let pendingPlaylistUrl = null;
+
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
@@ -57,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pointsToWinInput = document.getElementById('points-to-win');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
+    playlistUrlInput = document.getElementById('playlist-url');
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -70,6 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
     currentFollowScores = document.getElementById('current-follow-scores');
     liveLeadGraphic = document.getElementById('live-lead-graphic');
     liveFollowGraphic = document.getElementById('live-follow-graphic');
+    songInputSection = document.getElementById('song-input-section');
+    playlistEmbedSection = document.getElementById('playlist-embed-section');
+    playlistEmbedContainer = document.getElementById('playlist-embed');
 
 // Voting elements
     leadVotingSection = document.getElementById('lead-voting');
@@ -134,6 +149,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup screen
     setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
     startCompetitionBtn.addEventListener('click', startCompetition);
+
+    // Hydrate used tracks and playlist from localStorage for current session if available
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            const stored = localStorage.getItem(`usedTracks:${sid}`);
+            if (stored) usedTrackIds = new Set(JSON.parse(stored));
+            const storedPlaylistUrl = localStorage.getItem(`playlist:url:${sid}`);
+            if (storedPlaylistUrl) {
+                pendingPlaylistUrl = storedPlaylistUrl;
+                maybeEnablePlaylistMode(pendingPlaylistUrl).catch(() => {});
+                pendingPlaylistUrl = null;
+            }
+        }
+    } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
@@ -202,8 +232,22 @@ async function fetchCanonicalState() {
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
+    // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
+    if (!playlistModeEnabled && pendingPlaylistUrl) {
+        maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
+        pendingPlaylistUrl = null;
+    }
+
     // Round number
     if (roundNumber) roundNumber.textContent = state.round.number;
+
+    // If playlist mode is on and the round changed, prepare a song for this round
+    if (playlistModeEnabled) {
+        const rn = state.round.number;
+        if (lastPreparedSongRoundNumber !== rn) {
+            preparePlaylistSongForRound(rn).catch(e => console.warn('Failed to prepare playlist song:', e));
+        }
+    }
 
     // Pairs
     if (lead1Name) lead1Name.textContent = state.round.pairs.pair_1.lead;
@@ -473,6 +517,7 @@ async function startCompetition() {
     const judges = judgeNamesInput.value.trim();
     const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
     const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
+    const playlistUrlRaw = playlistUrlInput ? playlistUrlInput.value.trim() : '';
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -483,7 +528,7 @@ async function startCompetition() {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges, points_to_win })
+            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw })
         });
         
         const data = await response.json();
@@ -495,6 +540,10 @@ async function startCompetition() {
         
         // Update session ID display
         updateSessionIdDisplay();
+
+        // Initialize playlist mode if a playlist URL is present
+        pendingPlaylistUrl = playlistUrlRaw;
+        await maybeEnablePlaylistMode(pendingPlaylistUrl);
         
         // Render from canonical state
         await refreshCanonicalState();
@@ -510,11 +559,20 @@ async function startCompetition() {
 function fetchScores() {
     fetch(`/api/get_scores?session_id=${sessionId}`)
         .then(response => response.json())
-        .then(data => {
+        .then(async data => {
             // Store current scores data
             currentLeads = data.leads || [];
             currentFollows = data.follows || [];
             
+            // If server echoed playlist_url and we haven't enabled mode yet, enable it
+            try {
+                if (!playlistModeEnabled && data.playlist_url) {
+                    pendingPlaylistUrl = data.playlist_url;
+                    await maybeEnablePlaylistMode(pendingPlaylistUrl);
+                    pendingPlaylistUrl = null;
+                }
+            } catch (_) {}
+
             // Update current scores display
             updateScoresDisplay();
             
@@ -606,9 +664,17 @@ function updateRoundUI(data) {
     // Reset submit button
     submitVotesBtn.disabled = false;
     
-    // Only reset song input if we're not in auto-advance mode
+    // Only reset song input if we're not in auto-advance mode and not in playlist mode
     if (!window.debugTools || !window.debugTools.autoAdvance) {
-        document.getElementById('song-input').value = '';
+        if (!playlistModeEnabled) {
+            const si = document.getElementById('song-input');
+            if (si) si.value = '';
+            if (songInputSection) songInputSection.style.display = '';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+        } else {
+            if (songInputSection) songInputSection.style.display = 'none';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        }
     }
 }
 
@@ -925,7 +991,11 @@ async function submitCombinedVotes() {
     // Get song information
     const songInput = document.getElementById('song-input');
     const songInfo = {};
-    if (songInput.value) {
+    if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+        songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
+        songInfo.title = currentRoundTrack.name || '';
+        songInfo.artist = currentRoundTrack.artists || '';
+    } else if (songInput && songInput.value) {
         try {
             const spotifyUrl = new URL(songInput.value);
             if (spotifyUrl.hostname === 'open.spotify.com') {
@@ -954,6 +1024,14 @@ async function submitCombinedVotes() {
         });
         
         const data = await response.json();
+        
+        // If playlist mode, mark this track as used after successful submission
+        if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+            usedTrackIds.add(currentRoundTrack.id);
+            try {
+                localStorage.setItem(`usedTracks:${sessionId}`, JSON.stringify(Array.from(usedTrackIds)));
+            } catch (_) {}
+        }
         
         // Update results UI
         leadWinner.textContent = data.lead_winner;
@@ -1037,6 +1115,25 @@ function resetCompetition() {
     votingLocked = { lead: false, follow: false };
     currentLeads = [];
     currentFollows = [];
+    
+    // Reset playlist state
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    usedTrackIds = new Set();
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            localStorage.removeItem(`usedTracks:${sid}`);
+            localStorage.removeItem(`playlist:url:${sid}`);
+        }
+    } catch (_) {}
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (playlistUrlInput) playlistUrlInput.value = '';
     
     // Hide winner previews
     if (leadWinnerPreview) leadWinnerPreview.classList.add('hidden');
@@ -1567,6 +1664,74 @@ async function getSpotifyToken() {
     }
 }
 
+async function fetchPlaylistTracks(offset = 0) {
+    const token = await getSpotifyToken();
+    const limit = 100;
+    const resp = await fetchJson(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!resp.ok) throw new Error(`Failed to fetch playlist tracks: ${resp.status}`);
+    const data = await resp.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const newTracks = items
+        .map(item => item && item.track)
+        .filter(Boolean)
+        .map(t => ({ id: t.id, name: t.name, artists: (t.artists || []).map(a => a.name).join(', ') }));
+    const seen = new Set(playlistTracks.map(t => t.id));
+    newTracks.forEach(t => { if (t.id && !seen.has(t.id)) playlistTracks.push(t); });
+    if (data.next) {
+        try {
+            const nextUrl = new URL(data.next);
+            const nextOffset = Number(nextUrl.searchParams.get('offset')) || (offset + limit);
+            await fetchPlaylistTracks(nextOffset);
+        } catch (_) {
+            // If parsing next fails, stop pagination
+        }
+    }
+}
+
+async function preparePlaylistSongForRound(roundNum) {
+    try {
+        if (!playlistModeEnabled || !playlistId) return;
+        if (playlistTracks.length === 0) await fetchPlaylistTracks();
+        let track = pickNextUnusedTrack();
+        if (!track) {
+            // Try refreshing tracks in case playlist changed since initial fetch
+            playlistTracks = [];
+            await fetchPlaylistTracks();
+            track = pickNextUnusedTrack();
+        }
+        if (!track) {
+            console.warn('No available unused tracks in playlist. Disabling playlist mode.');
+            renderPlaylistEmbed(null);
+            currentRoundTrack = null;
+            disablePlaylistMode('No more unused tracks available.');
+            try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+            return;
+        }
+        currentRoundTrack = track;
+        lastPreparedSongRoundNumber = roundNum;
+        renderPlaylistEmbed(track);
+    } catch (e) {
+        console.warn('preparePlaylistSongForRound error:', e);
+        disablePlaylistMode('Error preparing playlist track.');
+    }
+}
+
+function renderPlaylistEmbed(track) {
+    if (!playlistEmbedContainer) return;
+    playlistEmbedContainer.innerHTML = '';
+    if (!track || !track.id) return;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://open.spotify.com/embed/track/${track.id}`;
+    iframe.width = '100%';
+    iframe.height = '80';
+    iframe.frameBorder = '0';
+    iframe.allow = 'encrypted-media';
+    iframe.className = 'spotify-embed';
+    playlistEmbedContainer.appendChild(iframe);
+}
+
 async function downloadBattleData() {
     if (!sessionId) {
         console.error('No active session to download data from.');
@@ -1695,4 +1860,64 @@ function endGame() {
         console.error('Error ending game:', error);
         alert('Failed to end the competition. Please try again.');
     });
+} 
+
+function pickNextUnusedTrack() {
+    const unused = playlistTracks.filter(t => t && t.id && !usedTrackIds.has(t.id));
+    if (unused.length === 0) return null;
+    const idx = Math.floor(Math.random() * unused.length);
+    return unused[idx];
+} 
+
+async function maybeEnablePlaylistMode(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== 'open.spotify.com') return;
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        // Accept /playlist/{id} and legacy /user/{userId}/playlist/{id}
+        let id = '';
+        if (parts[0] === 'playlist' && parts[1]) {
+            id = parts[1];
+        } else if (parts[0] === 'user' && parts[2] === 'playlist' && parts[3]) {
+            id = parts[3];
+        } else {
+            return;
+        }
+        playlistId = id;
+        playlistUrl = url;
+        playlistModeEnabled = true;
+        // Reset trackers for new session
+        usedTrackIds = new Set();
+        currentRoundTrack = null;
+        lastPreparedSongRoundNumber = null;
+        // UI: hide manual input, show embed section
+        if (songInputSection) songInputSection.style.display = 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        // Preload tracks (may fetch multiple pages)
+        await fetchPlaylistTracks();
+        // Persist playlist URL for the session
+        if (sessionId) {
+            try {
+                localStorage.setItem(`playlist:url:${sessionId}`, playlistUrl);
+            } catch (e) {
+                console.warn('Failed to persist playlist URL:', e);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to enable playlist mode:', e);
+        disablePlaylistMode('Could not fetch playlist tracks. Falling back to manual song input.');
+        try { alert('Could not load Spotify playlist. Falling back to manual song input.'); } catch (_) {}
+    }
+}
+
+function disablePlaylistMode(reason) {
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (reason) console.warn('Playlist mode disabled:', reason);
 } 

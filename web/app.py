@@ -222,6 +222,7 @@ def start_game():
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
     points_to_win = data.get('points_to_win', None)
+    playlist_url = data.get('playlist_url', None)
     
     # Filter out any empty names
     lead_names = [name.strip() for name in lead_names if name.strip()]
@@ -256,7 +257,8 @@ def start_game():
         'contestant_judges': state['contestant_judges'],
         'guest_judges': game.guest_judges,
         'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
-        'initial_follows': [c.name for c in game.initial_follows]  # Now contains the randomized order
+        'initial_follows': [c.name for c in game.initial_follows],  # Now contains the randomized order
+        'playlist_url': playlist_url or ''
     })
 
 @app.route('/api/get_scores', methods=['GET'])
