@@ -221,6 +221,25 @@
         <div id="results-screen" class="screen">
             <h2>Final Results</h2>
             
+            <div id="tiebreak-controls" class="tiebreak-section" style="display:none; margin-bottom: 16px;">
+                <h3>Tie-break Required</h3>
+                <div id="tiebreak-message" class="note"></div>
+                <div class="tiebreak-actions">
+                    <button id="start-tiebreak-lead" class="btn primary">Resolve Lead Tie</button>
+                    <button id="start-tiebreak-follow" class="btn primary">Resolve Follow Tie</button>
+                </div>
+                <div id="tiebreak-partner-selection" class="tiebreak-partner" style="display:none; margin-top: 12px;">
+                    <h4>Select Unique Partners</h4>
+                    <div id="tiebreak-partner-form"></div>
+                    <button id="submit-tiebreak-partners" class="btn primary" style="margin-top:8px;">Lock Partners</button>
+                </div>
+                <div id="tiebreak-live" class="tiebreak-live" style="display:none; margin-top: 12px;">
+                    <div id="tiebreak-status"></div>
+                    <div id="tiebreak-scoreboard" class="tiebreak-scoreboard"></div>
+                    <div id="tiebreak-judging" class="tiebreak-judging"></div>
+                </div>
+            </div>
+            
             <div class="battle-graphic-section">
                 <div class="battle-graphic">
                     <div class="graphic-column">

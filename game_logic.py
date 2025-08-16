@@ -12,7 +12,11 @@ class Contestant:
 
 class Round:
     def __init__(
-        self, round_num, lead_votes, follow_votes, judges, contestant_judges, session_id
+        self, round_num, lead_votes, follow_votes, judges, contestant_judges, session_id,
+        is_tiebreak: bool = False,
+        tiebreak_role: str | None = None,
+        tiebreak_heat: int | None = None,
+        tiebreak_subround: int | None = None,
     ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
@@ -25,6 +29,11 @@ class Round:
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
         self.session_id = session_id  # Store the session ID for this round
+        # Tiebreak metadata
+        self.is_tiebreak = is_tiebreak
+        self.tiebreak_role = tiebreak_role
+        self.tiebreak_heat = tiebreak_heat
+        self.tiebreak_subround = tiebreak_subround
 
 
 class ContestantQueueProxy:
@@ -52,8 +61,13 @@ class ContestantQueueProxy:
                 names.add(self._game.pair_2[1].name)
         return names
 
-    # Iteration hides current competitors
+        # Iteration hides current competitors
     def __iter__(self):
+        # During a No Contest transition, show the full backing queue including current competitors
+        if getattr(self._game, 'no_contest_pending', False):
+            for item in self._backing():
+                yield item
+            return
         filtered = self._filtered_names()
         for item in self._backing():
             if item.name not in filtered:
@@ -170,9 +184,268 @@ class Game:
         self.carryover_lead_winner = None
         self.carryover_follow_winner = None
         
+        # Tiebreak state
+        self.tiebreak_active = False
+        self.tiebreak_role: str | None = None  # 'lead' or 'follow'
+        self.tiebreak_competitors: list[Contestant] = []
+        self.tiebreak_partners: list[Contestant] = []
+        self.tiebreak_scores: dict[str, int] = {}
+        self.tiebreak_heat_index: int = 0  # 0-based
+        self._tiebreak_pairs_in_current_heat: int = 0
+        self._tiebreak_pairs_boundary_after_next_judge: bool = False
+        self._tiebreak_pair_stream_index: int = 0  # counts across heats
+        self._tiebreak_pair_buffer: list[tuple[Contestant, Contestant]] = []  # next pairs to use in subrounds (each is (lead, follow))
+        self._tiebreak_rotation_size: int = 0
+        self.tiebreak_winner_lead: str | None = None
+        self.tiebreak_winner_follow: str | None = None
+        
         # Start the first round
         self.start_round()
-        
+    
+    def detect_top_ties(self, role: str) -> list[str]:
+        """Return names of contestants tied for top points for the given role."""
+        if role not in ("lead", "follow"):
+            return []
+        pool = self.initial_leads if role == "lead" else self.initial_follows
+        if not pool:
+            return []
+        max_points = max(c.points for c in pool)
+        leaders = [c.name for c in pool if c.points == max_points]
+        return leaders if len(leaders) > 1 else []
+    
+    def start_tiebreak(self, role: str, competitor_names: list[str] | None = None):
+        """Initialize tiebreak state for the given role. If competitor_names is None,
+        use the contestants tied for top points."""
+        assert role in ("lead", "follow"), "role must be 'lead' or 'follow'"
+        if competitor_names is None:
+            competitor_names = self.detect_top_ties(role)
+        if not competitor_names or len(competitor_names) < 2:
+            raise ValueError("Need at least two tied competitors to start tiebreak")
+        # Map names to Contestant objects
+        name_to_obj = {c.name: c for c in (self.initial_leads if role == "lead" else self.initial_follows)}
+        competitors: list[Contestant] = []
+        for n in competitor_names:
+            if n not in name_to_obj:
+                raise ValueError(f"Invalid competitor: {n}")
+            competitors.append(name_to_obj[n])
+        # Set state
+        self.tiebreak_active = True
+        self.tiebreak_role = role
+        self.tiebreak_competitors = competitors
+        self.tiebreak_partners = []
+        self.tiebreak_scores = {c.name: 0 for c in competitors}
+        self.tiebreak_heat_index = 0
+        self._tiebreak_pairs_in_current_heat = 0
+        self._tiebreak_pair_stream_index = 0
+        self._tiebreak_pair_buffer = []
+        self._tiebreak_rotation_size = len(competitors)
+        # Clear any current round pairing buffer to avoid mixing with normal flow
+        return {
+            "role": role,
+            "competitors": [c.name for c in competitors]
+        }
+    
+    def set_tiebreak_partners(self, assignments: list[tuple[str, str]]):
+        """Assignments is list of (competitor_name, partner_name). Partner names must be unique
+        and from the opposite role original pool."""
+        if not self.tiebreak_active or not self.tiebreak_role:
+            raise ValueError("No active tiebreak")
+        role = self.tiebreak_role
+        opp_pool = self.initial_follows if role == "lead" else self.initial_leads
+        opp_map = {c.name: c for c in opp_pool}
+        # Validate uniqueness and existence
+        seen_partners: set[str] = set()
+        partner_by_comp: dict[str, Contestant] = {}
+        for comp_name, partner_name in assignments:
+            if comp_name not in {c.name for c in self.tiebreak_competitors}:
+                raise ValueError(f"Unknown tiebreak competitor: {comp_name}")
+            if partner_name not in opp_map:
+                raise ValueError(f"Invalid partner: {partner_name}")
+            if partner_name in seen_partners:
+                raise ValueError(f"Duplicate partner selection: {partner_name}")
+            seen_partners.add(partner_name)
+            partner_by_comp[comp_name] = opp_map[partner_name]
+        # Preserve competitor order for rotation
+        partners_ordered: list[Contestant] = []
+        for comp in self.tiebreak_competitors:
+            partners_ordered.append(partner_by_comp[comp.name])
+        self.tiebreak_partners = partners_ordered
+        # Initialize first subround
+        self._prepare_next_tiebreak_subround()
+        return self._get_tiebreak_state_payload(include_next_pairs=True)
+    
+    def _tiebreak_pair_generator(self):
+        """Yield pairs for each heat rotation in order. Each yielded item is a tuple
+        (lead, follow) representing a couple on the floor. Generates K pairs per heat.
+        We use self.tiebreak_heat_index to know current heat, but this generator
+        yields from the current heat onward."""
+        K = self._tiebreak_rotation_size
+        if K <= 0:
+            return
+        # Start from current heat index
+        r = self.tiebreak_heat_index
+        while True:
+            for i, comp in enumerate(self.tiebreak_competitors):
+                partner_idx = (i + r) % K
+                partner = self.tiebreak_partners[partner_idx]
+                # Couple placement depends on role: couple is always (lead, follow)
+                if self.tiebreak_role == 'lead':
+                    yield (comp, partner)  # comp is lead
+                else:
+                    yield (partner, comp)  # comp is follow
+            # Advance to next heat after K pairs
+            r += 1
+
+    def _get_tiebreak_state_payload(self, include_next_pairs: bool = False) -> dict:
+        state = {
+            "active": self.tiebreak_active,
+            "role": self.tiebreak_role,
+            "competitors": [c.name for c in self.tiebreak_competitors],
+            "partners": [c.name for c in self.tiebreak_partners],
+            "scores": dict(self.tiebreak_scores),
+            "heat_index": getattr(self, 'tiebreak_heat_index', 0),
+        }
+        if include_next_pairs and self.pair_1 and self.pair_2:
+            state["current_pairs"] = self.get_current_pairs()
+        return state
+
+    def _fill_tiebreak_pair_buffer(self):
+        """Ensure we have at least two pairs buffered for the next subround.
+        We pull from the infinite generator defined by rotation without mutating heat stats here."""
+        gen = getattr(self, '_tiebreak_gen', None)
+        if gen is None:
+            self._tiebreak_gen = self._tiebreak_pair_generator()
+            gen = self._tiebreak_gen
+        while len(self._tiebreak_pair_buffer) < 2:
+            pair = next(gen)
+            self._tiebreak_pair_buffer.append(pair)
+
+    def _prepare_next_tiebreak_subround(self):
+        """Prepare Game.pair_1 and Game.pair_2 for the next tiebreak subround and create Round."""
+        if not self.tiebreak_active:
+            raise ValueError("No active tiebreak to prepare")
+        # Buffer two pairs
+        self._fill_tiebreak_pair_buffer()
+        p1 = self._tiebreak_pair_buffer.pop(0)
+        p2 = self._tiebreak_pair_buffer.pop(0)
+        # Assign pairs
+        self.pair_1 = p1
+        self.pair_2 = p2
+        # Judges for this subround
+        self.contestant_judges = self.get_contestant_judges()
+        # Create round with tiebreak meta
+        self.current_round = Round(
+            self.round_num,
+            {},
+            {},
+            self.guest_judges,
+            [j.name for j in self.contestant_judges],
+            self.session_id,
+            is_tiebreak=True,
+            tiebreak_role=self.tiebreak_role,
+            tiebreak_heat=self.tiebreak_heat_index,
+            tiebreak_subround=0
+        )
+        self.current_round.pairs = {
+            "pair_1": {"lead": self.pair_1[0].name, "follow": self.pair_1[1].name},
+            "pair_2": {"lead": self.pair_2[0].name, "follow": self.pair_2[1].name},
+        }
+
+    def judge_tiebreak(self, votes: list[tuple[str, int]]):
+        """Judge the current tiebreak subround for the active role. Disallow tie/no-contest votes.
+        Returns dict with winner and updated scoreboard."""
+        if not self.tiebreak_active or not self.tiebreak_role:
+            raise ValueError("No active tiebreak")
+        # Validate votes: guests and contestants can only vote 1 or 2
+        for voter, decision in votes:
+            if decision not in (1, 2):
+                raise ValueError("Tie and No Contest votes are not allowed in tiebreak")
+        # Compute scores
+        role = self.tiebreak_role
+        if role == 'lead':
+            c1 = self.pair_1[0]
+            c2 = self.pair_2[0]
+            vote_target = 'lead'
+        else:
+            c1 = self.pair_1[1]
+            c2 = self.pair_2[1]
+            vote_target = 'follow'
+        score1 = score2 = 0
+        for voter, decision in votes:
+            is_guest = voter in self.guest_judges
+            if decision == 1:
+                score1 += 2 if is_guest else 1
+            elif decision == 2:
+                score2 += 2 if is_guest else 1
+        # Ties on numeric score go to c1 by rule (no guest tie votes)
+        winner, loser = (c1, c2) if score1 >= score2 else (c2, c1)
+        # Update round vote storage and winner annotation for the judged role only
+        vote_dict = {v: d for (v, d) in votes}
+        if vote_target == 'lead':
+            self.current_round.lead_votes = vote_dict
+            self.current_round.lead_winner = winner.name
+        else:
+            self.current_round.follow_votes = vote_dict
+            self.current_round.follow_winner = winner.name
+        # Award tiebreak point to the competitor (ensure we increment only if winner is among competitors)
+        if winner.name in self.tiebreak_scores:
+            self.tiebreak_scores[winner.name] += 1
+        # Finalize this subround and decide whether we have a tiebreak champion
+        self.rounds.append(self.current_round)
+        self.round_num += 1
+        		                                                # Track consumption into this heat; declare heat finished after K pairs judged
+        K = self._tiebreak_rotation_size
+        self._tiebreak_pairs_in_current_heat += 2  # two pairs were judged in this subround
+        heat_finished = False
+        if self._tiebreak_pairs_in_current_heat >= K:
+            self._tiebreak_pairs_in_current_heat = 0
+            self.tiebreak_heat_index += 1
+            heat_finished = True
+        final_winner_name = None
+        if heat_finished:
+            # Check for unique leader
+            max_pts = max(self.tiebreak_scores.values())
+            leaders = [n for n, pts in self.tiebreak_scores.items() if pts == max_pts]
+            if len(leaders) == 1:
+                final_winner_name = leaders[0]
+                # Record and close tiebreak
+                if self.tiebreak_role == 'lead':
+                    self.tiebreak_winner_lead = final_winner_name
+                    self.last_lead_winner = final_winner_name
+                else:
+                    self.tiebreak_winner_follow = final_winner_name
+                    self.last_follow_winner = final_winner_name
+                self.tiebreak_active = False
+                self.tiebreak_role = None
+                self.tiebreak_competitors = []
+                self.tiebreak_partners = []
+                self._tiebreak_pair_buffer = []
+                # Leave scores for reporting purposes
+                return {
+                    "winner": winner.name,
+                    "tiebreak_scores": dict(self.tiebreak_scores),
+                    "tiebreak_finished": True,
+                    "final_winner": final_winner_name,
+                }
+        # Not finished yet: prepare next subround
+        self._prepare_next_tiebreak_subround()
+        return {
+            "winner": winner.name,
+            "tiebreak_scores": dict(self.tiebreak_scores),
+            "tiebreak_finished": False,
+            "next_pairs": self.get_current_pairs(),
+            "heat_index": self.tiebreak_heat_index,
+        }
+    
+    def get_current_pairs(self) -> dict:
+        """Helper to expose current pairing names."""
+        if not self.pair_1 or not self.pair_2:
+            return {}
+        return {
+            "pair_1": {"lead": self.pair_1[0].name, "follow": self.pair_1[1].name},
+            "pair_2": {"lead": self.pair_2[0].name, "follow": self.pair_2[1].name},
+        }
+    
     def start_round(self):
         """Start a new round by selecting pairs and contestant judges."""
         # Handle cases with insufficient contestants gracefully
@@ -321,6 +594,16 @@ class Game:
         if self.tie_follow_pair:
             current_follows = (self.pair_1[1], self.pair_2[1])
             self.tie_follow_pair = None
+
+        # Final fallback: ensure at least two leads and two follows available for selection
+        if len(self._leads) < 2:
+            for cand in (self.pair_1[0], self.pair_2[0]):
+                if cand not in self._leads:
+                    self._leads.append(cand)
+        if len(self._follows) < 2:
+            for cand in (self.pair_1[1], self.pair_2[1]):
+                if cand not in self._follows:
+                    self._follows.append(cand)
 
         # Handle lead selection based on game state
         if self.has_winning_lead and not self.has_winning_follow:

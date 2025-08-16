@@ -146,6 +146,10 @@ def serialize_state(game: Game) -> dict:
                 'pairs': getattr(r, 'pairs', None),
                 'lead_winner': getattr(r, 'lead_winner', None),
                 'follow_winner': getattr(r, 'follow_winner', None),
+                'is_tiebreak': getattr(r, 'is_tiebreak', False),
+                'tiebreak_role': getattr(r, 'tiebreak_role', None),
+                'tiebreak_heat': getattr(r, 'tiebreak_heat', None),
+                'tiebreak_subround': getattr(r, 'tiebreak_subround', None),
             })
         cr = getattr(game, 'current_round', None)
         if cr and cr not in getattr(game, 'rounds', []):
@@ -154,11 +158,24 @@ def serialize_state(game: Game) -> dict:
                 'pairs': getattr(cr, 'pairs', None),
                 'lead_winner': getattr(cr, 'lead_winner', None),
                 'follow_winner': getattr(cr, 'follow_winner', None),
+                'is_tiebreak': getattr(cr, 'is_tiebreak', False),
+                'tiebreak_role': getattr(cr, 'tiebreak_role', None),
+                'tiebreak_heat': getattr(cr, 'tiebreak_heat', None),
+                'tiebreak_subround': getattr(cr, 'tiebreak_subround', None),
             })
         rounds_data = [rd for rd in rounds_data if rd.get('round_num') is not None]
         rounds_data.sort(key=lambda x: x['round_num'])
     except Exception:
         rounds_data = []
+
+    tiebreak_state = {
+        'active': getattr(game, 'tiebreak_active', False),
+        'role': getattr(game, 'tiebreak_role', None),
+        'competitors': [c.name for c in getattr(game, 'tiebreak_competitors', [])],
+        'partners': [c.name for c in getattr(game, 'tiebreak_partners', [])],
+        'scores': dict(getattr(game, 'tiebreak_scores', {})),
+        'heat_index': getattr(game, 'tiebreak_heat_index', 0),
+    }
 
     state = {
         'session_id': game.session_id,
@@ -194,6 +211,7 @@ def serialize_state(game: Game) -> dict:
             'leads': [c.name for c in getattr(game, 'initial_leads', [])],
             'follows': [c.name for c in getattr(game, 'initial_follows', [])],
         },
+        'tiebreak': tiebreak_state,
     }
     return state
 
@@ -471,7 +489,11 @@ def end_game():
                 'win_messages': r.win_messages,
                 'lead_winner': r.lead_winner,
                 'follow_winner': r.follow_winner,
-                'song_info': r.song_info if hasattr(r, 'song_info') else None
+                'song_info': r.song_info if hasattr(r, 'song_info') else None,
+                'is_tiebreak': getattr(r, 'is_tiebreak', False),
+                'tiebreak_role': getattr(r, 'tiebreak_role', None),
+                'tiebreak_heat': getattr(r, 'tiebreak_heat', None),
+                'tiebreak_subround': getattr(r, 'tiebreak_subround', None)
             }
             rounds_data.append(round_data)
     
@@ -489,7 +511,11 @@ def end_game():
                 'win_messages': game.current_round.win_messages,
                 'lead_winner': game.current_round.lead_winner,
                 'follow_winner': game.current_round.follow_winner,
-                'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
+                'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None,
+                'is_tiebreak': getattr(game.current_round, 'is_tiebreak', False),
+                'tiebreak_role': getattr(game.current_round, 'tiebreak_role', None),
+                'tiebreak_heat': getattr(game.current_round, 'tiebreak_heat', None),
+                'tiebreak_subround': getattr(game.current_round, 'tiebreak_subround', None)
             }
             rounds_data.append(current_round_data)
     
@@ -1217,6 +1243,65 @@ def get_spotify_token():
         return jsonify(auth_response.json())
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/start_tiebreak', methods=['POST'])
+def start_tiebreak():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    role = data.get('role')  # 'lead' or 'follow'
+    competitors = data.get('competitors')  # optional explicit list
+    if not session_id or role not in ('lead', 'follow'):
+        return jsonify({'error': 'Missing session_id or invalid role'}), 400
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        resp = game.start_tiebreak(role, competitors)
+        return jsonify({'ok': True, 'tiebreak': resp})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/set_tiebreak_partners', methods=['POST'])
+def set_tiebreak_partners():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    assignments = data.get('assignments')  # list of [competitor, partner]
+    if not session_id or not isinstance(assignments, list) or not assignments:
+        return jsonify({'error': 'Missing session_id or assignments'}), 400
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        pairs = [(a[0], a[1]) for a in assignments]
+        state = game.set_tiebreak_partners(pairs)
+        return jsonify({'ok': True, 'state': state})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/tiebreak_state', methods=['GET'])
+def tiebreak_state():
+    session_id = request.args.get('session_id')
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
+    return jsonify(serialize_state(game).get('tiebreak', {}))
+
+@app.route('/api/judge_tiebreak', methods=['POST'])
+def judge_tiebreak():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    votes = data.get('votes', [])  # list of [judge, 1|2]
+    if not session_id or not votes:
+        return jsonify({'error': 'Missing session_id or votes'}), 400
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        vote_tuples = [(v[0], int(v[1])) for v in votes]
+        result = game.judge_tiebreak(vote_tuples)
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
