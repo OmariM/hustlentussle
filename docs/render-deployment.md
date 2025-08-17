@@ -49,6 +49,9 @@ Add the following environment variables:
 2. Add the following:
    - `FLASK_ENV`: `production`
    - `SECRET_KEY`: Generate a secure random string (you can use [random.org](https://www.random.org/strings/))
+   - Optional for Spotify metadata (used to fetch track title/artist on Results and Round History):
+     - `SPOTIFY_CLIENT_ID`
+     - `SPOTIFY_CLIENT_SECRET`
 
 ## Step 6: Deploy Your Service
 

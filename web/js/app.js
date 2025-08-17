@@ -4,10 +4,22 @@ let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
 let votingLocked = { lead: false, follow: false }; // Track if voting is locked
-let currentLeads = []; // Store current lead contestants with points
-let currentFollows = []; // Store current follow contestants with points
+    let currentLeads = []; // Store current lead contestants with points
+    let currentFollows = []; // Store current follow contestants with points
+    let liveRounds = []; // Accumulate round records for live battle graphic
 let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
+
+// Playlist mode state
+let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
+let playlistModeEnabled = false;
+let playlistUrl = '';
+let playlistId = '';
+let playlistTracks = [];
+let usedTrackIds = new Set();
+let currentRoundTrack = null;
+let lastPreparedSongRoundNumber = null;
+let pendingPlaylistUrl = null;
 
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
@@ -16,7 +28,8 @@ let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, upload
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
 let pointsToWinInput;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
-let currentLeadScores, currentFollowScores;
+    let currentLeadScores, currentFollowScores;
+    let liveLeadGraphic, liveFollowGraphic;
 let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
 let leadResults, followResults, leadWinner, followWinner;
 let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
@@ -55,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pointsToWinInput = document.getElementById('points-to-win');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
+    playlistUrlInput = document.getElementById('playlist-url');
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -66,6 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
     guestJudgesList = document.getElementById('guest-judges-list');
     currentLeadScores = document.getElementById('current-lead-scores');
     currentFollowScores = document.getElementById('current-follow-scores');
+    liveLeadGraphic = document.getElementById('live-lead-graphic');
+    liveFollowGraphic = document.getElementById('live-follow-graphic');
+    songInputSection = document.getElementById('song-input-section');
+    playlistEmbedSection = document.getElementById('playlist-embed-section');
+    playlistEmbedContainer = document.getElementById('playlist-embed');
 
 // Voting elements
     leadVotingSection = document.getElementById('lead-voting');
@@ -130,6 +149,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup screen
     setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
     startCompetitionBtn.addEventListener('click', startCompetition);
+
+    // Hydrate used tracks and playlist from localStorage for current session if available
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            const stored = localStorage.getItem(`usedTracks:${sid}`);
+            if (stored) usedTrackIds = new Set(JSON.parse(stored));
+            const storedPlaylistUrl = localStorage.getItem(`playlist:url:${sid}`);
+            if (storedPlaylistUrl) {
+                pendingPlaylistUrl = storedPlaylistUrl;
+                maybeEnablePlaylistMode(pendingPlaylistUrl).catch(() => {});
+                pendingPlaylistUrl = null;
+            }
+        }
+    } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
@@ -151,6 +185,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
+
+    // Theme toggle
+    const themeToggle = document.getElementById('theme-toggle');
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const next = isDark ? 'light' : 'dark';
+            if (next === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+            localStorage.setItem('theme', next);
+        });
+    }
 });
 
 // Functions
@@ -179,8 +232,22 @@ async function fetchCanonicalState() {
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
+    // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
+    if (!playlistModeEnabled && pendingPlaylistUrl) {
+        maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
+        pendingPlaylistUrl = null;
+    }
+
     // Round number
     if (roundNumber) roundNumber.textContent = state.round.number;
+
+    // If playlist mode is on and the round changed, prepare a song for this round
+    if (playlistModeEnabled) {
+        const rn = state.round.number;
+        if (lastPreparedSongRoundNumber !== rn) {
+            preparePlaylistSongForRound(rn).catch(e => console.warn('Failed to prepare playlist song:', e));
+        }
+    }
 
     // Pairs
     if (lead1Name) lead1Name.textContent = state.round.pairs.pair_1.lead;
@@ -212,7 +279,7 @@ function renderFromState(state) {
     }
 
     // Scoreboard
-    updateScoreboardFromState(state);
+    updateLiveGraphicFromState(state);
 
     // Reset voting UI for the current round
     votingResults.classList.add('hidden');
@@ -227,28 +294,94 @@ function renderFromState(state) {
     setupVotingUI();
 }
 
-function updateScoreboardFromState(state) {
+function updateLiveGraphicFromState(state) {
     if (!state || !state.scoreboard) return;
     const leads = state.scoreboard.leads || [];
     const follows = state.scoreboard.follows || [];
+    const rounds = state.rounds || [];
 
-    // Current scores lists
-    if (currentLeadScores) currentLeadScores.innerHTML = '';
-    if (currentFollowScores) currentFollowScores.innerHTML = '';
+    // Cache current arrays for possible other uses
+    currentLeads = leads;
+    currentFollows = follows;
+    liveRounds = rounds;
 
-    const sortedLeads = [...leads].sort((a, b) => b.points - a.points);
-    const sortedFollows = [...follows].sort((a, b) => b.points - a.points);
+    if (!liveLeadGraphic || !liveFollowGraphic) return;
 
-    sortedLeads.forEach(lead => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${lead.name}${lead.is_winner ? ' 👑' : ''}</span><span class="score-points">${lead.points}</span>`;
-        currentLeadScores.appendChild(li);
+    // Build quick lookups for current points
+    const leadPointsMap = Object.fromEntries((leads || []).map(l => [l.name, l.points]));
+    const followPointsMap = Object.fromEntries((follows || []).map(f => [f.name, f.points]));
+    const winThreshold = (state.thresholds && typeof state.thresholds.win === 'number') ? state.thresholds.win : Infinity;
+    
+    // Determine crown holders: first to reach threshold per role. We rely on flags
+    // to indicate a winner exists, then pick the contestant at/above threshold.
+    const winnerLeadName = (state.flags && state.flags.has_winning_lead)
+        ? (leads.find(l => (l.points || 0) >= winThreshold)?.name || null)
+        : null;
+    const winnerFollowName = (state.flags && state.flags.has_winning_follow)
+        ? (follows.find(f => (f.points || 0) >= winThreshold)?.name || null)
+        : null;
+    const canShowLeadCrown = Boolean(winnerLeadName);
+    const canShowFollowCrown = Boolean(winnerFollowName);
+
+    // Build participation maps from accumulated rounds
+    const leadMap = new Map();
+    const followMap = new Map();
+    rounds.forEach(r => {
+        const rn = r.round_num;
+        const l1 = r.pairs?.pair_1?.lead; const f1 = r.pairs?.pair_1?.follow;
+        const l2 = r.pairs?.pair_2?.lead; const f2 = r.pairs?.pair_2?.follow;
+        if (l1) { if (!leadMap.has(l1)) leadMap.set(l1, []); leadMap.get(l1).push({round: rn, win: r.lead_winner===l1}); }
+        if (l2) { if (!leadMap.has(l2)) leadMap.set(l2, []); leadMap.get(l2).push({round: rn, win: r.lead_winner===l2}); }
+        if (f1) { if (!followMap.has(f1)) followMap.set(f1, []); followMap.get(f1).push({round: rn, win: r.follow_winner===f1}); }
+        if (f2) { if (!followMap.has(f2)) followMap.set(f2, []); followMap.get(f2).push({round: rn, win: r.follow_winner===f2}); }
     });
-    sortedFollows.forEach(follow => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="score-name">${follow.name}${follow.is_winner ? ' 👑' : ''}</span><span class="score-points">${follow.points}</span>`;
-        currentFollowScores.appendChild(li);
-    });
+
+    // Clear containers
+    liveLeadGraphic.innerHTML = '';
+    liveFollowGraphic.innerHTML = '';
+
+    const renderColumn = (ordered, map, crownName, container, showCrown) => {
+        ordered.forEach((entry, idx) => {
+            const name = typeof entry === 'string' ? entry : entry.name;
+            const row = document.createElement('div');
+            row.className = 'graphic-row';
+            const rank = document.createElement('div');
+            rank.className = 'graphic-rank';
+            rank.textContent = `${idx + 1}.`;
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'graphic-name';
+            nameDiv.textContent = name;
+            if (showCrown && crownName && name === crownName) {
+                const crown = document.createElement('span');
+                crown.className = 'crown-icon';
+                crown.textContent = '👑';
+                nameDiv.appendChild(crown);
+            }
+            const badges = document.createElement('div');
+            badges.className = 'round-badges';
+            const roundsFor = (map.get(name) || []).slice().sort((a,b)=>a.round-b.round);
+            roundsFor.forEach(info => {
+                const b = document.createElement('div');
+                b.className = 'badge' + (info.win ? ' win' : '');
+                b.textContent = info.round;
+                badges.appendChild(b);
+            });
+            row.appendChild(rank);
+            row.appendChild(nameDiv);
+            row.appendChild(badges);
+            container.appendChild(row);
+        });
+    };
+
+    // Strictly follow initial order; fall back to scoreboard names if absent
+    const orderedLeads = Array.isArray(state.initial_order?.leads)
+        ? state.initial_order.leads
+        : (leads || []).map(l => l.name);
+    const orderedFollows = Array.isArray(state.initial_order?.follows)
+        ? state.initial_order.follows
+        : (follows || []).map(f => f.name);
+    renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
+    renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
 }
 
 async function refreshCanonicalState() {
@@ -384,6 +517,7 @@ async function startCompetition() {
     const judges = judgeNamesInput.value.trim();
     const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
     const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
+    const playlistUrlRaw = playlistUrlInput ? playlistUrlInput.value.trim() : '';
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -394,7 +528,7 @@ async function startCompetition() {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges, points_to_win })
+            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw })
         });
         
         const data = await response.json();
@@ -406,6 +540,10 @@ async function startCompetition() {
         
         // Update session ID display
         updateSessionIdDisplay();
+
+        // Initialize playlist mode if a playlist URL is present
+        pendingPlaylistUrl = playlistUrlRaw;
+        await maybeEnablePlaylistMode(pendingPlaylistUrl);
         
         // Render from canonical state
         await refreshCanonicalState();
@@ -421,11 +559,20 @@ async function startCompetition() {
 function fetchScores() {
     fetch(`/api/get_scores?session_id=${sessionId}`)
         .then(response => response.json())
-        .then(data => {
+        .then(async data => {
             // Store current scores data
             currentLeads = data.leads || [];
             currentFollows = data.follows || [];
             
+            // If server echoed playlist_url and we haven't enabled mode yet, enable it
+            try {
+                if (!playlistModeEnabled && data.playlist_url) {
+                    pendingPlaylistUrl = data.playlist_url;
+                    await maybeEnablePlaylistMode(pendingPlaylistUrl);
+                    pendingPlaylistUrl = null;
+                }
+            } catch (_) {}
+
             // Update current scores display
             updateScoresDisplay();
             
@@ -517,9 +664,17 @@ function updateRoundUI(data) {
     // Reset submit button
     submitVotesBtn.disabled = false;
     
-    // Only reset song input if we're not in auto-advance mode
+    // Only reset song input if we're not in auto-advance mode and not in playlist mode
     if (!window.debugTools || !window.debugTools.autoAdvance) {
-        document.getElementById('song-input').value = '';
+        if (!playlistModeEnabled) {
+            const si = document.getElementById('song-input');
+            if (si) si.value = '';
+            if (songInputSection) songInputSection.style.display = '';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+        } else {
+            if (songInputSection) songInputSection.style.display = 'none';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        }
     }
 }
 
@@ -836,7 +991,11 @@ async function submitCombinedVotes() {
     // Get song information
     const songInput = document.getElementById('song-input');
     const songInfo = {};
-    if (songInput.value) {
+    if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+        songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
+        songInfo.title = currentRoundTrack.name || '';
+        songInfo.artist = currentRoundTrack.artists || '';
+    } else if (songInput && songInput.value) {
         try {
             const spotifyUrl = new URL(songInput.value);
             if (spotifyUrl.hostname === 'open.spotify.com') {
@@ -866,6 +1025,14 @@ async function submitCombinedVotes() {
         
         const data = await response.json();
         
+        // If playlist mode, mark this track as used after successful submission
+        if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+            usedTrackIds.add(currentRoundTrack.id);
+            try {
+                localStorage.setItem(`usedTracks:${sessionId}`, JSON.stringify(Array.from(usedTrackIds)));
+            } catch (_) {}
+        }
+        
         // Update results UI
         leadWinner.textContent = data.lead_winner;
         leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
@@ -891,8 +1058,11 @@ async function submitCombinedVotes() {
             nextRoundBtn.disabled = true;
         }
         
-        // Update only the scoreboard; keep results visible until Next Round
-        fetchScores();
+        // Update live graphic immediately with the latest canonical state
+        try {
+            const state = await fetchCanonicalState();
+            if (state) updateLiveGraphicFromState(state);
+        } catch (_) {}
     } catch (error) {
         console.error('Error submitting combined votes:', error);
         alert('Failed to submit votes. Please try again.');
@@ -945,6 +1115,25 @@ function resetCompetition() {
     votingLocked = { lead: false, follow: false };
     currentLeads = [];
     currentFollows = [];
+    
+    // Reset playlist state
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    usedTrackIds = new Set();
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            localStorage.removeItem(`usedTracks:${sid}`);
+            localStorage.removeItem(`playlist:url:${sid}`);
+        }
+    } catch (_) {}
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (playlistUrlInput) playlistUrlInput.value = '';
     
     // Hide winner previews
     if (leadWinnerPreview) leadWinnerPreview.classList.add('hidden');
@@ -1013,8 +1202,10 @@ async function displayResults(data) {
     const roundsContainer = document.getElementById('rounds-accordion');
     const leadsInitialOrder = document.getElementById('leads-initial-order');
     const followsInitialOrder = document.getElementById('follows-initial-order');
+    const leadGraphic = document.getElementById('lead-graphic');
+    const followGraphic = document.getElementById('follow-graphic');
     
-    if (!leadResultsBody || !followResultsBody || !roundsContainer || !leadsInitialOrder || !followsInitialOrder) {
+    if (!leadResultsBody || !followResultsBody || !roundsContainer) {
         console.error('Could not find required elements for results display');
         return;
     }
@@ -1023,47 +1214,48 @@ async function displayResults(data) {
     leadResultsBody.innerHTML = '';
     followResultsBody.innerHTML = '';
     roundsContainer.innerHTML = '';
-    leadsInitialOrder.innerHTML = '';
-    followsInitialOrder.innerHTML = '';
+    if (leadsInitialOrder) leadsInitialOrder.innerHTML = '';
+    if (followsInitialOrder) followsInitialOrder.innerHTML = '';
+    if (leadGraphic) leadGraphic.innerHTML = '';
+    if (followGraphic) followGraphic.innerHTML = '';
     
     // Always use the initial order from the server response
-    const initialLeadsData = data.initial_leads;
-    const initialFollowsData = data.initial_follows;
-    
+    const initialLeadsData = data.initial_leads || [];
+    const initialFollowsData = data.initial_follows || [];
     console.log('Using initial leads from server:', initialLeadsData);
     console.log('Using initial follows from server:', initialFollowsData);
-    
-    // Add leads to initial order
-    if (initialLeadsData && Array.isArray(initialLeadsData)) {
-        initialLeadsData.forEach((lead, index) => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span>${index + 1}.</span><span>${lead}</span>`;
-            leadsInitialOrder.appendChild(li);
-        });
-    } else {
-        console.warn('No initial leads data available from server');
-    }
-    
-    // Add follows to initial order
-    if (initialFollowsData && Array.isArray(initialFollowsData)) {
-        initialFollowsData.forEach((follow, index) => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span>${index + 1}.</span><span>${follow}</span>`;
-            followsInitialOrder.appendChild(li);
-        });
-    } else {
-        console.warn('No initial follows data available from server');
-    }
     
     console.log('Lead results:', data.leads);
     console.log('Follow results:', data.follows);
     
+    // Determine the single top-scoring lead and follow for crown display
+    let topLeadName = null;
+    if (Array.isArray(data.leads) && data.leads.length > 0) {
+        const topLead = data.leads.reduce((best, contestant) => {
+            const bestPoints = Number(best.points) || 0;
+            const contestantPoints = Number(contestant.points) || 0;
+            return contestantPoints > bestPoints ? contestant : best;
+        }, data.leads[0]);
+        topLeadName = topLead && topLead.name ? topLead.name : null;
+    }
+    
+    let topFollowName = null;
+    if (Array.isArray(data.follows) && data.follows.length > 0) {
+        const topFollow = data.follows.reduce((best, contestant) => {
+            const bestPoints = Number(best.points) || 0;
+            const contestantPoints = Number(contestant.points) || 0;
+            return contestantPoints > bestPoints ? contestant : best;
+        }, data.follows[0]);
+        topFollowName = topFollow && topFollow.name ? topFollow.name : null;
+    }
+
     // Display lead results
     if (data.leads && Array.isArray(data.leads)) {
         data.leads.forEach(lead => {
             const row = document.createElement('tr');
             const nameCell = document.createElement('td');
-            nameCell.textContent = `${lead.medal || ''} ${lead.name}${lead.is_winner ? ' 👑' : ''}`.trim();
+            const leadCrown = (topLeadName && lead.name === topLeadName) ? ' 👑' : '';
+            nameCell.textContent = `${lead.name}${leadCrown}`.trim();
             
             const pointsCell = document.createElement('td');
             pointsCell.textContent = lead.points;
@@ -1081,7 +1273,8 @@ async function displayResults(data) {
         data.follows.forEach(follow => {
             const row = document.createElement('tr');
             const nameCell = document.createElement('td');
-            nameCell.textContent = `${follow.medal || ''} ${follow.name}${follow.is_winner ? ' 👑' : ''}`.trim();
+            const followCrown = (topFollowName && follow.name === topFollowName) ? ' 👑' : '';
+            nameCell.textContent = `${follow.name}${followCrown}`.trim();
             
             const pointsCell = document.createElement('td');
             pointsCell.textContent = follow.points;
@@ -1092,6 +1285,76 @@ async function displayResults(data) {
         });
     } else {
         console.warn('No follow results data available');
+    }
+
+    // Build battle graphic data: map contestant to rounds and wins
+    if (Array.isArray(data.rounds) && data.rounds.length > 0 && leadGraphic && followGraphic) {
+        const leadMap = new Map();
+        const followMap = new Map();
+        const totalRounds = data.rounds.length;
+        data.rounds.forEach(r => {
+            const pair1Lead = r.pairs?.pair_1?.lead;
+            const pair1Follow = r.pairs?.pair_1?.follow;
+            const pair2Lead = r.pairs?.pair_2?.lead;
+            const pair2Follow = r.pairs?.pair_2?.follow;
+            const leadWinner = r.lead_winner;
+            const followWinner = r.follow_winner;
+            const roundNum = r.round_num;
+            if (pair1Lead) {
+                if (!leadMap.has(pair1Lead)) leadMap.set(pair1Lead, []);
+                leadMap.get(pair1Lead).push({ round: roundNum, win: leadWinner === pair1Lead });
+            }
+            if (pair2Lead) {
+                if (!leadMap.has(pair2Lead)) leadMap.set(pair2Lead, []);
+                leadMap.get(pair2Lead).push({ round: roundNum, win: leadWinner === pair2Lead });
+            }
+            if (pair1Follow) {
+                if (!followMap.has(pair1Follow)) followMap.set(pair1Follow, []);
+                followMap.get(pair1Follow).push({ round: roundNum, win: followWinner === pair1Follow });
+            }
+            if (pair2Follow) {
+                if (!followMap.has(pair2Follow)) followMap.set(pair2Follow, []);
+                followMap.get(pair2Follow).push({ round: roundNum, win: followWinner === pair2Follow });
+            }
+        });
+
+        // Helper to render a column by initial order
+        const renderGraphicColumn = (initialOrder, dataMap, topName, container) => {
+            initialOrder.forEach((name, idx) => {
+                const row = document.createElement('div');
+                row.className = 'graphic-row';
+                const rank = document.createElement('div');
+                rank.className = 'graphic-rank';
+                rank.textContent = `${idx + 1}.`;
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'graphic-name';
+                nameDiv.textContent = name;
+                if (topName && name === topName) {
+                    const crown = document.createElement('span');
+                    crown.className = 'crown-icon';
+                    crown.textContent = '👑';
+                    nameDiv.appendChild(crown);
+                }
+                const badges = document.createElement('div');
+                badges.className = 'round-badges';
+                const rounds = dataMap.get(name) || [];
+                // Sort rounds ascending by round number
+                rounds.sort((a, b) => a.round - b.round);
+                rounds.forEach(info => {
+                    const b = document.createElement('div');
+                    b.className = 'badge' + (info.win ? ' win' : '');
+                    b.textContent = info.round;
+                    badges.appendChild(b);
+                });
+                row.appendChild(rank);
+                row.appendChild(nameDiv);
+                row.appendChild(badges);
+                container.appendChild(row);
+            });
+        };
+
+        renderGraphicColumn(initialLeadsData || [], leadMap, topLeadName, leadGraphic);
+        renderGraphicColumn(initialFollowsData || [], followMap, topFollowName, followGraphic);
     }
     
     console.log('Round history:', data.rounds);
@@ -1190,6 +1453,8 @@ function displayRoundHistory(rounds) {
         // Add round details
         const details = document.createElement('div');
         details.className = 'round-details';
+        const topRow = document.createElement('div');
+        topRow.className = 'round-top-row';
         
         // Add song information if available
         if (round.song_info) {
@@ -1231,7 +1496,7 @@ function displayRoundHistory(rounds) {
             }
             
             songSection.innerHTML = songHTML;
-            details.appendChild(songSection);
+            topRow.appendChild(songSection);
         }
         
         // Participants section
@@ -1268,16 +1533,19 @@ function displayRoundHistory(rounds) {
         }
         
         participants.innerHTML = participantsHTML;
-        details.appendChild(participants);
+        topRow.appendChild(participants);
+        // Ensure the top row (participants + song) is above judge votes
+        details.appendChild(topRow);
 
         // Add judge votes section
         const judgeVotes = document.createElement('div');
         judgeVotes.className = 'judge-votes';
         let judgeVotesHTML = '<h4>Judge Votes</h4>';
+        judgeVotesHTML += '<div class="vote-sections">';
 
         // Lead votes
         if (round.lead_votes) {
-            judgeVotesHTML += '<div class="vote-section"><h5>Lead Votes</h5>';
+            judgeVotesHTML += '<div class="vote-section lead"><h5>Lead Votes</h5>';
             
             // Sort votes to show guest judges first
             const sortedVotes = Object.entries(round.lead_votes).sort((a, b) => {
@@ -1288,22 +1556,25 @@ function displayRoundHistory(rounds) {
                 return 0;
             });
 
+            judgeVotesHTML += '<table class="judge-votes-table"><thead><tr><th>Judge</th><th>Type</th><th>Vote</th></tr></thead><tbody>';
             sortedVotes.forEach(([judge, vote]) => {
                 const isGuest = guestJudges.includes(judge);
                 const voteText = getVoteText(vote, round);
+                const judgeType = isGuest ? 'Guest' : 'Contestant';
                 judgeVotesHTML += `
-                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
-                        <span class="judge-name">${judge}</span>
-                        <span class="vote">${voteText}</span>
-                    </div>
+                    <tr class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <td class="judge-name">${judge}</td>
+                        <td><span class="judge-type ${isGuest ? 'guest' : 'contestant'}">${judgeType}</span></td>
+                        <td class="vote">${voteText}</td>
+                    </tr>
                 `;
             });
-            judgeVotesHTML += '</div>';
+            judgeVotesHTML += '</tbody></table></div>';
         }
 
         // Follow votes
         if (round.follow_votes) {
-            judgeVotesHTML += '<div class="vote-section"><h5>Follow Votes</h5>';
+            judgeVotesHTML += '<div class="vote-section follow"><h5>Follow Votes</h5>';
             
             // Sort votes to show guest judges first
             const sortedVotes = Object.entries(round.follow_votes).sort((a, b) => {
@@ -1314,28 +1585,28 @@ function displayRoundHistory(rounds) {
                 return 0;
             });
 
+            judgeVotesHTML += '<table class="judge-votes-table"><thead><tr><th>Judge</th><th>Type</th><th>Vote</th></tr></thead><tbody>';
             sortedVotes.forEach(([judge, vote]) => {
                 const isGuest = guestJudges.includes(judge);
                 const voteText = getFollowVoteText(vote, round);
+                const judgeType = isGuest ? 'Guest' : 'Contestant';
                 judgeVotesHTML += `
-                    <div class="judge-vote ${isGuest ? 'guest-judge' : ''}">
-                        <span class="judge-name">${judge}</span>
-                        <span class="vote">${voteText}</span>
-                    </div>
+                    <tr class="judge-vote ${isGuest ? 'guest-judge' : ''}">
+                        <td class="judge-name">${judge}</td>
+                        <td><span class="judge-type ${isGuest ? 'guest' : 'contestant'}">${judgeType}</span></td>
+                        <td class="vote">${voteText}</td>
+                    </tr>
                 `;
             });
-            judgeVotesHTML += '</div>';
+            judgeVotesHTML += '</tbody></table></div>';
         }
-
+        judgeVotesHTML += '</div>';
         judgeVotes.innerHTML = judgeVotesHTML;
         details.appendChild(judgeVotes);
         
-        // Add session ID to the round details
-        const sessionIdDiv = document.createElement('div');
-        sessionIdDiv.className = 'round-session-id';
-        sessionIdDiv.textContent = `Session: ${round.session_id}`;
-        details.appendChild(sessionIdDiv);
+        // Session ID removed from round cell for cleaner display
         
+        // Append assembled sections
         content.appendChild(details);
         accordionItem.appendChild(header);
         accordionItem.appendChild(content);
@@ -1391,6 +1662,63 @@ async function getSpotifyToken() {
         console.error('Error getting Spotify token:', error);
         throw error;
     }
+}
+
+async function fetchPlaylistTracks(offset = 0) {
+    // Use server proxy to avoid client-side CORS and centralize token handling
+    const resp = await fetch(`/api/spotify/playlist_tracks?playlist_id=${encodeURIComponent(playlistId)}`);
+    if (!resp.ok) {
+        let details = '';
+        try { const j = await resp.json(); details = j && j.error ? j.error : ''; } catch (_) {}
+        throw new Error(`Failed to fetch playlist tracks: ${resp.status} ${details}`);
+    }
+    const data = await resp.json();
+    const newTracks = Array.isArray(data.tracks) ? data.tracks : [];
+    const existingIds = new Set(playlistTracks.map(t => t.id));
+    newTracks.forEach(t => { if (t && t.id && !existingIds.has(t.id)) playlistTracks.push(t); });
+}
+
+async function preparePlaylistSongForRound(roundNum) {
+    try {
+        if (!playlistModeEnabled || !playlistId) return;
+        if (playlistTracks.length === 0) await fetchPlaylistTracks();
+        let track = pickNextUnusedTrack();
+        if (!track) {
+            // Try refreshing tracks in case playlist changed since initial fetch
+            playlistTracks = [];
+            await fetchPlaylistTracks();
+            track = pickNextUnusedTrack();
+        }
+        if (!track) {
+            console.warn('No available unused tracks in playlist. Disabling playlist mode.');
+            renderPlaylistEmbed(null);
+            currentRoundTrack = null;
+            disablePlaylistMode('No more unused tracks available.');
+            try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+            return;
+        }
+        currentRoundTrack = track;
+        lastPreparedSongRoundNumber = roundNum;
+        renderPlaylistEmbed(track);
+        // Do not auto-start full playback; user can click Play Full to initiate OAuth if needed
+    } catch (e) {
+        console.warn('preparePlaylistSongForRound error:', e);
+        disablePlaylistMode('Error preparing playlist track.');
+    }
+}
+
+function renderPlaylistEmbed(track) {
+    if (!playlistEmbedContainer) return;
+    playlistEmbedContainer.innerHTML = '';
+    if (!track || !track.id) return;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://open.spotify.com/embed/track/${track.id}`;
+    iframe.width = '100%';
+    iframe.height = '80';
+    iframe.frameBorder = '0';
+    iframe.allow = 'encrypted-media';
+    iframe.className = 'spotify-embed';
+    playlistEmbedContainer.appendChild(iframe);
 }
 
 async function downloadBattleData() {
@@ -1522,3 +1850,231 @@ function endGame() {
         alert('Failed to end the competition. Please try again.');
     });
 } 
+
+function pickNextUnusedTrack() {
+    const unused = playlistTracks.filter(t => t && t.id && !usedTrackIds.has(t.id));
+    if (unused.length === 0) return null;
+    const idx = Math.floor(Math.random() * unused.length);
+    return unused[idx];
+} 
+
+async function maybeEnablePlaylistMode(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== 'open.spotify.com') return;
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        // Accept /playlist/{id} and legacy /user/{userId}/playlist/{id}
+        let id = '';
+        if (parts[0] === 'playlist' && parts[1]) {
+            id = parts[1];
+        } else if (parts[0] === 'user' && parts[2] === 'playlist' && parts[3]) {
+            id = parts[3];
+        } else {
+            return;
+        }
+        playlistId = id;
+        playlistUrl = url;
+        playlistModeEnabled = true;
+        // Reset trackers for new session
+        usedTrackIds = new Set();
+        currentRoundTrack = null;
+        lastPreparedSongRoundNumber = null;
+        // UI: hide manual input, show embed section
+        if (songInputSection) songInputSection.style.display = 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        // Preload tracks (may fetch multiple pages)
+        await fetchPlaylistTracks();
+        // Persist playlist URL for the session
+        if (sessionId) {
+            try {
+                localStorage.setItem(`playlist:url:${sessionId}`, playlistUrl);
+            } catch (e) {
+                console.warn('Failed to persist playlist URL:', e);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to enable playlist mode:', e);
+        disablePlaylistMode('Could not fetch playlist tracks. Falling back to manual song input.');
+        try { alert('Could not load Spotify playlist. Falling back to manual song input.'); } catch (_) {}
+    }
+}
+
+function disablePlaylistMode(reason) {
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (reason) console.warn('Playlist mode disabled:', reason);
+} 
+
+// Spotify Web Playback SDK integration
+let spotifyPlayer = null;
+let spotifyDeviceId = null;
+let webPlaybackReady = false;
+
+function loadSpotifySDK() {
+    return new Promise((resolve, reject) => {
+        if (window.Spotify) return resolve();
+        const script = document.createElement('script');
+        script.src = 'https://sdk.scdn.co/spotify-player.js';
+        script.onload = () => resolve();
+        script.onerror = reject;
+        document.body.appendChild(script);
+    });
+}
+
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
+        if (resp.status === 200) return true;
+        if (resp.status === 401) {
+            const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+            await startSpotifyAuth(returnTo);
+            return false;
+        }
+        return false;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function initWebPlaybackPlayer() {
+    await loadSpotifySDK();
+    if (!await ensureUserAuthForPlayback()) return;
+    if (spotifyPlayer) return;
+
+    window.onSpotifyWebPlaybackSDKReady = () => {};
+
+    // Provide a valid token to the SDK via callback
+    try {
+        spotifyPlayer = new Spotify.Player({
+            name: 'Battle Manager Player',
+            getOAuthToken: async (cb) => {
+                try {
+                    const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        cb(data.access_token);
+                    } else {
+                        cb('');
+                    }
+                } catch (_) {
+                    cb('');
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('Failed to create Spotify Player:', e);
+        return;
+    }
+
+    spotifyPlayer.addListener('ready', ({ device_id }) => {
+        spotifyDeviceId = device_id;
+        webPlaybackReady = true;
+        console.log('Spotify Web Playback SDK ready with device:', device_id);
+    });
+    spotifyPlayer.addListener('not_ready', ({ device_id }) => {
+        console.log('Spotify Device went offline:', device_id);
+        webPlaybackReady = false;
+    });
+
+    try { await spotifyPlayer.connect(); } catch (_) {}
+}
+
+async function playCurrentRoundTrackViaSpotify() {
+    if (!playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
+    await initWebPlaybackPlayer();
+
+    // Wait briefly for device readiness if needed
+    let tries = 0;
+    while (!webPlaybackReady && tries < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        tries++;
+    }
+
+    try {
+        const resp = await fetch('/api/spotify/play_track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, track_uri: `spotify:track:${currentRoundTrack.id}`, device_id: spotifyDeviceId || undefined })
+        });
+        if (!resp.ok) {
+            if (resp.status === 401) {
+                const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+                await startSpotifyAuth(returnTo);
+            } else {
+                const err = await resp.json().catch(() => ({}));
+                console.warn('Failed to start playback:', err);
+                alert('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.');
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to start Spotify playback:', e);
+    }
+}
+
+// Add helper to kick off Spotify auth with return_to
+async function startSpotifyAuth(returnToUrl, authKey = '') {
+    const url = new URL(window.location.href);
+    const sid = sessionId || url.searchParams.get('session_id') || '';
+    const params = new URLSearchParams();
+    params.set('session_id', sid || 'preauth');
+    if (returnToUrl) params.set('return_to', returnToUrl);
+    if (authKey) params.set('auth_key', authKey);
+    window.location.href = `/api/spotify/authorize?${params.toString()}`;
+}
+
+// Add a button to home screen for pre-auth
+(function addSpotifyAuthButtonToHome(){
+    try {
+        const home = document.getElementById('home-screen');
+        if (!home) return;
+        const actions = home.querySelector('.home-actions');
+        if (!actions) return;
+        const btn = document.createElement('button');
+        btn.id = 'spotify-auth-btn';
+        btn.className = 'btn secondary large';
+        btn.textContent = 'Authenticate Spotify';
+        btn.onclick = () => {
+            startSpotifyAuth(window.location.origin + window.location.pathname);
+        };
+        actions.appendChild(btn);
+    } catch (_) {}
+})();
+
+// When preparing playlist track, ensure auth redirect returns to the current round page with sessionId
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        const resp = await fetch(`/api/spotify/current_track?session_id=${sessionId}`);
+        if (resp.status === 200) return true;
+    } catch (_) {}
+    const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+    await startSpotifyAuth(returnTo);
+    return false;
+}
+
+// Resume session UI if returning from OAuth with session_id in URL
+(function resumeAfterOAuth(){
+    try {
+        const url = new URL(window.location.href);
+        const sid = url.searchParams.get('session_id');
+        if (sid) {
+            sessionId = sid;
+            localStorage.setItem('sessionId', sid);
+            updateSessionIdDisplay();
+            // Try to render round screen if we already have a game
+            fetchCanonicalState().then(state => {
+                if (state && state.round && state.round.pairs) {
+                    showScreen(roundScreen);
+                    renderFromState(state);
+                }
+            }).catch(() => {});
+        }
+    } catch (_) {}
+})();

@@ -8,6 +8,8 @@
     --border-color: #e9ecef;
     --text-color: #212529;
     --light-text: #6c757d;
+    --panel-bg: #ffffff;
+    --muted-bg: #f8f9fa;
 }
 
 * {
@@ -21,6 +23,20 @@ body {
     line-height: 1.6;
     color: var(--text-color);
     background-color: var(--background-color);
+}
+
+/* Dark mode variables */
+[data-theme="dark"] {
+    --primary-color: #7aa2ff;
+    --secondary-color: #b693ff;
+    --lead-color: #5dd4ff;
+    --follow-color: #ff4fa2;
+    --background-color: #0b1220;
+    --border-color: #223047;
+    --text-color: #e6e9ef;
+    --light-text: #9aa4b2;
+    --panel-bg: #0f172a;
+    --muted-bg: #111827;
 }
 
 .container {
@@ -128,6 +144,22 @@ textarea {
     font-family: inherit;
 }
 
+/* Match the number input (Points to win) with textarea styling on setup */
+#setup-screen input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+}
+
+#setup-screen input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
 #start-competition {
     margin-top: 20px;
 }
@@ -161,17 +193,16 @@ textarea {
 }
 
 .scores-display {
-    flex: 2;
-    min-width: 300px;
+    flex: 3; /* allow wider live battle graphic */
+    min-width: 420px;
     padding: 15px 10px;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    overflow: hidden;
-    align-self: center;
+    overflow: visible; /* allow multi-line badges to expand */
+    align-self: stretch;
     display: flex;
     flex-direction: column;
-    justify-content: center;
 }
 
 .scores-display h3 {
@@ -684,6 +715,107 @@ textarea {
     margin: 0 auto;
 }
 
+/* Battle Graphic */
+.battle-graphic-section {
+    margin: 30px 0;
+    padding: 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.battle-graphic {
+    display: flex;
+    gap: 32px; /* more horizontal space */
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.graphic-column {
+    flex: 1 1 48%; /* allow each column to grow wider */
+}
+
+.graphic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.graphic-row {
+    display: flex;
+    align-items: flex-start; /* align top so multi-line badges don't overlap name */
+    gap: 6px;
+}
+
+.graphic-rank {
+    width: 22px;
+    text-align: right;
+    color: var(--light-text);
+}
+
+/* Reduce any unexpected spacing between name and badges */
+.graphic-name + .round-badges {
+    margin-left: 4px;
+}
+
+.graphic-name {
+    position: relative;
+    font-weight: 600;
+    min-width: 0; /* allow badges to start immediately after the name */
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap; /* keep name on one line */
+    flex-shrink: 0; /* prevent name from shrinking under badges */
+}
+
+.graphic-name .crown-icon {
+    position: absolute;
+    top: -14px;
+    left: -18px;
+}
+
+.round-badges {
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+.badge {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1;
+    background: #fff;
+}
+
+.badge.win {
+    border-radius: 50%;
+    border: 2px solid var(--primary-color);
+    font-weight: 700;
+}
+
+[data-theme="dark"] .battle-graphic-section {
+    background: var(--panel-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .badge {
+    background: var(--panel-bg);
+    border: none;
+}
+
+[data-theme="dark"] .badge.win {
+    /* Higher-contrast outline for wins in dark mode */
+    border: 3px solid #ffffff;
+}
+
 /* Add these styles for locked judge cards and buttons */
 
 .judge-card.locked {
@@ -782,6 +914,7 @@ td span.crown {
     .round-content, .scores-display {
         width: 100%;
         min-width: 100%;
+        flex: 1 1 auto;
     }
     
     .round-content {
@@ -852,6 +985,100 @@ td span.crown {
     text-align: center;
 }
 
+/* Improved readability for round history judge votes */
+.judge-votes {
+    margin-top: 16px;
+}
+
+.vote-sections {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.vote-section {
+    margin-top: 12px;
+    flex: 1 1 300px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: #fff;
+}
+
+.vote-section h5 {
+    margin: 0 0 8px 0;
+}
+
+.vote-section.lead {
+    border-left: 4px solid var(--lead-color);
+}
+
+.vote-section.follow {
+    border-left: 4px solid var(--follow-color);
+}
+
+.judge-votes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+}
+
+.judge-votes-table th,
+.judge-votes-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    vertical-align: top;
+}
+
+.judge-votes-table th {
+    font-weight: 600;
+}
+
+.judge-votes-table thead th {
+    background: var(--muted-bg);
+}
+
+.judge-votes-table .judge-name {
+    font-weight: 500;
+}
+
+.judge-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.judge-votes-table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Dark mode support for judge votes tables */
+[data-theme="dark"] .vote-section {
+    background-color: var(--panel-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .judge-votes-table th,
+[data-theme="dark"] .judge-votes-table td {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .judge-votes-table thead th {
+    background: var(--muted-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .judge-votes-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .judge-type {
+    border-color: var(--border-color);
+}
+
 .accordion {
     width: 100%;
 }
@@ -898,14 +1125,24 @@ td span.crown {
 
 .round-details {
     display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.round-participants, .round-voting {
-    flex: 1;
-    min-width: 250px;
+.round-top-row {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    flex-wrap: wrap;
 }
+
+.round-participants, .round-song {
+    flex: 1 1 300px;
+}
+
+/* Ensure participants is placed before song and expands first on wrap */
+.round-participants { order: 0; }
+.round-song { order: 1; }
 
 .round-participants h4, .round-voting h4 {
     color: var(--primary-color);
@@ -1238,3 +1475,83 @@ td span.crown {
     margin-top: 0.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 } 
+
+/* Dark mode component overrides */
+[data-theme="dark"] .round-header,
+[data-theme="dark"] .scores-display,
+[data-theme="dark"] .matchup,
+[data-theme="dark"] .judges-section,
+[data-theme="dark"] .combined-voting-section,
+[data-theme="dark"] .voting-section,
+[data-theme="dark"] .result-section,
+[data-theme="dark"] .judge-card,
+[data-theme="dark"] .results,
+[data-theme="dark"] .starting-order-section,
+[data-theme="dark"] .leads-board,
+[data-theme="dark"] .follows-board,
+[data-theme="dark"] .welcome-section,
+[data-theme="dark"] .upload-form,
+[data-theme="dark"] .format-guide,
+[data-theme="dark"] .file-upload-label,
+[data-theme="dark"] .file-name,
+[data-theme="dark"] .initial-order,
+[data-theme="dark"] .song-input-container,
+[data-theme="dark"] .round-song,
+[data-theme="dark"] .accordion-content {
+    background-color: var(--panel-bg);
+}
+
+[data-theme="dark"] .accordion-header,
+[data-theme="dark"] .judge-item,
+[data-theme="dark"] .voting-section,
+[data-theme="dark"] .score-table tr:nth-child(even),
+[data-theme="dark"] .results-table tr:nth-child(even) {
+    background-color: var(--muted-bg);
+}
+
+[data-theme="dark"] .accordion-header:hover,
+[data-theme="dark"] .score-table tr:hover,
+[data-theme="dark"] .results-table tr:hover {
+    background-color: rgba(255,255,255,0.08);
+}
+
+[data-theme="dark"] .judge-card.voted {
+    background-color: rgba(67,97,238,0.12);
+}
+
+/* Inputs and textareas in dark mode */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="url"] {
+    background-color: var(--muted-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+    color: var(--light-text);
+    opacity: 0.9;
+}
+
+/* Starting order items in dark mode */
+[data-theme="dark"] #leads-initial-order li,
+[data-theme="dark"] #follows-initial-order li {
+    background-color: var(--muted-bg);
+    border-color: var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Round history participants items in dark mode */
+[data-theme="dark"] .match-pair {
+    background-color: var(--muted-bg);
+    border: 1px solid var(--border-color);
+}
+
+/* Song / Playlist sections */
+#playlist-embed-section .spotify-embed {
+	margin-top: 8px;
+	border: none;
+}

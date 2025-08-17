@@ -4,10 +4,12 @@ class DebugTools {
         this.networkLogs = [];
         this.autoAdvance = false;
         this.autoAdvanceInterval = null;
-        this.autoAdvanceDelay = 3000; // Default to 3 seconds
-        this.playlistId = '3S34wIELHX7T82ChgdU9NS'; // Your playlist ID
+        this.autoAdvanceDelay = parseInt(localStorage.getItem('debug.autoAdvanceDelay') || '3000', 10);
+        this.playlistId = localStorage.getItem('debug.playlistId') || '3S34wIELHX7T82ChgdU9NS';
         this.init();
         this.setupNetworkMonitoring();
+        this.setupKeyboardShortcuts();
+        this.restorePersistedToggles();
     }
 
     init() {
@@ -24,10 +26,46 @@ class DebugTools {
             border-radius: 5px;
             z-index: 9999;
             display: none;
-            max-width: 300px;
+            width: 300px;
+            max-width: 90vw;
             max-height: 80vh;
             overflow-y: auto;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.5);
         `;
+
+        // Add a simple draggable header
+        const headerBar = document.createElement('div');
+        headerBar.textContent = 'Debug Tools';
+        headerBar.style.cssText = `
+            cursor: move;
+            font-weight: bold;
+            margin: -5px -5px 10px -5px;
+            padding: 5px 8px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 4px 4px 0 0;
+        `;
+        this.panel.appendChild(headerBar);
+
+        this.makeDraggable(this.panel, headerBar);
+
+        // Add resize handle (bottom-right corner)
+        const resizeHandle = document.createElement('div');
+        resizeHandle.style.cssText = `
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            right: 6px;
+            bottom: 6px;
+            cursor: se-resize;
+            border-right: 2px solid #4CAF50;
+            border-bottom: 2px solid #4CAF50;
+            opacity: 0.8;
+        `;
+        this.panel.appendChild(resizeHandle);
+        this.makeResizable(this.panel, resizeHandle);
+
+        // Restore saved position and size if available
+        this.restorePanelPositionAndSize();
 
         // Create toggle button
         this.toggleButton = document.createElement('button');
@@ -120,7 +158,21 @@ class DebugTools {
         this.addSection('Session Info');
         this.addButton('Show Current Session', () => {
             const sessionId = localStorage.getItem('sessionId');
-            alert(`Current Session ID: ${sessionId || 'None'}`);
+            const globalSession = window.sessionId || null;
+            alert(`Current Session ID: ${sessionId || 'None'}\nGlobal: ${globalSession || 'None'}`);
+        });
+
+        this.addButton('Refresh Canonical State (console)', async () => {
+            try {
+                const sid = localStorage.getItem('sessionId');
+                if (!sid) throw new Error('No sessionId');
+                const resp = await fetch(`/api/state?session_id=${sid}`);
+                const json = await resp.json();
+                console.log('Canonical State:', json);
+                alert('Canonical state logged to console');
+            } catch (e) {
+                alert(`Failed: ${e.message}`);
+            }
         });
 
         // Game State
@@ -142,6 +194,27 @@ class DebugTools {
             alert('Network logs cleared');
         });
 
+        this.addButton('Copy Network Logs to Clipboard', async () => {
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(this.networkLogs, null, 2));
+                alert('Copied network logs to clipboard');
+            } catch (e) {
+                alert('Clipboard copy failed');
+            }
+        });
+
+        this.addButton('Download Network Logs (.json)', () => {
+            const blob = new Blob([JSON.stringify(this.networkLogs, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `network_logs_${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            a.remove();
+        });
+
         // Setup Helpers
         this.addSection('Setup Helpers');
         this.addButton('Fill Setup Form', () => this.fillSetupForm());
@@ -155,6 +228,70 @@ class DebugTools {
         // Round Navigation
         this.addSection('Round Navigation');
         this.addButton('Next Round', () => this.nextRound());
+        // Simulate N Rounds controls
+        const simulateContainer = document.createElement('div');
+        simulateContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+        `;
+        const simulateLabel = document.createElement('span');
+        simulateLabel.textContent = 'Simulate rounds:';
+        simulateLabel.style.cssText = 'color: white; font-size: 12px;';
+        const simulateInput = document.createElement('input');
+        simulateInput.type = 'number';
+        simulateInput.min = '1';
+        simulateInput.max = '100';
+        simulateInput.value = localStorage.getItem('debug.simRounds') || '5';
+        simulateInput.style.cssText = `
+            width: 60px;
+            padding: 2px 4px;
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+        `;
+        simulateInput.onchange = () => {
+            const v = Math.max(1, Math.min(100, parseInt(simulateInput.value) || 1));
+            simulateInput.value = String(v);
+            localStorage.setItem('debug.simRounds', String(v));
+        };
+
+        // Checkbox: end game after simulation
+        const endAfterContainer = document.createElement('label');
+        endAfterContainer.style.cssText = 'display:flex; align-items:center; gap:6px; color:white; font-size:12px;';
+        const endAfterChk = document.createElement('input');
+        endAfterChk.type = 'checkbox';
+        endAfterChk.checked = (localStorage.getItem('debug.simEndAfter') || 'false') === 'true';
+        endAfterChk.onchange = () => localStorage.setItem('debug.simEndAfter', endAfterChk.checked ? 'true' : 'false');
+        const endAfterLbl = document.createElement('span');
+        endAfterLbl.textContent = 'end after';
+        endAfterContainer.appendChild(endAfterChk);
+        endAfterContainer.appendChild(endAfterLbl);
+
+        const simulateBtn = document.createElement('button');
+        simulateBtn.textContent = 'Run';
+        simulateBtn.style.cssText = `
+            padding: 4px 8px;
+            background: #333;
+            color: white;
+            border: 1px solid #4CAF50;
+            border-radius: 3px;
+            cursor: pointer;
+        `;
+        simulateBtn.onclick = async () => {
+            const count = Math.max(1, Math.min(100, parseInt(simulateInput.value) || 1));
+            await this.simulateNRounds(count);
+            if (endAfterChk.checked) {
+                await this.tryEndGame();
+            }
+        };
+        simulateContainer.appendChild(simulateLabel);
+        simulateContainer.appendChild(simulateInput);
+        simulateContainer.appendChild(endAfterContainer);
+        simulateContainer.appendChild(simulateBtn);
+        this.panel.appendChild(simulateContainer);
         
         // Add Auto-Advance Toggle and Interval Setting
         const autoAdvanceContainer = document.createElement('div');
@@ -194,6 +331,7 @@ class DebugTools {
         
         toggleSwitch.onchange = () => {
             this.autoAdvance = toggleSwitch.checked;
+            localStorage.setItem('debug.autoAdvance', this.autoAdvance ? 'true' : 'false');
             if (this.autoAdvance) {
                 this.startAutoAdvance();
             } else {
@@ -236,6 +374,7 @@ class DebugTools {
             const newValue = Math.max(1, Math.min(60, parseInt(intervalInput.value) || 3));
             this.autoAdvanceDelay = newValue * 1000;
             intervalInput.value = newValue;
+            localStorage.setItem('debug.autoAdvanceDelay', String(this.autoAdvanceDelay));
             
             // Restart auto-advance with new interval if it's running
             if (this.autoAdvance) {
@@ -246,8 +385,39 @@ class DebugTools {
         intervalContainer.appendChild(intervalLabel);
         intervalContainer.appendChild(intervalInput);
         
+        // Playlist input
+        const playlistContainer = document.createElement('div');
+        playlistContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+        `;
+        const playlistLabel = document.createElement('span');
+        playlistLabel.textContent = 'Spotify Playlist ID:';
+        playlistLabel.style.cssText = 'color: white;';
+        const playlistInput = document.createElement('input');
+        playlistInput.type = 'text';
+        playlistInput.value = this.playlistId;
+        playlistInput.placeholder = 'e.g. 3S34w...';
+        playlistInput.style.cssText = `
+            width: 160px;
+            padding: 2px 4px;
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+        `;
+        playlistInput.onchange = () => {
+            this.playlistId = (playlistInput.value || '').trim();
+            localStorage.setItem('debug.playlistId', this.playlistId);
+        };
+        playlistContainer.appendChild(playlistLabel);
+        playlistContainer.appendChild(playlistInput);
+
         autoAdvanceContainer.appendChild(toggleContainer);
         autoAdvanceContainer.appendChild(intervalContainer);
+        autoAdvanceContainer.appendChild(playlistContainer);
         this.panel.appendChild(autoAdvanceContainer);
 
         // Clear Data
@@ -265,37 +435,27 @@ class DebugTools {
         this.addButton('Test Export', () => this.testExport());
     }
 
-    // Generate random names
-    generateRandomNames(count, useGender) {
+    // Generate random names, ensuring uniqueness against a shared used set
+    generateRandomNames(count, useGender, usedNamesGlobal) {
         const maleFirstNames = ['James', 'Michael', 'David', 'John', 'Robert', 'William', 'Thomas', 'Daniel', 'Paul', 'Mark'];
-        
         const femaleFirstNames = ['Sarah', 'Emily', 'Jessica', 'Jennifer', 'Elizabeth', 'Lauren', 'Michelle', 'Nicole', 'Amanda', 'Rachel'];
-        
         const genderNeutralNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey'];
-        
-        // Keep track of used names to ensure uniqueness
-        const usedNames = new Set();
-        
-        const getRandomName = (nameList) => {
-            let name;
-            do {
-                name = nameList[Math.floor(Math.random() * nameList.length)];
-            } while (usedNames.has(name));
-            
-            usedNames.add(name);
-            return name;
-        };
 
-        if (useGender === 'male') {
-            // Generate male names
-            return Array(count).fill().map(() => getRandomName(maleFirstNames));
-        } else if (useGender === 'female') {
-            // Generate female names
-            return Array(count).fill().map(() => getRandomName(femaleFirstNames));
-        } else {
-            // Generate gender-neutral names
-            return Array(count).fill().map(() => getRandomName(genderNeutralNames));
+        const used = usedNamesGlobal instanceof Set ? usedNamesGlobal : new Set();
+        const sourceList = useGender === 'male' ? maleFirstNames : (useGender === 'female' ? femaleFirstNames : genderNeutralNames);
+        const available = sourceList.filter(n => !used.has(n));
+        if (available.length < count) {
+            throw new Error('Not enough unique names available to satisfy request');
         }
+        const selected = [];
+        const pool = [...available];
+        for (let i = 0; i < count; i++) {
+            const idx = Math.floor(Math.random() * pool.length);
+            const name = pool.splice(idx, 1)[0];
+            selected.push(name);
+            used.add(name);
+        }
+        return selected;
     }
 
     // Fill the setup form with random names
@@ -309,15 +469,11 @@ class DebugTools {
             return;
         }
         
-        // Generate all possible names
-        const allLeads = this.generateRandomNames(10, 'male');
-        const allFollows = this.generateRandomNames(10, 'female');
-        const allJudges = this.generateRandomNames(5);
-        
-        // Randomly select 8 leads, 8 follows, and 2 judges
-        const selectedLeads = this.shuffleArray(allLeads).slice(0, 8);
-        const selectedFollows = this.shuffleArray(allFollows).slice(0, 8);
-        const selectedJudges = this.shuffleArray(allJudges).slice(0, 2);
+        // Generate unique names across all groups
+        const used = new Set();
+        const selectedLeads = this.generateRandomNames(8, 'male', used);
+        const selectedFollows = this.generateRandomNames(8, 'female', used);
+        const selectedJudges = this.generateRandomNames(2, 'neutral', used);
         
         // Fill inputs
         leadsInput.value = selectedLeads.join(', ');
@@ -344,9 +500,10 @@ class DebugTools {
     // Start a battle with random names
     async startWithRandomNames() {
         // Generate random names
-        const leads = this.generateRandomNames(10, 'male');
-        const follows = this.generateRandomNames(10, 'female');
-        const judges = this.generateRandomNames(5);
+        const used = new Set();
+        const leads = this.generateRandomNames(8, 'male', used);
+        const follows = this.generateRandomNames(8, 'female', used);
+        const judges = this.generateRandomNames(2, 'neutral', used);
         
         console.log('Generated names:', { leads, follows, judges });
         
@@ -384,36 +541,47 @@ class DebugTools {
             const data = await response.json();
             console.log('Game started:', data);
             
-            // Store the session ID in both localStorage and the global variable
+            // Store the session ID
             localStorage.setItem('sessionId', data.session_id);
-            window.sessionId = data.session_id;  // Set the global variable
+            // Set both the non-window global (used by app.js) and window fallback
+            try { sessionId = data.session_id; } catch (_) {}
+            window.sessionId = data.session_id;
+            if (typeof updateSessionIdDisplay === 'function') {
+                updateSessionIdDisplay();
+            }
             
             // Store other game data
             window.guestJudges = data.guest_judges;
             window.initialLeads = data.initial_leads;
             window.initialFollows = data.initial_follows;
             
-            // Update UI for the first round
-            const roundNumber = document.getElementById('round-number');
-            const lead1Name = document.getElementById('lead1-name');
-            const follow1Name = document.getElementById('follow1-name');
-            const lead2Name = document.getElementById('lead2-name');
-            const follow2Name = document.getElementById('follow2-name');
-            const contestantJudgesList = document.getElementById('contestant-judges-list');
-            
-            if (roundNumber) roundNumber.textContent = data.round;
-            if (lead1Name) lead1Name.textContent = data.pair_1[0];
-            if (follow1Name) follow1Name.textContent = data.pair_1[1];
-            if (lead2Name) lead2Name.textContent = data.pair_2[0];
-            if (follow2Name) follow2Name.textContent = data.pair_2[1];
-            if (contestantJudgesList) contestantJudgesList.textContent = data.contestant_judges.join(', ');
-            
-            // Show the round screen
-            document.getElementById('setup-screen').classList.remove('active');
-            document.getElementById('battle-screen').classList.add('active');
-            
-            // Setup voting UI
-            this.setupVotingUI();
+            // Show battle screen and render canonical state reliably
+            if (typeof showScreen === 'function') {
+                const battleEl = document.getElementById('battle-screen');
+                if (battleEl) showScreen(battleEl);
+            } else {
+                const setupEl = document.getElementById('setup-screen');
+                const battleEl = document.getElementById('battle-screen');
+                if (setupEl) setupEl.classList.remove('active');
+                if (battleEl) battleEl.classList.add('active');
+            }
+
+            // Prefer direct state fetch to avoid relying on external globals
+            try {
+                const stateResp = await fetch(`/api/state?session_id=${data.session_id}`);
+                if (stateResp.ok) {
+                    const stateJson = await stateResp.json();
+                    if (typeof renderFromState === 'function') {
+                        renderFromState(stateJson);
+                    }
+                } else if (typeof refreshCanonicalState === 'function') {
+                    await refreshCanonicalState();
+                }
+            } catch (_) {
+                if (typeof refreshCanonicalState === 'function') {
+                    await refreshCanonicalState();
+                }
+            }
             
             console.log('Battle started with random names');
         } catch (error) {
@@ -502,13 +670,11 @@ class DebugTools {
             judgeCard.classList.add('voted');
         });
         
-        voteOptions.appendChild(option1Btn);
-        voteOptions.appendChild(option2Btn);
-        
-        // Add tie and no-contest buttons for guest judges
+        // Add guest judge options if applicable
         if (isGuest) {
+            // Tie button
             const tieBtn = document.createElement('button');
-            tieBtn.className = 'vote-btn vote-tie';
+            tieBtn.className = 'vote-btn vote-option-3';
             tieBtn.textContent = 'Tie';
             tieBtn.addEventListener('click', () => {
                 if (window.votingLocked && window.votingLocked[voteType]) return;
@@ -521,8 +687,9 @@ class DebugTools {
                 judgeCard.classList.add('voted');
             });
             
+            // No Contest button
             const noContestBtn = document.createElement('button');
-            noContestBtn.className = 'vote-btn vote-no-contest';
+            noContestBtn.className = 'vote-btn vote-option-4';
             noContestBtn.textContent = 'No Contest';
             noContestBtn.addEventListener('click', () => {
                 if (window.votingLocked && window.votingLocked[voteType]) return;
@@ -539,23 +706,24 @@ class DebugTools {
             voteOptions.appendChild(noContestBtn);
         }
         
+        voteOptions.appendChild(option1Btn);
+        voteOptions.appendChild(option2Btn);
+        
         judgeCard.appendChild(judgeNameEl);
         judgeCard.appendChild(voteOptions);
         
         return judgeCard;
     }
     
-    recordVote(judgeName, voteOption, voteType) {
-        if (voteType === 'lead') {
-            window.leadVotes[judgeName] = voteOption;
-        } else if (voteType === 'follow') {
-            window.followVotes[judgeName] = voteOption;
-        }
-        console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
+    // Helper method to record votes
+    recordVote(judge, decision, voteType) {
+        if (!window.leadVotes) window.leadVotes = {};
+        if (!window.followVotes) window.followVotes = {};
         
-        // Update submit button state and show previews if available
-        if (window.updateSubmitButtonState) {
-            window.updateSubmitButtonState();
+        if (voteType === 'lead') {
+            window.leadVotes[judge] = decision;
+        } else {
+            window.followVotes[judge] = decision;
         }
     }
 
@@ -569,7 +737,8 @@ class DebugTools {
         
         try {
             // Get current game state
-            const response = await fetch(`/api/get_scores?session_id=${sessionId}`);
+            const effectiveSessionId = window.sessionId || sessionId || localStorage.getItem('sessionId');
+            const response = await fetch(`/api/get_scores?session_id=${effectiveSessionId}`);
             if (!response.ok) {
                 throw new Error('Failed to get game state');
             }
@@ -723,7 +892,7 @@ class DebugTools {
                 document.getElementById('song-input').value = songUrl;
             }
 
-            // Handle both lead and follow votes simultaneously
+            // First, handle lead votes
             console.log('Handling lead votes...');
             const leadVotesProcessed = await this.randomVotes(true);
             if (!leadVotesProcessed) {
@@ -731,35 +900,100 @@ class DebugTools {
                 return;
             }
             
+            // Then, handle follow votes
             console.log('Handling follow votes...');
             const followVotesProcessed = await this.randomVotes(false);
             if (!followVotesProcessed) {
                 console.warn('Follow votes may not have been processed completely');
                 return;
             }
-            
+
             // Submit all votes using the combined submit button
-            const submitVotesButton = document.getElementById('submit-votes');
-            if (submitVotesButton) {
-                console.log('Clicking Submit All Votes button...');
-                submitVotesButton.click();
-                
-                // Wait a bit for the voting to process, then click Next Round
-                setTimeout(() => {
-                    const nextRoundButton = document.getElementById('next-round');
-                    if (nextRoundButton && !nextRoundButton.disabled) {
-                        console.log('Clicking Next Round button...');
-                        nextRoundButton.click();
-                    } else {
-                        console.warn('Next Round button not found or disabled');
-                    }
-                }, 2000);
+            const submitBtn = document.getElementById('submit-votes');
+            if (submitBtn && !submitBtn.disabled) {
+                console.log('Submitting all votes...');
+                submitBtn.click();
+                // Wait for results to render (votingResults visible or button disabled)
+                await this.waitFor(() => {
+                    const vr = document.getElementById('voting-results');
+                    return (vr && !vr.classList.contains('hidden')) || (submitBtn.disabled === true);
+                }, 7000);
             } else {
-                console.warn('Submit All Votes button not found');
+                console.warn('Submit button not available or already disabled');
+            }
+
+            // Find and click the Next Round button once enabled
+            const nextRoundButton = document.getElementById('next-round');
+            if (nextRoundButton) {
+                // Ensure any async UI updates are finished and button is enabled
+                await this.waitFor(() => !nextRoundButton.disabled, 7000);
+                console.log('Clicking Next Round button...');
+                nextRoundButton.click();
+            } else {
+                console.warn('Next Round button not found');
             }
         } catch (error) {
             console.error('Error in next round process:', error);
             alert(`Failed to complete next round process: ${error.message}`);
+        }
+    }
+
+    // Determine if advancing to next round is possible from current UI state
+    async canAdvance() {
+        const nextRoundButton = document.getElementById('next-round');
+        const submitBtn = document.getElementById('submit-votes');
+        // If neither submit nor next-round controls are present, likely finished or not on battle screen
+        if (!submitBtn && !nextRoundButton) return false;
+        // If next round button exists but is disabled and no submit button, we're likely finished
+        if (nextRoundButton && nextRoundButton.disabled && !submitBtn) return false;
+        return true;
+    }
+
+    async tryEndGame() {
+        try {
+            if (typeof endGame === 'function') {
+                endGame();
+                return;
+            }
+        } catch (_) {}
+        try {
+            const sid = window.sessionId || localStorage.getItem('sessionId');
+            if (!sid) return;
+            await fetch('/api/end_game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sid })
+            });
+        } catch (e) {
+            console.warn('Failed to end game via API:', e);
+        }
+    }
+
+    // Simulate at most N rounds; stop early if game ends, and end the game explicitly
+    async simulateNRounds(n) {
+        const sessionId = localStorage.getItem('sessionId');
+        if (!sessionId) {
+            alert('No active session. Please start a battle first.');
+            return;
+        }
+        const total = Math.max(1, Math.min(100, n | 0));
+        for (let i = 0; i < total; i++) {
+            // If cannot advance, end the game
+            if (!(await this.canAdvance())) {
+                console.log('Game appears finished before reaching target rounds. Ending game.');
+                await this.tryEndGame();
+                break;
+            }
+            console.log(`Simulating round ${i + 1} of ${total}...`);
+            await this.nextRound();
+            // Small pause to allow UI/state to settle
+            await new Promise(r => setTimeout(r, 300));
+            // If after running this round we cannot advance further, end game and stop
+            if (!(await this.canAdvance())) {
+                console.log('Game finished early during simulation. Ending game.');
+                await this.tryEndGame();
+                break;
+            }
         }
     }
 
@@ -879,11 +1113,13 @@ class DebugTools {
         
         this.autoAdvanceInterval = setInterval(async () => {
             const nextRoundButton = document.getElementById('next-round');
-            if (nextRoundButton && !nextRoundButton.disabled) {
+            const submitBtn = document.getElementById('submit-votes');
+            // Only attempt if UI seems ready for a new iteration
+            if (nextRoundButton && submitBtn) {
                 console.log('Auto-advancing to next round...');
                 await this.nextRound();
             } else {
-                console.log('Next round button not available or game finished');
+                console.log('Controls not available or game finished');
                 this.stopAutoAdvance();
             }
         }, this.autoAdvanceDelay);
@@ -896,9 +1132,151 @@ class DebugTools {
         }
         this.autoAdvance = false;
     }
+
+    // Utility: wait for a condition with timeout
+    async waitFor(conditionFn, timeoutMs = 5000, pollMs = 100) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            try {
+                if (conditionFn()) return true;
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, pollMs));
+        }
+        return false;
+    }
+
+    // Persisted settings on load
+    restorePersistedToggles() {
+        const savedAuto = localStorage.getItem('debug.autoAdvance');
+        if (savedAuto === 'true') {
+            this.autoAdvance = true;
+            setTimeout(() => this.startAutoAdvance(), 100);
+        }
+    }
+
+    // Simple draggable behavior
+    makeDraggable(element, handle) {
+        let isDragging = false;
+        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+        const onMouseDown = (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = element.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            element.style.left = `${startLeft + dx}px`;
+            element.style.top = `${startTop + dy}px`;
+            element.style.right = 'auto';
+            element.style.bottom = 'auto';
+            element.style.position = 'fixed';
+        };
+        const onMouseUp = () => {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            // Persist position
+            try {
+                const rect = element.getBoundingClientRect();
+                localStorage.setItem('debug.panel.left', String(rect.left));
+                localStorage.setItem('debug.panel.top', String(rect.top));
+            } catch (_) {}
+        };
+        handle.addEventListener('mousedown', onMouseDown);
+    }
+
+    makeResizable(element, handle) {
+        let isResizing = false;
+        let startX = 0, startY = 0, startWidth = 0, startHeight = 0;
+        const onMouseDown = (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = element.getBoundingClientRect();
+            startWidth = rect.width;
+            startHeight = rect.height;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            e.preventDefault();
+        };
+        const onMouseMove = (e) => {
+            if (!isResizing) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            const newWidth = Math.max(220, Math.min(window.innerWidth * 0.95, startWidth + dx));
+            const newHeight = Math.max(160, Math.min(window.innerHeight * 0.9, startHeight + dy));
+            element.style.width = `${newWidth}px`;
+            element.style.maxWidth = `${Math.ceil(window.innerWidth * 0.95)}px`;
+            element.style.height = `${newHeight}px`;
+            element.style.maxHeight = `${Math.ceil(window.innerHeight * 0.9)}px`;
+        };
+        const onMouseUp = () => {
+            isResizing = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            // Persist size
+            try {
+                const rect = element.getBoundingClientRect();
+                localStorage.setItem('debug.panel.width', String(rect.width));
+                localStorage.setItem('debug.panel.height', String(rect.height));
+            } catch (_) {}
+        };
+        handle.addEventListener('mousedown', onMouseDown);
+    }
+
+    restorePanelPositionAndSize() {
+        try {
+            const left = parseFloat(localStorage.getItem('debug.panel.left'));
+            const top = parseFloat(localStorage.getItem('debug.panel.top'));
+            const width = parseFloat(localStorage.getItem('debug.panel.width'));
+            const height = parseFloat(localStorage.getItem('debug.panel.height'));
+            if (!Number.isNaN(left) && !Number.isNaN(top)) {
+                this.panel.style.left = `${left}px`;
+                this.panel.style.top = `${top}px`;
+                this.panel.style.right = 'auto';
+                this.panel.style.bottom = 'auto';
+                this.panel.style.position = 'fixed';
+            }
+            if (!Number.isNaN(width)) {
+                this.panel.style.width = `${width}px`;
+            }
+            if (!Number.isNaN(height)) {
+                this.panel.style.height = `${height}px`;
+            }
+        } catch (_) {}
+    }
+
+    // Keyboard shortcuts for convenience
+    setupKeyboardShortcuts() {
+        window.addEventListener('keydown', async (e) => {
+            const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea') return;
+            if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+                this.togglePanel();
+            }
+            if (e.altKey && (e.key === 'a' || e.key === 'A')) {
+                this.autoAdvance = !this.autoAdvance;
+                localStorage.setItem('debug.autoAdvance', this.autoAdvance ? 'true' : 'false');
+                if (this.autoAdvance) this.startAutoAdvance(); else this.stopAutoAdvance();
+            }
+            if (e.altKey && (e.key === 'n' || e.key === 'N')) {
+                await this.nextRound();
+            }
+        });
+    }
 }
 
 // Only initialize debug tools if enabled
 if (window.ENABLE_DEBUG_TOOLS) {
     window.debugTools = new DebugTools();
 } 
+
+// Expose class on window for runtime enabling
+window.DebugTools = window.DebugTools || DebugTools;

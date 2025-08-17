@@ -14,6 +14,10 @@
             <h2>Battle Manager</h2>
         </header>
 
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+            <button id="theme-toggle" class="btn secondary" style="min-width:auto;">Toggle Theme</button>
+        </div>
+
         <div id="home-screen" class="screen active">
             <div class="welcome-section">
                 <h2>Welcome to Hustle n' Tussle</h2>
@@ -83,6 +87,10 @@
                 <label for="points-to-win">Points to win (optional):</label>
                 <input type="number" id="points-to-win" min="1" placeholder="Auto (default calculated)" />
             </div>
+            <div class="form-group">
+                <label for="playlist-url">Spotify Playlist URL (optional):</label>
+                <input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/..." />
+            </div>
             <div class="setup-actions">
                 <button id="start-competition" class="btn primary">Start Competition</button>
                 <button id="setup-back-to-home" class="btn secondary">Back</button>
@@ -103,6 +111,11 @@
                             <h3>Song Information</h3>
                             <label for="song-input">Spotify URL (optional):</label>
                             <input type="url" id="song-input" placeholder="https://open.spotify.com/track/..." />
+                        </div>
+
+                        <div id="playlist-embed-section" class="song-input-container" style="display:none;">
+                            <h3>Song</h3>
+                            <div id="playlist-embed"></div>
                         </div>
 
                         <div id="current-matchup" class="matchups">
@@ -143,19 +156,15 @@
                     </div>
                     
                     <div class="scores-display">
-                        <h3>Current Scores</h3>
-                        <div class="scores-container">
-                            <div class="lead-scores">
+                        <h3>Battle Graphic</h3>
+                        <div class="battle-graphic">
+                            <div class="graphic-column">
                                 <h4>Leads</h4>
-                                <ul id="current-lead-scores">
-                                    <!-- Lead scores will be populated here -->
-                                </ul>
+                                <div id="live-lead-graphic" class="graphic-list"></div>
                             </div>
-                            <div class="follow-scores">
+                            <div class="graphic-column">
                                 <h4>Follows</h4>
-                                <ul id="current-follow-scores">
-                                    <!-- Follow scores will be populated here -->
-                                </ul>
+                                <div id="live-follow-graphic" class="graphic-list"></div>
                             </div>
                         </div>
                     </div>
@@ -221,16 +230,15 @@
         <div id="results-screen" class="screen">
             <h2>Final Results</h2>
             
-            <div class="starting-order-section">
-                <h3>Starting Order</h3>
-                <div class="starting-order-container">
-                    <div class="leads-order">
+            <div class="battle-graphic-section">
+                <div class="battle-graphic">
+                    <div class="graphic-column">
                         <h4>Leads</h4>
-                        <ul id="leads-initial-order"></ul>
+                        <div id="lead-graphic" class="graphic-list"></div>
                     </div>
-                    <div class="follows-order">
+                    <div class="graphic-column">
                         <h4>Follows</h4>
-                        <ul id="follows-initial-order"></ul>
+                        <div id="follow-graphic" class="graphic-list"></div>
                     </div>
                 </div>
             </div>
@@ -282,8 +290,35 @@
     </div>
 
     <script>
-        // Set debug flag based on environment
-        window.ENABLE_DEBUG_TOOLS = {{ 'true' if config.ENABLE_DEBUG_TOOLS else 'false' }};
+        // Set debug flag based on environment plus query/localStorage override
+        (function() {
+            try {
+                const url = new URL(window.location.href);
+                const qp = url.searchParams.get('debug');
+                if (qp === '1' || qp === 'true') {
+                    localStorage.setItem('debug.enable', 'true');
+                } else if (qp === '0' || qp === 'false') {
+                    localStorage.removeItem('debug.enable');
+                }
+            } catch (e) {}
+            var envEnabled = {{ 'true' if config.ENABLE_DEBUG_TOOLS else 'false' }};
+            var localEnabled = localStorage.getItem('debug.enable') === 'true';
+            window.ENABLE_DEBUG_TOOLS = envEnabled || localEnabled;
+            // Lightweight hotkey to enable at runtime even if disabled by env: Alt+Shift+D
+            window.addEventListener('keydown', function(e) {
+                if ((e.altKey && e.shiftKey) && (e.key === 'D' || e.key === 'd')) {
+                    localStorage.setItem('debug.enable', 'true');
+                    if (!window.ENABLE_DEBUG_TOOLS) {
+                        window.ENABLE_DEBUG_TOOLS = true;
+                        // Lazy-load DebugTools if script already loaded
+                        if (window.DebugTools && !window.debugTools) {
+                            window.debugTools = new window.DebugTools();
+                        }
+                    }
+                    e.preventDefault();
+                }
+            });
+        })();
     </script>
     <script src="js/components/DebugTools.js"></script>
     <script src="js/app.js"></script>
