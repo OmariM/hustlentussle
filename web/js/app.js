@@ -1700,8 +1700,7 @@ async function preparePlaylistSongForRound(roundNum) {
         currentRoundTrack = track;
         lastPreparedSongRoundNumber = roundNum;
         renderPlaylistEmbed(track);
-        // Attempt to start full playback via Spotify
-        playCurrentRoundTrackViaSpotify();
+        // Do not auto-start full playback; user can click Play Full to initiate OAuth if needed
     } catch (e) {
         console.warn('preparePlaylistSongForRound error:', e);
         disablePlaylistMode('Error preparing playlist track.');
@@ -2067,3 +2066,23 @@ async function ensureUserAuthForPlayback() {
     await startSpotifyAuth(returnTo);
     return false;
 }
+
+// Resume session UI if returning from OAuth with session_id in URL
+(function resumeAfterOAuth(){
+    try {
+        const url = new URL(window.location.href);
+        const sid = url.searchParams.get('session_id');
+        if (sid) {
+            sessionId = sid;
+            localStorage.setItem('sessionId', sid);
+            updateSessionIdDisplay();
+            // Try to render round screen if we already have a game
+            fetchCanonicalState().then(state => {
+                if (state && state.round && state.round.pairs) {
+                    showScreen(roundScreen);
+                    renderFromState(state);
+                }
+            }).catch(() => {});
+        }
+    } catch (_) {}
+})();
