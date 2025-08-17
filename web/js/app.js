@@ -10,6 +10,17 @@ let votingLocked = { lead: false, follow: false }; // Track if voting is locked
 let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 
+// Playlist mode state
+let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
+let playlistModeEnabled = false;
+let playlistUrl = '';
+let playlistId = '';
+let playlistTracks = [];
+let usedTrackIds = new Set();
+let currentRoundTrack = null;
+let lastPreparedSongRoundNumber = null;
+let pendingPlaylistUrl = null;
+
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
@@ -57,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pointsToWinInput = document.getElementById('points-to-win');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
+    playlistUrlInput = document.getElementById('playlist-url');
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -70,6 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
     currentFollowScores = document.getElementById('current-follow-scores');
     liveLeadGraphic = document.getElementById('live-lead-graphic');
     liveFollowGraphic = document.getElementById('live-follow-graphic');
+    songInputSection = document.getElementById('song-input-section');
+    playlistEmbedSection = document.getElementById('playlist-embed-section');
+    playlistEmbedContainer = document.getElementById('playlist-embed');
 
 // Voting elements
     leadVotingSection = document.getElementById('lead-voting');
@@ -134,6 +149,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup screen
     setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
     startCompetitionBtn.addEventListener('click', startCompetition);
+
+    // Hydrate used tracks and playlist from localStorage for current session if available
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            const stored = localStorage.getItem(`usedTracks:${sid}`);
+            if (stored) usedTrackIds = new Set(JSON.parse(stored));
+            const storedPlaylistUrl = localStorage.getItem(`playlist:url:${sid}`);
+            if (storedPlaylistUrl) {
+                pendingPlaylistUrl = storedPlaylistUrl;
+                maybeEnablePlaylistMode(pendingPlaylistUrl).catch(() => {});
+                pendingPlaylistUrl = null;
+            }
+        }
+    } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
@@ -202,8 +232,22 @@ async function fetchCanonicalState() {
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
+    // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
+    if (!playlistModeEnabled && pendingPlaylistUrl) {
+        maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
+        pendingPlaylistUrl = null;
+    }
+
     // Round number
     if (roundNumber) roundNumber.textContent = state.round.number;
+
+    // If playlist mode is on and the round changed, prepare a song for this round
+    if (playlistModeEnabled) {
+        const rn = state.round.number;
+        if (lastPreparedSongRoundNumber !== rn) {
+            preparePlaylistSongForRound(rn).catch(e => console.warn('Failed to prepare playlist song:', e));
+        }
+    }
 
     // Pairs
     if (lead1Name) lead1Name.textContent = state.round.pairs.pair_1.lead;
@@ -473,6 +517,7 @@ async function startCompetition() {
     const judges = judgeNamesInput.value.trim();
     const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
     const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
+    const playlistUrlRaw = playlistUrlInput ? playlistUrlInput.value.trim() : '';
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -483,7 +528,7 @@ async function startCompetition() {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges, points_to_win })
+            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw })
         });
         
         const data = await response.json();
@@ -495,6 +540,10 @@ async function startCompetition() {
         
         // Update session ID display
         updateSessionIdDisplay();
+
+        // Initialize playlist mode if a playlist URL is present
+        pendingPlaylistUrl = playlistUrlRaw;
+        await maybeEnablePlaylistMode(pendingPlaylistUrl);
         
         // Render from canonical state
         await refreshCanonicalState();
@@ -510,11 +559,20 @@ async function startCompetition() {
 function fetchScores() {
     fetch(`/api/get_scores?session_id=${sessionId}`)
         .then(response => response.json())
-        .then(data => {
+        .then(async data => {
             // Store current scores data
             currentLeads = data.leads || [];
             currentFollows = data.follows || [];
             
+            // If server echoed playlist_url and we haven't enabled mode yet, enable it
+            try {
+                if (!playlistModeEnabled && data.playlist_url) {
+                    pendingPlaylistUrl = data.playlist_url;
+                    await maybeEnablePlaylistMode(pendingPlaylistUrl);
+                    pendingPlaylistUrl = null;
+                }
+            } catch (_) {}
+
             // Update current scores display
             updateScoresDisplay();
             
@@ -606,9 +664,17 @@ function updateRoundUI(data) {
     // Reset submit button
     submitVotesBtn.disabled = false;
     
-    // Only reset song input if we're not in auto-advance mode
+    // Only reset song input if we're not in auto-advance mode and not in playlist mode
     if (!window.debugTools || !window.debugTools.autoAdvance) {
-        document.getElementById('song-input').value = '';
+        if (!playlistModeEnabled) {
+            const si = document.getElementById('song-input');
+            if (si) si.value = '';
+            if (songInputSection) songInputSection.style.display = '';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+        } else {
+            if (songInputSection) songInputSection.style.display = 'none';
+            if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        }
     }
 }
 
@@ -925,7 +991,11 @@ async function submitCombinedVotes() {
     // Get song information
     const songInput = document.getElementById('song-input');
     const songInfo = {};
-    if (songInput.value) {
+    if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+        songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
+        songInfo.title = currentRoundTrack.name || '';
+        songInfo.artist = currentRoundTrack.artists || '';
+    } else if (songInput && songInput.value) {
         try {
             const spotifyUrl = new URL(songInput.value);
             if (spotifyUrl.hostname === 'open.spotify.com') {
@@ -954,6 +1024,14 @@ async function submitCombinedVotes() {
         });
         
         const data = await response.json();
+        
+        // If playlist mode, mark this track as used after successful submission
+        if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+            usedTrackIds.add(currentRoundTrack.id);
+            try {
+                localStorage.setItem(`usedTracks:${sessionId}`, JSON.stringify(Array.from(usedTrackIds)));
+            } catch (_) {}
+        }
         
         // Update results UI
         leadWinner.textContent = data.lead_winner;
@@ -1037,6 +1115,25 @@ function resetCompetition() {
     votingLocked = { lead: false, follow: false };
     currentLeads = [];
     currentFollows = [];
+    
+    // Reset playlist state
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    usedTrackIds = new Set();
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    try {
+        const sid = localStorage.getItem('sessionId');
+        if (sid) {
+            localStorage.removeItem(`usedTracks:${sid}`);
+            localStorage.removeItem(`playlist:url:${sid}`);
+        }
+    } catch (_) {}
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (playlistUrlInput) playlistUrlInput.value = '';
     
     // Hide winner previews
     if (leadWinnerPreview) leadWinnerPreview.classList.add('hidden');
@@ -1567,6 +1664,63 @@ async function getSpotifyToken() {
     }
 }
 
+async function fetchPlaylistTracks(offset = 0) {
+    // Use server proxy to avoid client-side CORS and centralize token handling
+    const resp = await fetch(`/api/spotify/playlist_tracks?playlist_id=${encodeURIComponent(playlistId)}`);
+    if (!resp.ok) {
+        let details = '';
+        try { const j = await resp.json(); details = j && j.error ? j.error : ''; } catch (_) {}
+        throw new Error(`Failed to fetch playlist tracks: ${resp.status} ${details}`);
+    }
+    const data = await resp.json();
+    const newTracks = Array.isArray(data.tracks) ? data.tracks : [];
+    const existingIds = new Set(playlistTracks.map(t => t.id));
+    newTracks.forEach(t => { if (t && t.id && !existingIds.has(t.id)) playlistTracks.push(t); });
+}
+
+async function preparePlaylistSongForRound(roundNum) {
+    try {
+        if (!playlistModeEnabled || !playlistId) return;
+        if (playlistTracks.length === 0) await fetchPlaylistTracks();
+        let track = pickNextUnusedTrack();
+        if (!track) {
+            // Try refreshing tracks in case playlist changed since initial fetch
+            playlistTracks = [];
+            await fetchPlaylistTracks();
+            track = pickNextUnusedTrack();
+        }
+        if (!track) {
+            console.warn('No available unused tracks in playlist. Disabling playlist mode.');
+            renderPlaylistEmbed(null);
+            currentRoundTrack = null;
+            disablePlaylistMode('No more unused tracks available.');
+            try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+            return;
+        }
+        currentRoundTrack = track;
+        lastPreparedSongRoundNumber = roundNum;
+        renderPlaylistEmbed(track);
+        // Do not auto-start full playback; user can click Play Full to initiate OAuth if needed
+    } catch (e) {
+        console.warn('preparePlaylistSongForRound error:', e);
+        disablePlaylistMode('Error preparing playlist track.');
+    }
+}
+
+function renderPlaylistEmbed(track) {
+    if (!playlistEmbedContainer) return;
+    playlistEmbedContainer.innerHTML = '';
+    if (!track || !track.id) return;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://open.spotify.com/embed/track/${track.id}`;
+    iframe.width = '100%';
+    iframe.height = '80';
+    iframe.frameBorder = '0';
+    iframe.allow = 'encrypted-media';
+    iframe.className = 'spotify-embed';
+    playlistEmbedContainer.appendChild(iframe);
+}
+
 async function downloadBattleData() {
     if (!sessionId) {
         console.error('No active session to download data from.');
@@ -1869,3 +2023,231 @@ function endGame() {
         alert('Failed to end the competition. Please try again.');
     });
 } 
+
+function pickNextUnusedTrack() {
+    const unused = playlistTracks.filter(t => t && t.id && !usedTrackIds.has(t.id));
+    if (unused.length === 0) return null;
+    const idx = Math.floor(Math.random() * unused.length);
+    return unused[idx];
+} 
+
+async function maybeEnablePlaylistMode(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== 'open.spotify.com') return;
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        // Accept /playlist/{id} and legacy /user/{userId}/playlist/{id}
+        let id = '';
+        if (parts[0] === 'playlist' && parts[1]) {
+            id = parts[1];
+        } else if (parts[0] === 'user' && parts[2] === 'playlist' && parts[3]) {
+            id = parts[3];
+        } else {
+            return;
+        }
+        playlistId = id;
+        playlistUrl = url;
+        playlistModeEnabled = true;
+        // Reset trackers for new session
+        usedTrackIds = new Set();
+        currentRoundTrack = null;
+        lastPreparedSongRoundNumber = null;
+        // UI: hide manual input, show embed section
+        if (songInputSection) songInputSection.style.display = 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+        // Preload tracks (may fetch multiple pages)
+        await fetchPlaylistTracks();
+        // Persist playlist URL for the session
+        if (sessionId) {
+            try {
+                localStorage.setItem(`playlist:url:${sessionId}`, playlistUrl);
+            } catch (e) {
+                console.warn('Failed to persist playlist URL:', e);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to enable playlist mode:', e);
+        disablePlaylistMode('Could not fetch playlist tracks. Falling back to manual song input.');
+        try { alert('Could not load Spotify playlist. Falling back to manual song input.'); } catch (_) {}
+    }
+}
+
+function disablePlaylistMode(reason) {
+    playlistModeEnabled = false;
+    playlistUrl = '';
+    playlistId = '';
+    playlistTracks = [];
+    currentRoundTrack = null;
+    lastPreparedSongRoundNumber = null;
+    if (songInputSection) songInputSection.style.display = '';
+    if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+    if (reason) console.warn('Playlist mode disabled:', reason);
+} 
+
+// Spotify Web Playback SDK integration
+let spotifyPlayer = null;
+let spotifyDeviceId = null;
+let webPlaybackReady = false;
+
+function loadSpotifySDK() {
+    return new Promise((resolve, reject) => {
+        if (window.Spotify) return resolve();
+        const script = document.createElement('script');
+        script.src = 'https://sdk.scdn.co/spotify-player.js';
+        script.onload = () => resolve();
+        script.onerror = reject;
+        document.body.appendChild(script);
+    });
+}
+
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
+        if (resp.status === 200) return true;
+        if (resp.status === 401) {
+            const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+            await startSpotifyAuth(returnTo);
+            return false;
+        }
+        return false;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function initWebPlaybackPlayer() {
+    await loadSpotifySDK();
+    if (!await ensureUserAuthForPlayback()) return;
+    if (spotifyPlayer) return;
+
+    window.onSpotifyWebPlaybackSDKReady = () => {};
+
+    // Provide a valid token to the SDK via callback
+    try {
+        spotifyPlayer = new Spotify.Player({
+            name: 'Battle Manager Player',
+            getOAuthToken: async (cb) => {
+                try {
+                    const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        cb(data.access_token);
+                    } else {
+                        cb('');
+                    }
+                } catch (_) {
+                    cb('');
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('Failed to create Spotify Player:', e);
+        return;
+    }
+
+    spotifyPlayer.addListener('ready', ({ device_id }) => {
+        spotifyDeviceId = device_id;
+        webPlaybackReady = true;
+        console.log('Spotify Web Playback SDK ready with device:', device_id);
+    });
+    spotifyPlayer.addListener('not_ready', ({ device_id }) => {
+        console.log('Spotify Device went offline:', device_id);
+        webPlaybackReady = false;
+    });
+
+    try { await spotifyPlayer.connect(); } catch (_) {}
+}
+
+async function playCurrentRoundTrackViaSpotify() {
+    if (!playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
+    await initWebPlaybackPlayer();
+
+    // Wait briefly for device readiness if needed
+    let tries = 0;
+    while (!webPlaybackReady && tries < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        tries++;
+    }
+
+    try {
+        const resp = await fetch('/api/spotify/play_track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, track_uri: `spotify:track:${currentRoundTrack.id}`, device_id: spotifyDeviceId || undefined })
+        });
+        if (!resp.ok) {
+            if (resp.status === 401) {
+                const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+                await startSpotifyAuth(returnTo);
+            } else {
+                const err = await resp.json().catch(() => ({}));
+                console.warn('Failed to start playback:', err);
+                alert('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.');
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to start Spotify playback:', e);
+    }
+}
+
+// Add helper to kick off Spotify auth with return_to
+async function startSpotifyAuth(returnToUrl, authKey = '') {
+    const url = new URL(window.location.href);
+    const sid = sessionId || url.searchParams.get('session_id') || '';
+    const params = new URLSearchParams();
+    params.set('session_id', sid || 'preauth');
+    if (returnToUrl) params.set('return_to', returnToUrl);
+    if (authKey) params.set('auth_key', authKey);
+    window.location.href = `/api/spotify/authorize?${params.toString()}`;
+}
+
+// Add a button to home screen for pre-auth
+(function addSpotifyAuthButtonToHome(){
+    try {
+        const home = document.getElementById('home-screen');
+        if (!home) return;
+        const actions = home.querySelector('.home-actions');
+        if (!actions) return;
+        const btn = document.createElement('button');
+        btn.id = 'spotify-auth-btn';
+        btn.className = 'btn secondary large';
+        btn.textContent = 'Authenticate Spotify';
+        btn.onclick = () => {
+            startSpotifyAuth(window.location.origin + window.location.pathname);
+        };
+        actions.appendChild(btn);
+    } catch (_) {}
+})();
+
+// When preparing playlist track, ensure auth redirect returns to the current round page with sessionId
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        const resp = await fetch(`/api/spotify/current_track?session_id=${sessionId}`);
+        if (resp.status === 200) return true;
+    } catch (_) {}
+    const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+    await startSpotifyAuth(returnTo);
+    return false;
+}
+
+// Resume session UI if returning from OAuth with session_id in URL
+(function resumeAfterOAuth(){
+    try {
+        const url = new URL(window.location.href);
+        const sid = url.searchParams.get('session_id');
+        if (sid) {
+            sessionId = sid;
+            localStorage.setItem('sessionId', sid);
+            updateSessionIdDisplay();
+            // Try to render round screen if we already have a game
+            fetchCanonicalState().then(state => {
+                if (state && state.round && state.round.pairs) {
+                    showScreen(roundScreen);
+                    renderFromState(state);
+                }
+            }).catch(() => {});
+        }
+    } catch (_) {}
+})();
