@@ -1549,3 +1549,9 @@ td span.crown {
     background-color: var(--muted-bg);
     border: 1px solid var(--border-color);
 }
+
+/* Song / Playlist sections */
+#playlist-embed-section .spotify-embed {
+	margin-top: 8px;
+	border: none;
+}
