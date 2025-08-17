@@ -1973,13 +1973,17 @@ function loadSpotifySDK() {
 async function ensureUserAuthForPlayback() {
     if (!sessionId) return false;
     try {
-        // Attempt to see if we already have a valid token on server
-        const resp = await fetch(`/api/spotify/current_track?session_id=${sessionId}`);
+        const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
         if (resp.status === 200) return true;
-    } catch (_) {}
-    // Kick off OAuth by navigating
-    window.location.href = `/api/spotify/authorize?session_id=${encodeURIComponent(sessionId)}`;
-    return false;
+        if (resp.status === 401) {
+            const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+            await startSpotifyAuth(returnTo);
+            return false;
+        }
+        return false;
+    } catch (_) {
+        return false;
+    }
 }
 
 async function initWebPlaybackPlayer() {
@@ -1989,10 +1993,24 @@ async function initWebPlaybackPlayer() {
 
     window.onSpotifyWebPlaybackSDKReady = () => {};
 
-    // We will use server-side play endpoint; the SDK here mainly registers a device
-    // Spotify requires user auth; token is held server-side, so we create a lightweight player without client token
+    // Provide a valid token to the SDK via callback
     try {
-        spotifyPlayer = new Spotify.Player({ name: 'Battle Manager Player', getOAuthToken: cb => cb('') });
+        spotifyPlayer = new Spotify.Player({
+            name: 'Battle Manager Player',
+            getOAuthToken: async (cb) => {
+                try {
+                    const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        cb(data.access_token);
+                    } else {
+                        cb('');
+                    }
+                } catch (_) {
+                    cb('');
+                }
+            }
+        });
     } catch (e) {
         console.warn('Failed to create Spotify Player:', e);
         return;
@@ -2014,17 +2032,34 @@ async function initWebPlaybackPlayer() {
 async function playCurrentRoundTrackViaSpotify() {
     if (!playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
     await initWebPlaybackPlayer();
-    // Use server endpoint to start playback on the active device (requires a user device playing)
+
+    // Wait briefly for device readiness if needed
+    let tries = 0;
+    while (!webPlaybackReady && tries < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        tries++;
+    }
+
     try {
-        await fetch('/api/spotify/play_track', {
+        const resp = await fetch('/api/spotify/play_track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, track_uri: `spotify:track:${currentRoundTrack.id}` })
+            body: JSON.stringify({ session_id: sessionId, track_uri: `spotify:track:${currentRoundTrack.id}`, device_id: spotifyDeviceId || undefined })
         });
+        if (!resp.ok) {
+            if (resp.status === 401) {
+                const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+                await startSpotifyAuth(returnTo);
+            } else {
+                const err = await resp.json().catch(() => ({}));
+                console.warn('Failed to start playback:', err);
+                alert('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.');
+            }
+        }
     } catch (e) {
         console.warn('Failed to start Spotify playback:', e);
     }
-} 
+}
 
 // Add helper to kick off Spotify auth with return_to
 async function startSpotifyAuth(returnToUrl, authKey = '') {
