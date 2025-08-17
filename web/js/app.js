@@ -1719,49 +1719,6 @@ function renderPlaylistEmbed(track) {
     iframe.allow = 'encrypted-media';
     iframe.className = 'spotify-embed';
     playlistEmbedContainer.appendChild(iframe);
-
-    // Controls
-    const controls = document.createElement('div');
-    controls.style.marginTop = '6px';
-    controls.style.display = 'flex';
-    controls.style.gap = '8px';
-
-    const playBtn = document.createElement('button');
-    playBtn.textContent = 'Play Full';
-    playBtn.className = 'btn secondary';
-    playBtn.onclick = (e) => {
-        e.preventDefault();
-        playCurrentRoundTrackViaSpotify();
-    };
-
-    const pauseBtn = document.createElement('button');
-    pauseBtn.textContent = 'Pause';
-    pauseBtn.className = 'btn secondary';
-    pauseBtn.onclick = async (e) => {
-        e.preventDefault();
-        try {
-            await fetch(`/api/spotify/pause_track?session_id=${sessionId}`, { method: 'POST' });
-        } catch (_) {}
-    };
-
-    controls.appendChild(playBtn);
-    controls.appendChild(pauseBtn);
-
-    // Add an action to open the full track in Spotify (app or web)
-    const openBtn = document.createElement('button');
-    openBtn.textContent = 'Open in Spotify';
-    openBtn.className = 'btn secondary';
-    openBtn.onclick = (e) => {
-        e.preventDefault();
-        const appUri = `spotify:track:${track.id}`;
-        const webUrl = `https://open.spotify.com/track/${track.id}`;
-        let didNavigate = false;
-        try { window.location.href = appUri; didNavigate = true; } catch (_) {}
-        setTimeout(() => { if (!didNavigate) window.open(webUrl, '_blank'); }, 600);
-    };
-    controls.appendChild(openBtn);
-
-    playlistEmbedContainer.appendChild(controls);
 }
 
 async function downloadBattleData() {
