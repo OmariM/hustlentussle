@@ -2026,3 +2026,44 @@ async function playCurrentRoundTrackViaSpotify() {
         console.warn('Failed to start Spotify playback:', e);
     }
 } 
+
+// Add helper to kick off Spotify auth with return_to
+async function startSpotifyAuth(returnToUrl, authKey = '') {
+    const url = new URL(window.location.href);
+    const sid = sessionId || url.searchParams.get('session_id') || '';
+    const params = new URLSearchParams();
+    params.set('session_id', sid || 'preauth');
+    if (returnToUrl) params.set('return_to', returnToUrl);
+    if (authKey) params.set('auth_key', authKey);
+    window.location.href = `/api/spotify/authorize?${params.toString()}`;
+}
+
+// Add a button to home screen for pre-auth
+(function addSpotifyAuthButtonToHome(){
+    try {
+        const home = document.getElementById('home-screen');
+        if (!home) return;
+        const actions = home.querySelector('.home-actions');
+        if (!actions) return;
+        const btn = document.createElement('button');
+        btn.id = 'spotify-auth-btn';
+        btn.className = 'btn secondary large';
+        btn.textContent = 'Authenticate Spotify';
+        btn.onclick = () => {
+            startSpotifyAuth(window.location.origin + window.location.pathname);
+        };
+        actions.appendChild(btn);
+    } catch (_) {}
+})();
+
+// When preparing playlist track, ensure auth redirect returns to the current round page with sessionId
+async function ensureUserAuthForPlayback() {
+    if (!sessionId) return false;
+    try {
+        const resp = await fetch(`/api/spotify/current_track?session_id=${sessionId}`);
+        if (resp.status === 200) return true;
+    } catch (_) {}
+    const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
+    await startSpotifyAuth(returnTo);
+    return false;
+}

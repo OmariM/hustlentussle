@@ -17,6 +17,8 @@ import shutil
 import threading
 import time
 import urllib.parse
+import json
+import base64
 
 # Load environment variables from .env file
 load_dotenv()
@@ -68,10 +70,12 @@ repo = GameRepository()
 # Expose the internal storage dict for now; prefer using `repo` going forward.
 games = repo._games
 
-# In-memory user OAuth token store keyed by game session_id
-# Structure: { session_id: { access_token, refresh_token, expires_at } }
+# In-memory user OAuth token store keyed by provided key (session_id or auth_key)
 _spotify_user_tokens: dict[str, dict] = {}
 _spotify_user_tokens_lock = threading.RLock()
+
+def _resolve_key(session_id: str | None, auth_key: str | None) -> str | None:
+    return auth_key or session_id
 
 
 def _get_redirect_uri() -> str:
@@ -91,22 +95,26 @@ def _now() -> float:
     return time.time()
 
 
-def _store_user_tokens(session_id: str, access_token: str, refresh_token: str | None, expires_in: int) -> None:
+def _store_user_tokens(key: str, access_token: str, refresh_token: str | None, expires_in: int) -> None:
+    if not key:
+        return
     with _spotify_user_tokens_lock:
-        _spotify_user_tokens[session_id] = {
+        _spotify_user_tokens[key] = {
             'access_token': access_token,
             'refresh_token': refresh_token,
             'expires_at': _now() + max(1, int(expires_in) - 30)  # refresh a bit early
         }
 
 
-def _get_user_tokens(session_id: str) -> dict | None:
+def _get_user_tokens(key: str) -> dict | None:
+    if not key:
+        return None
     with _spotify_user_tokens_lock:
-        return _spotify_user_tokens.get(session_id)
+        return _spotify_user_tokens.get(key)
 
 
-def _refresh_user_token(session_id: str) -> str | None:
-    tokens = _get_user_tokens(session_id)
+def _refresh_user_token(key: str) -> str | None:
+    tokens = _get_user_tokens(key)
     if not tokens or not tokens.get('refresh_token'):
         return None
     client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -128,16 +136,16 @@ def _refresh_user_token(session_id: str) -> str | None:
     expires_in = int(data.get('expires_in', 3600))
     # Spotify may or may not return a new refresh token
     refresh_token = data.get('refresh_token', tokens['refresh_token'])
-    _store_user_tokens(session_id, access_token, refresh_token, expires_in)
+    _store_user_tokens(key, access_token, refresh_token, expires_in)
     return access_token
 
 
-def _ensure_user_access_token(session_id: str) -> str | None:
-    tokens = _get_user_tokens(session_id)
+def _ensure_user_access_token(key: str) -> str | None:
+    tokens = _get_user_tokens(key)
     if not tokens:
         return None
     if tokens.get('expires_at', 0) <= _now():
-        return _refresh_user_token(session_id)
+        return _refresh_user_token(key)
     return tokens.get('access_token')
 
 
@@ -1307,11 +1315,17 @@ def spotify_callback():
     if not code or not state:
         return "Authentication failed: Missing code or state."
 
-    session_id = urllib.parse.unquote(state)
-    if not session_id:
-        return "Authentication failed: Invalid state."
-
     try:
+        # Decode the state parameter
+        decoded_state = urllib.parse.unquote(state)
+        state_data = json.loads(base64.b64decode(decoded_state).decode('utf-8'))
+        session_id = state_data.get('session_id')
+        return_to = state_data.get('return_to')
+        auth_key = state_data.get('auth_key')
+
+        if not session_id:
+            return "Authentication failed: Invalid state."
+
         # Exchange the authorization code for an access token
         client_id = os.getenv('SPOTIFY_CLIENT_ID')
         client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
@@ -1338,8 +1352,14 @@ def spotify_callback():
         if not access_token:
             return "Authentication failed: No access token received."
 
-        _store_user_tokens(session_id, access_token, refresh_token, expires_in)
-        return redirect(f"{request.host_url}?session_id={session_id}")
+        # Store tokens using the resolved key
+        _store_user_tokens(_resolve_key(session_id, auth_key), access_token, refresh_token, expires_in)
+
+        # Redirect to the return_to URL if provided, otherwise to the game page
+        if return_to:
+            return redirect(return_to)
+        else:
+            return redirect(f"{request.host_url}?session_id={session_id}")
     except Exception as e:
         return f"Authentication failed: {str(e)}"
 
@@ -1351,7 +1371,7 @@ def spotify_authorize():
         return jsonify({'error': 'Missing session_id'}), 400
 
     # Check if user is already authenticated for this session
-    tokens = _get_user_tokens(session_id)
+    tokens = _get_user_tokens(_resolve_key(session_id, None)) # Pass None for auth_key
     if tokens and tokens.get('expires_at', 0) > _now():
         return jsonify({'message': 'User already authenticated for this session.'})
 
@@ -1369,12 +1389,20 @@ def spotify_authorize():
     ]
     scope_str = ' '.join(scopes)
 
+    # Encode state for redirect
+    state_data = {
+        'session_id': session_id,
+        'return_to': request.args.get('return_to'), # Optional: redirect back to a specific page
+        'auth_key': request.args.get('auth_key') # Optional: a unique key for this auth attempt
+    }
+    encoded_state = base64.b64encode(json.dumps(state_data).encode('utf-8')).decode('utf-8')
+
     params = {
         'response_type': 'code',
         'client_id': client_id,
         'redirect_uri': redirect_uri,
         'scope': scope_str,
-        'state': session_id,
+        'state': encoded_state,
     }
     auth_url = 'https://accounts.spotify.com/authorize?' + urllib.parse.urlencode(params)
     return redirect(auth_url)
@@ -1385,10 +1413,10 @@ def spotify_user_token():
     session_id = request.args.get('session_id')
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'Not authorized'}), 401
-    tokens = _get_user_tokens(session_id) or {}
+    tokens = _get_user_tokens(_resolve_key(session_id, None)) or {} # Pass None for auth_key
     return jsonify({
         'access_token': access_token,
         'expires_at': tokens.get('expires_at'),
@@ -1401,7 +1429,7 @@ def spotify_current_track():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'User not authenticated or token expired.'}), 401
 
@@ -1424,7 +1452,7 @@ def spotify_current_track():
                 return jsonify({'is_playing': False, 'track_name': None, 'artist_name': None})
         elif resp.status_code == 401:
             # Token might be expired, try to refresh
-            access_token = _refresh_user_token(session_id)
+            access_token = _refresh_user_token(_resolve_key(session_id, None)) # Pass None for auth_key
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
@@ -1464,7 +1492,7 @@ def spotify_play_track():
     if not session_id or not track_uri:
         return jsonify({'error': 'Missing session_id or track_uri'}), 400
 
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'User not authenticated or token expired.'}), 401
 
@@ -1477,7 +1505,7 @@ def spotify_play_track():
         if resp.status_code == 204:
             return jsonify({'message': 'Track started successfully.'})
         elif resp.status_code == 401:
-            access_token = _refresh_user_token(session_id)
+            access_token = _refresh_user_token(_resolve_key(session_id, None)) # Pass None for auth_key
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
@@ -1499,7 +1527,7 @@ def spotify_pause_track():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'User not authenticated or token expired.'}), 401
 
@@ -1512,7 +1540,7 @@ def spotify_pause_track():
         if resp.status_code == 204:
             return jsonify({'message': 'Track paused successfully.'})
         elif resp.status_code == 401:
-            access_token = _refresh_user_token(session_id)
+            access_token = _refresh_user_token(_resolve_key(session_id, None)) # Pass None for auth_key
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
@@ -1534,7 +1562,7 @@ def spotify_next_track():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'User not authenticated or token expired.'}), 401
 
@@ -1547,7 +1575,7 @@ def spotify_next_track():
         if resp.status_code == 204:
             return jsonify({'message': 'Track skipped successfully.'})
         elif resp.status_code == 401:
-            access_token = _refresh_user_token(session_id)
+            access_token = _refresh_user_token(_resolve_key(session_id, None)) # Pass None for auth_key
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
@@ -1569,7 +1597,7 @@ def spotify_previous_track():
     if not session_id:
         return jsonify({'error': 'Missing session_id'}), 400
 
-    access_token = _ensure_user_access_token(session_id)
+    access_token = _ensure_user_access_token(_resolve_key(session_id, None)) # Pass None for auth_key
     if not access_token:
         return jsonify({'error': 'User not authenticated or token expired.'}), 401
 
@@ -1582,7 +1610,7 @@ def spotify_previous_track():
         if resp.status_code == 204:
             return jsonify({'message': 'Track went back successfully.'})
         elif resp.status_code == 401:
-            access_token = _refresh_user_token(session_id)
+            access_token = _refresh_user_token(_resolve_key(session_id, None)) # Pass None for auth_key
             if not access_token:
                 return jsonify({'error': 'Failed to refresh Spotify token.'}), 500
             headers = {'Authorization': f'Bearer {access_token}'}
