@@ -38,6 +38,7 @@ let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
+let simpleContestantJudgesCheckbox; const CONTESTANT_PROXY_NAME = 'contestant judges';
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
+    simpleContestantJudgesCheckbox = document.getElementById('simple-contestant-judges');
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -269,13 +271,21 @@ function renderFromState(state) {
     }
     if (contestantJudgesList) {
         contestantJudgesList.innerHTML = '';
-        const cj = state.round.judges.contestant || [];
-        cj.forEach(judge => {
+        const simpleEnabled = !!(simpleContestantJudgesCheckbox && simpleContestantJudgesCheckbox.checked);
+        if (simpleEnabled) {
             const el = document.createElement('div');
             el.className = 'judge-item contestant';
-            el.textContent = judge;
+            el.textContent = CONTESTANT_PROXY_NAME;
             contestantJudgesList.appendChild(el);
-        });
+        } else {
+            const cj = state.round.judges.contestant || [];
+            cj.forEach(judge => {
+                const el = document.createElement('div');
+                el.className = 'judge-item contestant';
+                el.textContent = judge;
+                contestantJudgesList.appendChild(el);
+            });
+        }
     }
 
     // Scoreboard
@@ -631,9 +641,15 @@ function updateRoundUI(data) {
         guestJudgesList.appendChild(noJudges);
     }
     
-    // Update contestant judges
+    // Update contestant judges (support simple proxy mode)
     contestantJudgesList.innerHTML = '';
-    if (data.contestant_judges && data.contestant_judges.length > 0) {
+    const simpleEnabled = !!(simpleContestantJudgesCheckbox && simpleContestantJudgesCheckbox.checked);
+    if (simpleEnabled) {
+        const judgeItem = document.createElement('div');
+        judgeItem.className = 'judge-item contestant';
+        judgeItem.textContent = CONTESTANT_PROXY_NAME;
+        contestantJudgesList.appendChild(judgeItem);
+    } else if (data.contestant_judges && data.contestant_judges.length > 0) {
         data.contestant_judges.forEach(judge => {
             const judgeItem = document.createElement('div');
             judgeItem.className = 'judge-item contestant';
@@ -685,9 +701,13 @@ function setupVotingUI() {
     
     const allJudges = [...guestJudges];
     
-    // Get contestant judges from the DOM elements
+    // Get contestant judges from the DOM elements (supports proxy mode)
     const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    let contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    const simpleEnabled = !!(simpleContestantJudgesCheckbox && simpleContestantJudgesCheckbox.checked);
+    if (simpleEnabled) {
+        contestantJudges = [CONTESTANT_PROXY_NAME];
+    }
     allJudges.push(...contestantJudges);
     
     // Create lead voting UI

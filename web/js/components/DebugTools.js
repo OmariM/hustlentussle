@@ -601,8 +601,22 @@ class DebugTools {
         
         const allJudges = [...window.guestJudges];
         
-        // Get contestant judges from the text content and split by comma
-        const contestantJudges = document.getElementById('contestant-judges-list').textContent.split(', ');
+        // Build contestant judges from DOM if present; fallback to text
+        const cjListEl = document.getElementById('contestant-judges-list');
+        let contestantJudges = [];
+        if (cjListEl) {
+            const items = cjListEl.querySelectorAll('.judge-item.contestant');
+            if (items && items.length > 0) {
+                contestantJudges = Array.from(items).map(el => (el.textContent || '').trim()).filter(Boolean);
+            } else {
+                contestantJudges = (cjListEl.textContent || '').split(',').map(s => s.trim()).filter(Boolean);
+            }
+        }
+        // Simple proxy mode
+        const scjToggle = document.getElementById('simple-contestant-judges');
+        if (scjToggle && scjToggle.checked) {
+            contestantJudges = ['contestant judges'];
+        }
         allJudges.push(...contestantJudges);
         
         // Create lead voting UI
