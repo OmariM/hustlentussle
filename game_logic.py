@@ -25,6 +25,7 @@ class Round:
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
         self.session_id = session_id  # Store the session ID for this round
+        self.is_ad_hoc = False  # Marks an ad-hoc round that should not affect ordering
 
 
 class ContestantQueueProxy:
@@ -247,6 +248,126 @@ class Game:
                 "lead": self.pair_2[0].name,
                 "follow": self.pair_2[1].name
             }
+        }
+
+    def judge_combined_ad_hoc(self, lead_votes, follow_votes, song_info):
+        """Compute winners for an ad-hoc round and record it without mutating queues or flags.
+
+        - Uses current pairs and judges
+        - Applies the same scoring rules
+        - Does NOT change points, queues, winners, or round_num
+        - Appends an ad-hoc Round to history with a fractional round number for ordering
+        """
+        # Guard: need an ongoing round with pairs
+        if not self.current_round or not self.pair_1 or not self.pair_2:
+            return {
+                'error': 'No active round to base ad-hoc round on.'
+            }
+
+        # Prepare vote dicts
+        def to_vote_dict(votes_list):
+            d = {}
+            for voter, decision in votes_list:
+                d[voter] = decision
+            return d
+
+        lead_vote_dict = to_vote_dict(lead_votes)
+        follow_vote_dict = to_vote_dict(follow_votes)
+
+        # Contestant names
+        lead1_name = self.pair_1[0].name
+        lead2_name = self.pair_2[0].name
+        follow1_name = self.pair_1[1].name
+        follow2_name = self.pair_2[1].name
+
+        # Helper: compute winner label by vote dict
+        def compute_winner(vote_dict, is_lead):
+            # Guest votes array
+            guest_votes_only = [vote_dict.get(j, None) for j in self.guest_judges if j in vote_dict]
+            # Tie special: all guest votes are 3
+            if guest_votes_only and all(v == 3 for v in guest_votes_only):
+                c1 = lead1_name if is_lead else follow1_name
+                c2 = lead2_name if is_lead else follow2_name
+                return f"Tie between {c1} and {c2}"
+            # No contest special: all guest votes are 4
+            if guest_votes_only and all(v == 4 for v in guest_votes_only):
+                return "No Contest"
+            # Weighted scoring
+            s1 = 0
+            s2 = 0
+            for voter, decision in vote_dict.items():
+                is_guest = voter in self.guest_judges
+                weight = 2 if is_guest else 1
+                if decision == 1:
+                    s1 += weight
+                elif decision == 2:
+                    s2 += weight
+                elif decision == 3 and is_guest:
+                    s1 += 1
+                    s2 += 1
+            # Tie goes to contestant 1
+            return (lead1_name if is_lead else follow1_name) if s1 >= s2 else (lead2_name if is_lead else follow2_name)
+
+        lead_winner_label = compute_winner(lead_vote_dict, True)
+        follow_winner_label = compute_winner(follow_vote_dict, False)
+
+        # Build ad-hoc round snapshot
+        ad_hoc_round = Round(
+            round_num=self.round_num + 0.5,  # fractional so it sits between current and next
+            lead_votes=lead_vote_dict,
+            follow_votes=follow_vote_dict,
+            judges=self.guest_judges,
+            contestant_judges=[j.name for j in self.contestant_judges],
+            session_id=self.session_id
+        )
+        ad_hoc_round.is_ad_hoc = True
+        ad_hoc_round.pairs = {
+            "pair_1": {"lead": lead1_name, "follow": follow1_name},
+            "pair_2": {"lead": lead2_name, "follow": follow2_name},
+        }
+        ad_hoc_round.song_info = song_info or None
+        # Only set winners if not Tie/No Contest strings
+        if not isinstance(lead_winner_label, str) or (isinstance(lead_winner_label, str) and not lead_winner_label.startswith("Tie between") and lead_winner_label != "No Contest"):
+            ad_hoc_round.lead_winner = lead_winner_label
+        if not isinstance(follow_winner_label, str) or (isinstance(follow_winner_label, str) and not follow_winner_label.startswith("Tie between") and follow_winner_label != "No Contest"):
+            ad_hoc_round.follow_winner = follow_winner_label
+
+        # Append to history without mutating any game flow state
+        self.rounds.append(ad_hoc_round)
+
+        # Construct API response similar to /api/judge_combined for UI reuse
+        # Split guest vs contestant voters for transparency
+        def split_votes_for_winner(vote_dict, winner_label, c1_name, c2_name):
+            guest_voters = []
+            contestant_voters = []
+            for voter, decision in vote_dict.items():
+                is_guest = voter in self.guest_judges
+                voted_for = None
+                if decision == 1:
+                    voted_for = c1_name
+                elif decision == 2:
+                    voted_for = c2_name
+                elif decision == 3:
+                    # tie; counts toward both conceptually, but we won't list as for-winner
+                    voted_for = None
+                elif decision == 4:
+                    voted_for = None
+                if voted_for and winner_label == voted_for:
+                    (guest_voters if is_guest else contestant_voters).append(voter)
+            return guest_voters, contestant_voters
+
+        lead_gv, lead_cv = split_votes_for_winner(lead_vote_dict, lead_winner_label if isinstance(lead_winner_label, str) else lead_winner_label, lead1_name, lead2_name)
+        follow_gv, follow_cv = split_votes_for_winner(follow_vote_dict, follow_winner_label if isinstance(follow_winner_label, str) else follow_winner_label, follow1_name, follow2_name)
+
+        return {
+            'lead_winner': lead_winner_label,
+            'lead_guest_votes': lead_gv,
+            'lead_contestant_votes': lead_cv,
+            'follow_winner': follow_winner_label,
+            'follow_guest_votes': follow_gv,
+            'follow_contestant_votes': follow_cv,
+            'win_messages': [],
+            'game_finished': self.is_finished()
         }
 
     def get_contestant_judges(self):

@@ -38,6 +38,7 @@ let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
+let addAdHocRoundBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -115,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
     followsLeaderboard = document.getElementById('follows-leaderboard');
     backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
     downloadBattleDataBtn = document.getElementById('download-battle-data');
+    addAdHocRoundBtn = document.getElementById('add-ad-hoc-round');
     
     // Check if elements exist
     console.log('Checking elements:');
@@ -168,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Battle flow
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
+    if (addAdHocRoundBtn) addAdHocRoundBtn.addEventListener('click', submitAdHocRound);
     endBattleBtn.addEventListener('click', endCompetition);
     
     // Results screen
@@ -1069,6 +1072,77 @@ async function submitCombinedVotes() {
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
         submitVotesBtn.disabled = false;
+    }
+}
+
+async function submitAdHocRound() {
+    // Build judge arrays from existing collected votes
+    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+    const allJudges = [...guestJudges, ...contestantJudges];
+
+    // Require full votes for both roles
+    const missingLeadVotes = allJudges.filter(judge => !leadVotes[judge]);
+    const missingFollowVotes = allJudges.filter(judge => !followVotes[judge]);
+    if (missingLeadVotes.length > 0 || missingFollowVotes.length > 0) {
+        const totalMissing = Math.max(missingLeadVotes.length, missingFollowVotes.length);
+        alert(`Waiting for votes from ${totalMissing} judge(s). Please ensure all judges have voted for both leads and follows.`);
+        return;
+    }
+
+    // Convert votes to array format
+    const leadVotesArray = Object.entries(leadVotes);
+    const followVotesArray = Object.entries(followVotes);
+
+    // Song info (reuse same extraction as combined submit)
+    const songInput = document.getElementById('song-input');
+    const songInfo = {};
+    if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+        songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
+        songInfo.title = currentRoundTrack.name || '';
+        songInfo.artist = currentRoundTrack.artists || '';
+    } else if (songInput && songInput.value) {
+        try {
+            const spotifyUrl = new URL(songInput.value);
+            if (spotifyUrl.hostname === 'open.spotify.com') {
+                songInfo.spotify_url = songInput.value;
+            }
+        } catch (_) {}
+    }
+
+    // Do not lock voting; ad-hoc should be lightweight
+    try {
+        const response = await fetch('/api/judge_combined_ad_hoc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                lead_votes: leadVotesArray,
+                follow_votes: followVotesArray,
+                song_info: songInfo
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data && data.error ? data.error : 'Ad-hoc round failed');
+
+        // Show winners inline, but do not change to next round
+        leadWinner.textContent = data.lead_winner;
+        leadGuestVotes.textContent = (data.lead_guest_votes || []).join(', ') || 'None';
+        leadContestantVotes.textContent = (data.lead_contestant_votes || []).join(', ') || 'None';
+        followWinner.textContent = data.follow_winner;
+        followGuestVotes.textContent = (data.follow_guest_votes || []).join(', ') || 'None';
+        followContestantVotes.textContent = (data.follow_contestant_votes || []).join(', ') || 'None';
+        votingResults.classList.remove('hidden');
+        roundResultsSection.classList.remove('hidden');
+
+        // Refresh live graphic to reflect round badges (ad-hoc is included in rounds history)
+        try {
+            const state = await fetchCanonicalState();
+            if (state) updateLiveGraphicFromState(state);
+        } catch (_) {}
+    } catch (e) {
+        console.error('Ad-hoc round error:', e);
+        alert(`Failed to submit ad-hoc round: ${e.message}`);
     }
 }
 

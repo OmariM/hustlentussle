@@ -456,6 +456,27 @@ def judge_combined():
         'game_finished': game.is_finished()
     })
 
+@app.route('/api/judge_combined_ad_hoc', methods=['POST'])
+def judge_combined_ad_hoc():
+    """Process an ad-hoc round: determine winners and record the round without affecting order/queues."""
+    data = request.get_json()
+    session_id = data.get('session_id')
+    lead_votes = data.get('lead_votes', [])
+    follow_votes = data.get('follow_votes', [])
+    song_info = data.get('song_info', {})
+
+    if not session_id or not lead_votes or not follow_votes:
+        return jsonify({'error': 'Missing session_id, lead_votes, or follow_votes'}), 400
+
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+
+    # Delegate to game logic that performs no queue/ordering mutations
+    result = game.judge_combined_ad_hoc(lead_votes, follow_votes, song_info)
+
+    return jsonify(result)
+
 @app.route('/api/next_round', methods=['POST'])
 def next_round():
     data = request.get_json()
