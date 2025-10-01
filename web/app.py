@@ -253,6 +253,7 @@ def serialize_state(game: Game) -> dict:
             'judges': {
                 'guest': game.guest_judges,
                 'contestant': contestant_judges,
+                'simple_contestant_judges': getattr(game, 'simple_contestant_judges', False),
             },
         },
         'scoreboard': {
@@ -305,6 +306,7 @@ def start_game():
     judge_names = data.get('judges', '').split(',')
     points_to_win = data.get('points_to_win', None)
     playlist_url = data.get('playlist_url', None)
+    simple_contestant_judges = bool(data.get('simple_contestant_judges', False))
     
     # Filter out any empty names
     lead_names = [name.strip() for name in lead_names if name.strip()]
@@ -317,6 +319,11 @@ def start_game():
     
     # Create a new game with the randomized order
     game = Game(lead_names, follow_names, judge_names)
+    # Configure simple contestant judges flag on the game
+    try:
+        setattr(game, 'simple_contestant_judges', simple_contestant_judges)
+    except Exception:
+        pass
     # If a custom points_to_win is provided and valid, override the win_threshold
     try:
         if points_to_win is not None:
@@ -340,7 +347,8 @@ def start_game():
         'guest_judges': game.guest_judges,
         'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
         'initial_follows': [c.name for c in game.initial_follows],  # Now contains the randomized order
-        'playlist_url': playlist_url or ''
+        'playlist_url': playlist_url or '',
+        'simple_contestant_judges': simple_contestant_judges
     })
 
 @app.route('/api/get_scores', methods=['GET'])
@@ -436,11 +444,38 @@ def judge_combined():
     if song_info:
         game.current_round.song_info = song_info
     
+    # If simple contestant judges is enabled, aggregate the proxy vote to all contestant judges
+    def expand_with_mock_contestant_judges(votes_list: list[tuple[str, int]]) -> list[tuple[str, int]]:
+        try:
+            if not getattr(game, 'simple_contestant_judges', False):
+                return votes_list
+            # Find the proxy vote if present
+            proxy_name = 'Contestant Judges'
+            proxy_votes = [v for v in votes_list if v[0] == proxy_name]
+            if not proxy_votes:
+                return votes_list
+            proxy_decision = proxy_votes[-1][1]
+            # Collect the real contestant judge names from current round
+            real_cj = list(getattr(game.current_round, 'contestant_judges', []) or [])
+            # Remove existing contestant judge entries
+            filtered = [(v, d) for (v, d) in votes_list if (v not in real_cj and v != proxy_name)]
+            # Expand to mock judges, numbered deterministically
+            expanded = filtered[:]
+            for idx, _name in enumerate(real_cj, start=1):
+                expanded.append((f"Contestant Judge {idx}", proxy_decision))
+            return expanded
+        except Exception:
+            return votes_list
+
+    # Expand votes when needed
+    lead_votes_effective = expand_with_mock_contestant_judges(lead_votes)
+    follow_votes_effective = expand_with_mock_contestant_judges(follow_votes)
+
     # Process lead votes and determine winner
-    lead_result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes)
+    lead_result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", lead_votes_effective)
     
     # Process follow votes and determine winner
-    follow_result = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes)
+    follow_result = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", follow_votes_effective)
     
     # Check for win condition
     win_messages = game.check_for_win() or []

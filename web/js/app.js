@@ -13,6 +13,7 @@ let initialFollows = []; // Store initial order of follows
 // Playlist mode state
 let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
 let playlistModeEnabled = false;
+let simpleContestantJudgesEnabled = false;
 let playlistUrl = '';
 let playlistId = '';
 let playlistTracks = [];
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
+    const simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -148,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Setup screen
     setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
-    startCompetitionBtn.addEventListener('click', startCompetition);
+    startCompetitionBtn.addEventListener('click', () => startCompetition(simpleContestantJudgesInput && simpleContestantJudgesInput.checked));
 
     // Hydrate used tracks and playlist from localStorage for current session if available
     try {
@@ -277,6 +279,10 @@ function renderFromState(state) {
             contestantJudgesList.appendChild(el);
         });
     }
+    // Store simple mode flag from state
+    try {
+        simpleContestantJudgesEnabled = Boolean(state.round?.judges?.simple_contestant_judges);
+    } catch (_) { simpleContestantJudgesEnabled = false; }
 
     // Scoreboard
     updateLiveGraphicFromState(state);
@@ -511,7 +517,7 @@ function updateSessionIdDisplay() {
 }
 
 // Update the startCompetition function
-async function startCompetition() {
+async function startCompetition(useSimpleContestantJudges) {
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
@@ -528,7 +534,7 @@ async function startCompetition() {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw })
+            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw, simple_contestant_judges: !!useSimpleContestantJudges })
         });
         
         const data = await response.json();
@@ -537,6 +543,11 @@ async function startCompetition() {
         guestJudges = data.guest_judges;
         initialLeads = data.initial_leads;  // Store initial order
         initialFollows = data.initial_follows;  // Store initial order
+        if (Object.prototype.hasOwnProperty.call(data, 'simple_contestant_judges')) {
+            simpleContestantJudgesEnabled = !!data.simple_contestant_judges;
+        } else {
+            simpleContestantJudgesEnabled = !!useSimpleContestantJudges;
+        }
         
         // Update session ID display
         updateSessionIdDisplay();
@@ -685,10 +696,14 @@ function setupVotingUI() {
     
     const allJudges = [...guestJudges];
     
-    // Get contestant judges from the DOM elements
-    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-    allJudges.push(...contestantJudges);
+    if (simpleContestantJudgesEnabled) {
+        allJudges.push('Contestant Judges');
+    } else {
+        // Get contestant judges from the DOM elements
+        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+        allJudges.push(...contestantJudges);
+    }
     
     // Create lead voting UI
     allJudges.forEach(judge => {
@@ -825,10 +840,15 @@ function recordVote(judgeName, voteOption, voteType) {
 }
 
 function updateSubmitButtonState() {
-    // Get contestant judges from the DOM elements
-    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-    const allJudges = [...guestJudges, ...contestantJudges];
+    let allJudges = [...guestJudges];
+    if (simpleContestantJudgesEnabled) {
+        allJudges.push('Contestant Judges');
+    } else {
+        // Get contestant judges from the DOM elements
+        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+        allJudges.push(...contestantJudges);
+    }
     const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
     const followVotesComplete = allJudges.every(judge => followVotes[judge]);
     
@@ -862,10 +882,15 @@ function updateSubmitButtonState() {
 }
 
 function calculateWinner(voteType) {
-    // Get contestant judges from the DOM elements
-    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-    const allJudges = [...guestJudges, ...contestantJudges];
+    let allJudges = [...guestJudges];
+    if (simpleContestantJudgesEnabled) {
+        allJudges.push('Contestant Judges');
+    } else {
+        // Get contestant judges from the DOM elements
+        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+        allJudges.push(...contestantJudges);
+    }
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -961,10 +986,15 @@ function lockVoting(voteType) {
 }
 
 async function submitCombinedVotes() {
-    // Get contestant judges from the DOM elements
-    const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-    const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-    const allJudges = [...guestJudges, ...contestantJudges];
+    let allJudges = [...guestJudges];
+    if (simpleContestantJudgesEnabled) {
+        allJudges.push('Contestant Judges');
+    } else {
+        // Get contestant judges from the DOM elements
+        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
+        allJudges.push(...contestantJudges);
+    }
     
     // Check if all judges have voted for both lead and follow
     const missingLeadVotes = allJudges.filter(judge => !leadVotes[judge]);
@@ -980,11 +1010,11 @@ async function submitCombinedVotes() {
     const leadVotesArray = [];
     const followVotesArray = [];
     
-    for (const judge in leadVotes) {
+    for (const judge of Object.keys(leadVotes)) {
         leadVotesArray.push([judge, leadVotes[judge]]);
     }
     
-    for (const judge in followVotes) {
+    for (const judge of Object.keys(followVotes)) {
         followVotesArray.push([judge, followVotes[judge]]);
     }
     
