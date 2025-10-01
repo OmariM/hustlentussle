@@ -529,6 +529,13 @@ def _find_contestant_by_name(game: Game, role: str, name: str) -> Contestant | N
         pass
     return None
 
+def _is_round_complete(r) -> bool:
+    try:
+        # A round is complete when both roles have recorded votes
+        return bool(getattr(r, 'lead_votes', None)) and bool(getattr(r, 'follow_votes', None))
+    except Exception:
+        return False
+
 @app.route('/api/ad_hoc_round', methods=['POST'])
 def ad_hoc_round():
     """Create an ad-hoc round that does not impact ordering/flow.
@@ -685,12 +692,12 @@ def end_game():
             'is_winner': is_winner
         })
     
-    # Collect round metadata
+    # Collect round metadata - include only completed rounds
     rounds_data = []
     
-    # Add all completed rounds that belong to this session
+    # Add completed rounds from history
     for r in game.rounds:
-        if hasattr(r, 'session_id') and r.session_id == session_id:
+        if hasattr(r, 'session_id') and r.session_id == session_id and _is_round_complete(r):
             round_data = {
                 'round_num': r.round_num,
                 'session_id': session_id,
@@ -707,8 +714,8 @@ def end_game():
             }
             rounds_data.append(round_data)
     
-    # Also include the current round if it exists and is not already in the rounds list
-    if game.current_round and game.current_round not in game.rounds:
+    # Optionally include the current round only if complete
+    if game.current_round and game.current_round not in game.rounds and _is_round_complete(game.current_round):
         if hasattr(game.current_round, 'session_id') and game.current_round.session_id == session_id:
             current_round_data = {
                 'round_num': game.current_round.round_num,
