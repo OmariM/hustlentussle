@@ -39,6 +39,8 @@ let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
+let addAdHocRoundBtn;
+let adHocModal, adhocLead1, adhocLead2, adhocFollow1, adhocFollow2, adhocLeadWinner, adhocFollowWinner, adhocSongUrl, adhocSubmitBtn, adhocCancelBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -117,6 +119,19 @@ document.addEventListener('DOMContentLoaded', () => {
     followsLeaderboard = document.getElementById('follows-leaderboard');
     backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
     downloadBattleDataBtn = document.getElementById('download-battle-data');
+    addAdHocRoundBtn = document.getElementById('add-ad-hoc-round');
+
+    // Ad-hoc modal elements
+    adHocModal = document.getElementById('ad-hoc-modal');
+    adhocLead1 = document.getElementById('adhoc-lead1');
+    adhocLead2 = document.getElementById('adhoc-lead2');
+    adhocFollow1 = document.getElementById('adhoc-follow1');
+    adhocFollow2 = document.getElementById('adhoc-follow2');
+    adhocLeadWinner = document.getElementById('adhoc-lead-winner');
+    adhocFollowWinner = document.getElementById('adhoc-follow-winner');
+    adhocSongUrl = document.getElementById('adhoc-song-url');
+    adhocSubmitBtn = document.getElementById('adhoc-submit');
+    adhocCancelBtn = document.getElementById('adhoc-cancel');
     
     // Check if elements exist
     console.log('Checking elements:');
@@ -171,6 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
+    if (addAdHocRoundBtn) addAdHocRoundBtn.addEventListener('click', openAdHocModal);
+    if (adhocCancelBtn) adhocCancelBtn.addEventListener('click', closeAdHocModal);
+    if (adhocSubmitBtn) adhocSubmitBtn.addEventListener('click', submitAdHocRound);
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -388,6 +406,108 @@ function updateLiveGraphicFromState(state) {
         : (follows || []).map(f => f.name);
     renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
+}
+
+function openAdHocModal() {
+    try {
+        populateAdHocSelectors();
+        if (adHocModal) adHocModal.style.display = 'flex';
+    } catch (e) {
+        console.error('Failed to open ad-hoc modal:', e);
+    }
+}
+
+function closeAdHocModal() {
+    if (adHocModal) adHocModal.style.display = 'none';
+}
+
+function setOptions(selectEl, options, placeholder = '') {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    if (placeholder) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholder;
+        opt.disabled = true;
+        opt.selected = true;
+        selectEl.appendChild(opt);
+    }
+    options.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        selectEl.appendChild(opt);
+    });
+}
+
+function populateAdHocSelectors() {
+    const leadNames = (currentLeads || []).map(l => l.name);
+    const followNames = (currentFollows || []).map(f => f.name);
+    setOptions(adhocLead1, leadNames, 'Select lead');
+    setOptions(adhocLead2, leadNames, 'Select lead');
+    setOptions(adhocFollow1, followNames, 'Select follow');
+    setOptions(adhocFollow2, followNames, 'Select follow');
+    // Winner options will be updated when pair selections change
+    const updateWinners = () => {
+        const l1 = adhocLead1 && adhocLead1.value ? adhocLead1.value : '';
+        const l2 = adhocLead2 && adhocLead2.value ? adhocLead2.value : '';
+        const f1 = adhocFollow1 && adhocFollow1.value ? adhocFollow1.value : '';
+        const f2 = adhocFollow2 && adhocFollow2.value ? adhocFollow2.value : '';
+        const leadWinnerOptions = [l1, l2].filter(Boolean);
+        const followWinnerOptions = [f1, f2].filter(Boolean);
+        setOptions(adhocLeadWinner, leadWinnerOptions, 'Select lead winner');
+        setOptions(adhocFollowWinner, followWinnerOptions, 'Select follow winner');
+    };
+    [adhocLead1, adhocLead2, adhocFollow1, adhocFollow2].forEach(sel => {
+        if (!sel) return;
+        sel.onchange = updateWinners;
+    });
+    updateWinners();
+}
+
+async function submitAdHocRound() {
+    try {
+        const l1 = adhocLead1.value, l2 = adhocLead2.value;
+        const f1 = adhocFollow1.value, f2 = adhocFollow2.value;
+        const lw = adhocLeadWinner.value, fw = adhocFollowWinner.value;
+        if (!l1 || !l2 || !f1 || !f2) {
+            alert('Please select both pairs.');
+            return;
+        }
+        if (!lw || !fw) {
+            alert('Please select winners for lead and follow.');
+            return;
+        }
+        const payload = {
+            session_id: sessionId,
+            pairs: { pair_1: { lead: l1, follow: f1 }, pair_2: { lead: l2, follow: f2 } },
+            winners: { lead: lw, follow: fw },
+            song_info: {}
+        };
+        const url = (adhocSongUrl && adhocSongUrl.value) ? adhocSongUrl.value.trim() : '';
+        if (url) {
+            try {
+                const parsed = new URL(url);
+                if (parsed.hostname === 'open.spotify.com') {
+                    payload.song_info.spotify_url = url;
+                }
+            } catch (_) {}
+        }
+        const resp = await fetch('/api/ad_hoc_round', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            throw new Error(data.error || 'Failed to create ad-hoc round');
+        }
+        closeAdHocModal();
+        await refreshCanonicalState();
+    } catch (e) {
+        console.error('submitAdHocRound failed:', e);
+        alert('Failed to create ad-hoc round. ' + (e && e.message ? e.message : ''));
+    }
 }
 
 async function refreshCanonicalState() {
@@ -1460,7 +1580,7 @@ function displayRoundHistory(rounds) {
         // Create the header
         const header = document.createElement('div');
         header.className = 'accordion-header';
-        header.innerHTML = `<span>Round ${round.round_num}</span><span>+</span>`;
+        header.innerHTML = `<span>Round ${round.round_num}${round.is_ad_hoc ? ' (Ad-Hoc)' : ''}</span><span>+</span>`;
         
         // Add click handler for accordion functionality
         header.addEventListener('click', () => {

@@ -228,6 +228,7 @@ def serialize_state(game: Game) -> dict:
                 'pairs': getattr(r, 'pairs', None),
                 'lead_winner': getattr(r, 'lead_winner', None),
                 'follow_winner': getattr(r, 'follow_winner', None),
+                'is_ad_hoc': getattr(r, 'is_ad_hoc', False),
             })
         cr = getattr(game, 'current_round', None)
         if cr and cr not in getattr(game, 'rounds', []):
@@ -236,6 +237,7 @@ def serialize_state(game: Game) -> dict:
                 'pairs': getattr(cr, 'pairs', None),
                 'lead_winner': getattr(cr, 'lead_winner', None),
                 'follow_winner': getattr(cr, 'follow_winner', None),
+                'is_ad_hoc': getattr(cr, 'is_ad_hoc', False),
             })
         rounds_data = [rd for rd in rounds_data if rd.get('round_num') is not None]
         rounds_data.sort(key=lambda x: x['round_num'])
@@ -515,6 +517,116 @@ def next_round():
         'contestant_judges': state['contestant_judges']
     })
 
+def _find_contestant_by_name(game: Game, role: str, name: str) -> Contestant | None:
+    if not name:
+        return None
+    try:
+        pool = getattr(game, 'initial_leads' if role == 'lead' else 'initial_follows', [])
+        for c in pool:
+            if getattr(c, 'name', None) == name:
+                return c
+    except Exception:
+        pass
+    return None
+
+@app.route('/api/ad_hoc_round', methods=['POST'])
+def ad_hoc_round():
+    """Create an ad-hoc round that does not impact ordering/flow.
+
+    Expects JSON:
+    {
+      "session_id": str,
+      "pairs": {
+        "pair_1": {"lead": str, "follow": str},
+        "pair_2": {"lead": str, "follow": str}
+      },
+      "winners": {"lead": str|null, "follow": str|null},
+      "song_info": { optional }
+    }
+    """
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+
+    pairs = data.get('pairs') or {}
+    p1 = pairs.get('pair_1') or {}
+    p2 = pairs.get('pair_2') or {}
+    l1 = (p1.get('lead') or '').strip()
+    f1 = (p1.get('follow') or '').strip()
+    l2 = (p2.get('lead') or '').strip()
+    f2 = (p2.get('follow') or '').strip()
+    if not (l1 and f1 and l2 and f2):
+        return jsonify({'error': 'Invalid pairs'}), 400
+
+    # Validate contestants exist
+    for nm in (l1, l2):
+        if _find_contestant_by_name(game, 'lead', nm) is None:
+            return jsonify({'error': f'Unknown lead: {nm}'}), 400
+    for nm in (f1, f2):
+        if _find_contestant_by_name(game, 'follow', nm) is None:
+            return jsonify({'error': f'Unknown follow: {nm}'}), 400
+
+    winners = data.get('winners') or {}
+    lead_winner_name = (winners.get('lead') or '').strip() if winners.get('lead') else None
+    follow_winner_name = (winners.get('follow') or '').strip() if winners.get('follow') else None
+
+    # Ensure winners are among specified competitors if provided
+    if lead_winner_name and lead_winner_name not in (l1, l2):
+        return jsonify({'error': 'Lead winner must be one of the specified leads'}), 400
+    if follow_winner_name and follow_winner_name not in (f1, f2):
+        return jsonify({'error': 'Follow winner must be one of the specified follows'}), 400
+
+    # Create a standalone Round snapshot that does not alter flow
+    r = Game.Round if hasattr(Game, 'Round') else None  # defensive, but Round is imported at top-level
+    from game_logic import Round as RoundCls  # local import to avoid type confusion
+    new_round = RoundCls(
+        game.round_num,
+        {},
+        {},
+        game.guest_judges,
+        [j.name for j in getattr(game, 'contestant_judges', [])],
+        game.session_id
+    )
+    new_round.is_ad_hoc = True
+    new_round.pairs = {
+        'pair_1': {'lead': l1, 'follow': f1},
+        'pair_2': {'lead': l2, 'follow': f2},
+    }
+    if lead_winner_name:
+        new_round.lead_winner = lead_winner_name
+    if follow_winner_name:
+        new_round.follow_winner = follow_winner_name
+    song_info = data.get('song_info') or {}
+    if song_info:
+        new_round.song_info = song_info
+
+    # Award points to winners without affecting ordering/flow flags or queues
+    try:
+        if lead_winner_name:
+            lw = _find_contestant_by_name(game, 'lead', lead_winner_name)
+            if lw: lw.points += 1
+        if follow_winner_name:
+            fw = _find_contestant_by_name(game, 'follow', follow_winner_name)
+            if fw: fw.points += 1
+    except Exception:
+        pass
+
+    # Append to completed rounds history
+    game.rounds.append(new_round)
+
+    summary = {
+        'round_num': new_round.round_num,
+        'pairs': new_round.pairs,
+        'lead_winner': new_round.lead_winner,
+        'follow_winner': new_round.follow_winner,
+        'is_ad_hoc': True
+    }
+    return jsonify({'ok': True, 'round': summary})
+
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
     data = request.get_json()
@@ -590,6 +702,7 @@ def end_game():
                 'win_messages': r.win_messages,
                 'lead_winner': r.lead_winner,
                 'follow_winner': r.follow_winner,
+                'is_ad_hoc': getattr(r, 'is_ad_hoc', False),
                 'song_info': r.song_info if hasattr(r, 'song_info') else None
             }
             rounds_data.append(round_data)
@@ -608,6 +721,7 @@ def end_game():
                 'win_messages': game.current_round.win_messages,
                 'lead_winner': game.current_round.lead_winner,
                 'follow_winner': game.current_round.follow_winner,
+                'is_ad_hoc': getattr(game.current_round, 'is_ad_hoc', False),
                 'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
             }
             rounds_data.append(current_round_data)
@@ -684,6 +798,7 @@ def export_battle_data():
                 'win_messages': r.win_messages,
                 'lead_winner': r.lead_winner,
                 'follow_winner': r.follow_winner,
+                'is_ad_hoc': getattr(r, 'is_ad_hoc', False),
                 'song_info': r.song_info if hasattr(r, 'song_info') else None
             }
             rounds_data.append(round_data)

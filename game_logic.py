@@ -25,6 +25,7 @@ class Round:
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
         self.session_id = session_id  # Store the session ID for this round
+        self.is_ad_hoc = False  # Flag to mark ad-hoc rounds that should not affect order
 
 
 class ContestantQueueProxy:
