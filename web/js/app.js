@@ -411,14 +411,14 @@ function updateLiveGraphicFromState(state) {
 function openAdHocModal() {
     try {
         populateAdHocSelectors();
-        if (adHocModal) adHocModal.style.display = 'flex';
+        if (adHocModal) adHocModal.classList.add('open');
     } catch (e) {
         console.error('Failed to open ad-hoc modal:', e);
     }
 }
 
 function closeAdHocModal() {
-    if (adHocModal) adHocModal.style.display = 'none';
+    if (adHocModal) adHocModal.classList.remove('open');
 }
 
 function setOptions(selectEl, options, placeholder = '') {

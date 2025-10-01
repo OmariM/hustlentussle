@@ -201,7 +201,7 @@
                 
                 <div class="vote-submission">
                     <button id="submit-votes" class="btn primary">Submit All Votes</button>
-                    <button id="add-ad-hoc-round" class="btn secondary" style="margin-left:8px;">Add Ad-Hoc Round</button>
+                    <button id="add-ad-hoc-round" class="btn secondary">Add Ad-Hoc Round</button>
                 </div>
                 
                 <div id="voting-results" class="results hidden">
@@ -331,8 +331,8 @@
     <script src="js/app.js"></script>
 
     <!-- Ad-Hoc Round Modal -->
-    <div id="ad-hoc-modal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-        <div class="modal-content" style="background:var(--bg, #fff); color:inherit; padding:20px; border-radius:8px; width:min(640px, 92vw); max-height:90vh; overflow:auto;">
+    <div id="ad-hoc-modal" class="modal">
+        <div class="modal-content">
             <h3>Create Ad-Hoc Round</h3>
             <p style="margin-top:-6px;">This round will not change the current order. Points will be added.</p>
             <div class="form-group">
@@ -363,7 +363,7 @@
                 <label for="adhoc-song-url">Spotify URL (optional)</label>
                 <input type="url" id="adhoc-song-url" placeholder="https://open.spotify.com/track/..." />
             </div>
-            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+            <div class="modal-actions">
                 <button id="adhoc-cancel" class="btn secondary">Cancel</button>
                 <button id="adhoc-submit" class="btn primary">Create</button>
             </div>

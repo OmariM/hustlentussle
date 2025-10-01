@@ -478,6 +478,10 @@ textarea {
     margin: 20px 0;
 }
 
+.vote-submission #add-ad-hoc-round {
+    margin-left: 8px;
+}
+
 .vote-submission .btn.partial-votes {
     background-color: #ffc107;
     border-color: #ffc107;
@@ -1499,6 +1503,60 @@ td span.crown {
 [data-theme="dark"] .round-song,
 [data-theme="dark"] .accordion-content {
     background-color: var(--panel-bg);
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.open {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--panel-bg);
+    color: var(--text-color);
+    padding: 20px;
+    border-radius: 8px;
+    width: min(640px, 92vw);
+    max-height: 90vh;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-content h3 {
+    color: var(--primary-color);
+    margin-bottom: 10px;
+}
+
+.modal-content p {
+    color: var(--light-text);
+    margin-bottom: 10px;
+}
+
+.modal-content select,
+.modal-content input[type="url"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--panel-bg);
+    color: var(--text-color);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
 }
 
 [data-theme="dark"] .accordion-header,
