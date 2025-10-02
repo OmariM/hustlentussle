@@ -277,6 +277,14 @@ def serialize_state(game: Game) -> dict:
             'leads': [c.name for c in getattr(game, 'initial_leads', [])],
             'follows': [c.name for c in getattr(game, 'initial_follows', [])],
         },
+        'manual': {
+            'enabled': bool(getattr(game, 'manual_enabled', False)),
+            # Expose upcoming queues (proxies omit active competitors)
+            'queue': {
+                'leads': [c.name for c in getattr(game, 'leads', [])],
+                'follows': [c.name for c in getattr(game, 'follows', [])],
+            },
+        },
     }
     return state
 
@@ -515,6 +523,75 @@ def next_round():
         'contestant_judges': state['contestant_judges']
     })
 
+
+# -------------------------
+# Manual mode endpoints
+# -------------------------
+
+@app.route('/api/manual/toggle', methods=['POST'])
+def manual_toggle():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    enabled = bool(data.get('enabled', False))
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        game.set_manual_enabled(enabled)
+        return jsonify({'success': True, 'enabled': game.manual_enabled})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/manual/set_order', methods=['POST'])
+def manual_set_order():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    role = data.get('role')
+    order = data.get('order', [])
+    if role not in ('lead', 'follow'):
+        return jsonify({'error': 'Invalid role'}), 400
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        result = game.set_queue_order(role, order)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/manual/set_pairs', methods=['POST'])
+def manual_set_pairs():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    p1 = data.get('pair_1') or {}
+    p2 = data.get('pair_2') or {}
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        result = game.set_active_pairs(p1, p2)
+        status = 200 if result.get('success') else 400
+        return jsonify(result), status
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/manual/generate_judges', methods=['POST'])
+def manual_generate_judges():
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    count = data.get('count', 0)
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    try:
+        result = game.generate_contestant_judges_manual(count)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
     data = request.get_json()
@@ -590,7 +667,8 @@ def end_game():
                 'win_messages': r.win_messages,
                 'lead_winner': r.lead_winner,
                 'follow_winner': r.follow_winner,
-                'song_info': r.song_info if hasattr(r, 'song_info') else None
+                'song_info': r.song_info if hasattr(r, 'song_info') else None,
+                'manual_overrides': getattr(r, 'manual_overrides', [])
             }
             rounds_data.append(round_data)
     
@@ -608,7 +686,8 @@ def end_game():
                 'win_messages': game.current_round.win_messages,
                 'lead_winner': game.current_round.lead_winner,
                 'follow_winner': game.current_round.follow_winner,
-                'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None
+                'song_info': game.current_round.song_info if hasattr(game.current_round, 'song_info') else None,
+                'manual_overrides': getattr(game.current_round, 'manual_overrides', [])
             }
             rounds_data.append(current_round_data)
     
@@ -684,7 +763,8 @@ def export_battle_data():
                 'win_messages': r.win_messages,
                 'lead_winner': r.lead_winner,
                 'follow_winner': r.follow_winner,
-                'song_info': r.song_info if hasattr(r, 'song_info') else None
+                'song_info': r.song_info if hasattr(r, 'song_info') else None,
+                'manual_overrides': getattr(r, 'manual_overrides', [])
             }
             rounds_data.append(round_data)
     
@@ -765,7 +845,7 @@ def export_battle_data():
 
         # Round History
         round_sheet = wb.create_sheet("Round History")
-        base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2", "Song Title", "Artist", "Spotify Link"]
+        base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2", "Song Title", "Artist", "Spotify Link", "Manual Overrides"]
         # Determine the maximum number of judges in any round
         max_judges_count = 0
         for round_data in rounds_data:
@@ -825,7 +905,7 @@ def export_battle_data():
                 if 'contestant_judges' in round_data:
                     all_judges.extend(round_data['contestant_judges'])
                 for j in range(max_judges_count):
-                    judge_col = 9 + j * 3
+                    judge_col = 10 + j * 3
                     lead_vote_col = judge_col + 1
                     follow_vote_col = judge_col + 2
                     judge_name = all_judges[j] if j < len(all_judges) else ""
@@ -867,7 +947,7 @@ def export_battle_data():
                             follow_vote_cell.value = "No Contest"
         # Voting History
         voting_sheet = wb.create_sheet("Voting History")
-        voting_headers = ["Round", "Judge", "Lead Vote", "Follow Vote"]
+        voting_headers = ["Round", "Judge", "Lead Vote", "Follow Vote", "Notes"]
         for col, header in enumerate(voting_headers, 1):
             voting_sheet.cell(row=1, column=col).value = header
         row_index = 2
@@ -885,6 +965,14 @@ def export_battle_data():
                     voting_sheet.cell(row=row_index, column=2).value = judge
                     voting_sheet.cell(row=row_index, column=3).value = lead_vote
                     voting_sheet.cell(row=row_index, column=4).value = follow_vote
+                    # Optionally include a brief note if any manual overrides occurred in that round
+                    try:
+                        notes = ''
+                        if isinstance(round_data.get('manual_overrides'), list) and round_data['manual_overrides']:
+                            notes = '; '.join(round_data['manual_overrides'])
+                        voting_sheet.cell(row=row_index, column=5).value = notes
+                    except Exception:
+                        pass
                     row_index += 1
         # Save the workbook
         excel_file = io.BytesIO()

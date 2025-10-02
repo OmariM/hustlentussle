@@ -25,6 +25,8 @@ class Round:
         self.follow_winner = None  # Will store the name of the follow winner
         self.song_info = None  # Will store song information for this round
         self.session_id = session_id  # Store the session ID for this round
+        # Track manual overrides applied during this round for auditing/export
+        self.manual_overrides: list[str] = []
 
 
 class ContestantQueueProxy:
@@ -170,9 +172,197 @@ class Game:
         self.carryover_lead_winner = None
         self.carryover_follow_winner = None
         
+        # Manual mode flag
+        self.manual_enabled: bool = False
+
         # Start the first round
         self.start_round()
         
+    # -----------------------------
+    # Manual mode helpers
+    # -----------------------------
+    def set_manual_enabled(self, enabled: bool) -> None:
+        self.manual_enabled = bool(enabled)
+        # Note: toggling off keeps edits by design
+
+    def _find_contestant_by_name(self, role: str, name: str) -> Contestant | None:
+        pool = self.initial_leads if role == 'lead' else self.initial_follows
+        for c in pool:
+            if c.name == name:
+                return c
+        return None
+
+    def _update_initial_order_from_current(self) -> None:
+        """Ensure replenishment order respects current manual queue ordering.
+
+        Build initial lists as [current competitors] + remaining queue order.
+        """
+        # Leads
+        current_leads = []
+        if self.pair_1:
+            current_leads.append(self.pair_1[0])
+        if self.pair_2:
+            current_leads.append(self.pair_2[0])
+        remaining_leads = list(self._leads)
+        seen = set()
+        ordered_leads: list[Contestant] = []
+        for c in current_leads + remaining_leads:
+            if c and c.name not in seen:
+                ordered_leads.append(c)
+                seen.add(c.name)
+        # Add any stragglers that might not be in queues yet (e.g., carryovers)
+        for c in self.initial_leads:
+            if c.name not in seen:
+                ordered_leads.append(c)
+                seen.add(c.name)
+        self.initial_leads = ordered_leads
+
+        # Follows
+        current_follows = []
+        if self.pair_1:
+            current_follows.append(self.pair_1[1])
+        if self.pair_2:
+            current_follows.append(self.pair_2[1])
+        remaining_follows = list(self._follows)
+        seenf = set()
+        ordered_follows: list[Contestant] = []
+        for c in current_follows + remaining_follows:
+            if c and c.name not in seenf:
+                ordered_follows.append(c)
+                seenf.add(c.name)
+        for c in self.initial_follows:
+            if c.name not in seenf:
+                ordered_follows.append(c)
+                seenf.add(c.name)
+        self.initial_follows = ordered_follows
+
+    def set_queue_order(self, role: str, ordered_names: list[str]) -> dict:
+        """Reorder the upcoming queue for a role. Current competitors remain in place.
+
+        Returns a summary dict { success: bool, message?: str, applied_order: [names] }.
+        """
+        role = 'lead' if role == 'lead' else 'follow'
+        # Build map of current queue (excludes current competitors by proxy semantics)
+        queue = self._leads if role == 'lead' else self._follows
+        name_to_obj = {c.name: c for c in queue}
+        # Validate all provided names exist in queue (ignore unknowns gracefully)
+        new_queue: list[Contestant] = []
+        seen: set[str] = set()
+        for nm in ordered_names:
+            c = name_to_obj.get(nm)
+            if c and c.name not in seen:
+                new_queue.append(c)
+                seen.add(c.name)
+        # Append any not specified to preserve full membership
+        for c in queue:
+            if c.name not in seen:
+                new_queue.append(c)
+                seen.add(c.name)
+        # Apply
+        if role == 'lead':
+            self._leads = new_queue
+        else:
+            self._follows = new_queue
+        # Keep initial order aligned for future replenishment
+        self._update_initial_order_from_current()
+        # Log manual override on current round
+        if self.current_round:
+            self.current_round.manual_overrides.append(f"reordered {role}s queue")
+        return { 'success': True, 'applied_order': [c.name for c in new_queue] }
+
+    def set_active_pairs(self, pair_1: dict, pair_2: dict) -> dict:
+        """Set current competing pairs by names; reconcile queues to avoid duplicates."""
+        # Resolve contestants
+        l1 = self._find_contestant_by_name('lead', pair_1.get('lead'))
+        f1 = self._find_contestant_by_name('follow', pair_1.get('follow'))
+        l2 = self._find_contestant_by_name('lead', pair_2.get('lead'))
+        f2 = self._find_contestant_by_name('follow', pair_2.get('follow'))
+        if not l1 or not f1 or not l2 or not f2:
+            return { 'success': False, 'message': 'Unknown contestant name in pairs' }
+        if l1.name == l2.name or f1.name == f2.name:
+            return { 'success': False, 'message': 'Duplicate lead or follow across pairs' }
+
+        # Put previous pair members (if any) back into queues at the front to preserve exposure
+        prev_leads = []
+        prev_follows = []
+        if self.pair_1 and self.pair_2:
+            prev_leads = [self.pair_1[0], self.pair_2[0]]
+            prev_follows = [self.pair_1[1], self.pair_2[1]]
+
+        # Remove new actives from queues if present
+        for c in [l1, l2]:
+            try:
+                if c in self._leads:
+                    self._leads.remove(c)
+            except ValueError:
+                pass
+        for c in [f1, f2]:
+            try:
+                if c in self._follows:
+                    self._follows.remove(c)
+            except ValueError:
+                pass
+
+        # Return previous competitors to the FRONT of their queues if they are not the same as new picks
+        for c in reversed(prev_leads):
+            if c and c not in (l1, l2):
+                try:
+                    self._leads.remove(c)
+                except ValueError:
+                    pass
+                self._leads.insert(0, c)
+        for c in reversed(prev_follows):
+            if c and c not in (f1, f2):
+                try:
+                    self._follows.remove(c)
+                except ValueError:
+                    pass
+                self._follows.insert(0, c)
+
+        # Set current pairs
+        self.pair_1 = (l1, f1)
+        self.pair_2 = (l2, f2)
+
+        # Update current round pairs snapshot
+        if self.current_round:
+            self.current_round.pairs = {
+                "pair_1": {"lead": l1.name, "follow": f1.name},
+                "pair_2": {"lead": l2.name, "follow": f2.name},
+            }
+            self.current_round.manual_overrides.append("updated active pairs")
+
+        # Align initial order for future replenishment
+        self._update_initial_order_from_current()
+        # Clear previous-pairs tracker; new pairs are authoritative now
+        self.previous_pairs = {}
+        self._record_pairings()
+        return { 'success': True }
+
+    def generate_contestant_judges_manual(self, count: int) -> dict:
+        """Generate contestant judges excluding current competitors; fill as many as possible."""
+        try:
+            requested = max(0, int(count))
+        except (TypeError, ValueError):
+            requested = 0
+        pool = list(self.leads) + list(self.follows)
+        random.shuffle(pool)
+        selected = pool[:requested]
+        self.contestant_judges = selected
+        if self.current_round:
+            self.current_round.contestant_judges = [j.name for j in selected]
+            actual = len(selected)
+            if requested > 0:
+                note = f"generated {actual}/{requested} contestant judges"
+            else:
+                note = "generated 0 contestant judges"
+            self.current_round.manual_overrides.append(note)
+        return {
+            'success': True,
+            'judges': [j.name for j in selected],
+            'requested': requested,
+            'selected': len(selected)
+        }
+
     def start_round(self):
         """Start a new round by selecting pairs and contestant judges."""
         # Handle cases with insufficient contestants gracefully

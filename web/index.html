@@ -97,6 +97,10 @@
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
                 <input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/..." />
             </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="start-manual-mode" />
+                <label for="start-manual-mode">Start in Manual Mode</label>
+            </div>
             <div class="setup-actions">
                 <button id="start-competition" class="btn primary">Start Competition</button>
                 <button id="setup-back-to-home" class="btn secondary">Back</button>
@@ -229,6 +233,55 @@
                 <div class="buttons">
                     <button id="next-round" class="btn primary">Next Round</button>
                     <button id="end-battle" class="btn secondary">End Battle</button>
+                </div>
+            </div>
+
+            <div id="manual-controls" class="manual-controls" style="margin-top:16px; padding:12px; border:1px dashed var(--border-color, #ccc); display:none;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                    <label for="manual-mode-toggle" style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="manual-mode-toggle" />
+                        Manual Mode
+                    </label>
+                    <span id="manual-status" style="font-size:12px; color: var(--text-secondary, #666);"></span>
+                </div>
+                <div class="manual-section" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                    <div>
+                        <h3>Reorder Leads</h3>
+                        <div id="manual-leads-queue" class="queue-list"></div>
+                    </div>
+                    <div>
+                        <h3>Reorder Follows</h3>
+                        <div id="manual-follows-queue" class="queue-list"></div>
+                    </div>
+                </div>
+                <div class="manual-section" style="margin-top:12px;">
+                    <h3>Active Couples</h3>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div>
+                            <h4>Pair 1</h4>
+                            <div style="display:flex; gap:8px;">
+                                <select id="pair1-lead"></select>
+                                <select id="pair1-follow"></select>
+                            </div>
+                        </div>
+                        <div>
+                            <h4>Pair 2</h4>
+                            <div style="display:flex; gap:8px;">
+                                <select id="pair2-lead"></select>
+                                <select id="pair2-follow"></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button id="manual-apply-pairs" class="btn secondary">Apply Active Pairs</button>
+                    </div>
+                </div>
+                <div class="manual-section" style="margin-top:12px;">
+                    <h3>Contestant Judges</h3>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="number" id="manual-judge-count" min="0" placeholder="Count" style="width:100px;" />
+                        <button id="manual-generate-judges" class="btn secondary">Generate Judges</button>
+                    </div>
                 </div>
             </div>
         </div>

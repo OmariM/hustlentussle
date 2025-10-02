@@ -27,6 +27,7 @@ let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
+let startManualModeCheckbox;
 let pointsToWinInput;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
     let currentLeadScores, currentFollowScores;
@@ -70,9 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
+    startManualModeCheckbox = document.getElementById('start-manual-mode');
     const simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
 
-// Round screen elements
+    // Round screen elements
     roundNumber = document.getElementById('round-number');
     lead1Name = document.getElementById('lead1-name');
     lead2Name = document.getElementById('lead2-name');
@@ -87,6 +89,19 @@ document.addEventListener('DOMContentLoaded', () => {
     songInputSection = document.getElementById('song-input-section');
     playlistEmbedSection = document.getElementById('playlist-embed-section');
     playlistEmbedContainer = document.getElementById('playlist-embed');
+    // Manual mode controls
+    const manualControls = document.getElementById('manual-controls');
+    const manualModeToggle = document.getElementById('manual-mode-toggle');
+    const manualStatus = document.getElementById('manual-status');
+    const leadsQueueEl = document.getElementById('manual-leads-queue');
+    const followsQueueEl = document.getElementById('manual-follows-queue');
+    const pair1LeadSel = document.getElementById('pair1-lead');
+    const pair1FollowSel = document.getElementById('pair1-follow');
+    const pair2LeadSel = document.getElementById('pair2-lead');
+    const pair2FollowSel = document.getElementById('pair2-follow');
+    const manualApplyPairsBtn = document.getElementById('manual-apply-pairs');
+    const manualJudgeCount = document.getElementById('manual-judge-count');
+    const manualGenerateJudgesBtn = document.getElementById('manual-generate-judges');
 
 // Voting elements
     leadVotingSection = document.getElementById('lead-voting');
@@ -171,6 +186,41 @@ document.addEventListener('DOMContentLoaded', () => {
     submitVotesBtn.addEventListener('click', submitCombinedVotes);
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
+
+    // Manual mode UI events
+    if (manualModeToggle) {
+        manualModeToggle.addEventListener('change', async () => {
+            await toggleManualMode(manualModeToggle.checked);
+        });
+    }
+    if (manualApplyPairsBtn) {
+        manualApplyPairsBtn.addEventListener('click', async () => {
+            const payload = {
+                session_id: sessionId,
+                pair_1: { lead: pair1LeadSel.value, follow: pair1FollowSel.value },
+                pair_2: { lead: pair2LeadSel.value, follow: pair2FollowSel.value }
+            };
+            const resp = await fetch('/api/manual/set_pairs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const json = await resp.json();
+            if (!resp.ok || !json.success) {
+                alert(json.message || 'Failed to apply pairs');
+                return;
+            }
+            await refreshCanonicalState();
+        });
+    }
+    if (manualGenerateJudgesBtn) {
+        manualGenerateJudgesBtn.addEventListener('click', async () => {
+            const count = parseInt(manualJudgeCount.value || '0', 10) || 0;
+            const resp = await fetch('/api/manual/generate_judges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, count }) });
+            const json = await resp.json();
+            if (!resp.ok || !json.success) {
+                alert(json.error || 'Failed to generate judges');
+                return;
+            }
+            await refreshCanonicalState();
+        });
+    }
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -296,6 +346,30 @@ function renderFromState(state) {
     leadVotes = {}; followVotes = {}; votingLocked = { lead: false, follow: false };
     submitVotesBtn.disabled = false;
 
+    // Manual controls: reflect state and build controls if available
+    try {
+        const manual = state.manual || {};
+        if (document.getElementById('manual-controls')) {
+            document.getElementById('manual-controls').style.display = '';
+            if (document.getElementById('manual-mode-toggle')) {
+                document.getElementById('manual-mode-toggle').checked = !!manual.enabled;
+            }
+            if (document.getElementById('manual-status')) {
+                document.getElementById('manual-status').textContent = manual.enabled ? 'Enabled' : 'Disabled';
+            }
+            // Build reorder lists
+            buildQueueEditor('lead', manual.queue && Array.isArray(manual.queue.leads) ? manual.queue.leads : [], document.getElementById('manual-leads-queue'));
+            buildQueueEditor('follow', manual.queue && Array.isArray(manual.queue.follows) ? manual.queue.follows : [], document.getElementById('manual-follows-queue'));
+            // Build active pairs selectors from full roster
+            const allLeads = (state.initial_order && Array.isArray(state.initial_order.leads)) ? state.initial_order.leads : [];
+            const allFollows = (state.initial_order && Array.isArray(state.initial_order.follows)) ? state.initial_order.follows : [];
+            fillSelect(pair1LeadSel, allLeads, state.round.pairs.pair_1.lead);
+            fillSelect(pair2LeadSel, allLeads, state.round.pairs.pair_2.lead);
+            fillSelect(pair1FollowSel, allFollows, state.round.pairs.pair_1.follow);
+            fillSelect(pair2FollowSel, allFollows, state.round.pairs.pair_2.follow);
+        }
+    } catch (e) { console.warn('Failed to render manual controls:', e); }
+
     // Rebuild voting cards based on current state
     setupVotingUI();
 }
@@ -388,6 +462,84 @@ function updateLiveGraphicFromState(state) {
         : (follows || []).map(f => f.name);
     renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
+}
+
+function fillSelect(selectEl, options, selected) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    options.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (selected && selected === name) opt.selected = true;
+        selectEl.appendChild(opt);
+    });
+}
+
+function buildQueueEditor(role, names, container) {
+    if (!container || !Array.isArray(names)) return;
+    container.innerHTML = '';
+    const list = document.createElement('div');
+    names.forEach((nm, idx) => {
+        const row = document.createElement('div');
+        row.className = 'queue-row';
+        const label = document.createElement('span');
+        label.textContent = `${idx + 1}. ${nm}`;
+        const upBtn = document.createElement('button');
+        upBtn.textContent = '↑';
+        upBtn.className = 'btn tiny';
+        upBtn.disabled = idx === 0;
+        const downBtn = document.createElement('button');
+        downBtn.textContent = '↓';
+        downBtn.className = 'btn tiny';
+        downBtn.disabled = idx === names.length - 1;
+        upBtn.addEventListener('click', async () => {
+            const newOrder = names.slice();
+            const t = newOrder[idx - 1];
+            newOrder[idx - 1] = newOrder[idx];
+            newOrder[idx] = t;
+            await applyQueueOrder(role, newOrder);
+        });
+        downBtn.addEventListener('click', async () => {
+            const newOrder = names.slice();
+            const t = newOrder[idx + 1];
+            newOrder[idx + 1] = newOrder[idx];
+            newOrder[idx] = t;
+            await applyQueueOrder(role, newOrder);
+        });
+        const controls = document.createElement('span');
+        controls.style.display = 'inline-flex';
+        controls.style.gap = '6px';
+        controls.appendChild(upBtn);
+        controls.appendChild(downBtn);
+        row.appendChild(label);
+        row.appendChild(controls);
+        list.appendChild(row);
+    });
+    container.appendChild(list);
+}
+
+async function applyQueueOrder(role, order) {
+    try {
+        const resp = await fetch('/api/manual/set_order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, role, order }) });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            alert(json.error || 'Failed to set order');
+            return;
+        }
+        await refreshCanonicalState();
+    } catch (e) {
+        console.warn('Failed to set order:', e);
+    }
+}
+
+async function toggleManualMode(enabled) {
+    if (!sessionId) return;
+    try {
+        const resp = await fetch('/api/manual/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, enabled: !!enabled }) });
+        await resp.json();
+        await refreshCanonicalState();
+    } catch (e) { console.warn('toggleManualMode failed', e); }
 }
 
 async function refreshCanonicalState() {
@@ -556,6 +708,13 @@ async function startCompetition(useSimpleContestantJudges) {
         pendingPlaylistUrl = playlistUrlRaw;
         await maybeEnablePlaylistMode(pendingPlaylistUrl);
         
+        // If start in manual mode is requested, toggle it on
+        try {
+            if (startManualModeCheckbox && startManualModeCheckbox.checked) {
+                await fetch('/api/manual/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, enabled: true }) });
+            }
+        } catch (_) {}
+
         // Render from canonical state
         await refreshCanonicalState();
         
@@ -1633,6 +1792,17 @@ function displayRoundHistory(rounds) {
         judgeVotesHTML += '</div>';
         judgeVotes.innerHTML = judgeVotesHTML;
         details.appendChild(judgeVotes);
+
+        // Manual overrides if any
+        try {
+            const overrides = Array.isArray(round.manual_overrides) ? round.manual_overrides : [];
+            if (overrides.length > 0) {
+                const mo = document.createElement('div');
+                mo.className = 'manual-overrides';
+                mo.innerHTML = `<h4>Manual Overrides</h4><p>${overrides.join('; ')}</p>`;
+                details.appendChild(mo);
+            }
+        } catch (_) {}
         
         // Session ID removed from round cell for cleaner display
         
