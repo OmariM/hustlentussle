@@ -22,6 +22,13 @@ let currentRoundTrack = null;
 let lastPreparedSongRoundNumber = null;
 let pendingPlaylistUrl = null;
 
+// Ensure Spotify integration default is persisted as off on first load
+try {
+    if (localStorage.getItem('spotify.enabled') === null) {
+        localStorage.setItem('spotify.enabled', 'false');
+    }
+} catch (_) {}
+
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
@@ -159,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const stored = localStorage.getItem(`usedTracks:${sid}`);
             if (stored) usedTrackIds = new Set(JSON.parse(stored));
             const storedPlaylistUrl = localStorage.getItem(`playlist:url:${sid}`);
-            if (storedPlaylistUrl) {
+            if (storedPlaylistUrl && localStorage.getItem('spotify.enabled') === 'true') {
                 pendingPlaylistUrl = storedPlaylistUrl;
                 maybeEnablePlaylistMode(pendingPlaylistUrl).catch(() => {});
                 pendingPlaylistUrl = null;
@@ -188,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
-    // Theme toggle
+		// Theme toggle
     const themeToggle = document.getElementById('theme-toggle');
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
@@ -206,6 +213,65 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('theme', next);
         });
     }
+
+		// Spotify integration toggle and UI gating
+		const spotifyToggle = document.getElementById('spotify-toggle');
+		const playlistUrlGroup = document.getElementById('playlist-url-group');
+		if (localStorage.getItem('spotify.enabled') === null) {
+			localStorage.setItem('spotify.enabled', 'false');
+		}
+		function applySpotifyEnabledUI() {
+			const isOn = localStorage.getItem('spotify.enabled') === 'true';
+			if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
+			if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
+			if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
+			if (spotifyToggle) spotifyToggle.textContent = isOn ? 'Disable Spotify Integration' : 'Enable Spotify Integration';
+			// Dynamically add/remove home auth button
+			try {
+				const home = document.getElementById('home-screen');
+				const actions = home ? home.querySelector('.home-actions') : null;
+				if (actions) {
+					let btn = document.getElementById('spotify-auth-btn');
+					if (isOn && !btn) {
+						btn = document.createElement('button');
+						btn.id = 'spotify-auth-btn';
+						btn.className = 'btn secondary large';
+						btn.textContent = 'Authenticate Spotify';
+						btn.onclick = () => {
+							if (localStorage.getItem('spotify.enabled') === 'true') {
+								startSpotifyAuth(window.location.origin + window.location.pathname);
+							}
+						};
+						actions.appendChild(btn);
+					} else if (!isOn && btn) {
+						actions.removeChild(btn);
+					}
+				}
+			} catch (_) {}
+		}
+		applySpotifyEnabledUI();
+		if (spotifyToggle) {
+			spotifyToggle.addEventListener('click', () => {
+				const current = localStorage.getItem('spotify.enabled') === 'true';
+				const next = !current;
+				localStorage.setItem('spotify.enabled', next ? 'true' : 'false');
+				if (!next) {
+					// Turning off disables any active playlist mode and clears embeds
+					disablePlaylistMode('Spotify integration disabled');
+				} else {
+					// Turning on: if we have a playlist URL (in input or stored for session), try enabling playlist mode
+					const inputUrl = playlistUrlInput ? (playlistUrlInput.value || '').trim() : '';
+					let toEnable = inputUrl;
+					if (!toEnable && sessionId) {
+						try { toEnable = localStorage.getItem(`playlist:url:${sessionId}`) || ''; } catch (_) {}
+					}
+					if (toEnable) {
+						try { maybeEnablePlaylistMode(toEnable).catch(()=>{}); } catch (_) {}
+					}
+				}
+				applySpotifyEnabledUI();
+			});
+		}
 });
 
 // Functions
@@ -221,6 +287,17 @@ function showScreen(screen) {
     // Reset error messages when switching screens
     uploadError.textContent = '';
     uploadError.classList.remove('visible');
+
+    // Apply Spotify UI gating on screen change
+    try {
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        const sig = document.getElementById('song-input-section');
+        const pes = document.getElementById('playlist-embed-section');
+        const pug = document.getElementById('playlist-url-group');
+        if (pug) pug.style.display = spotifyOn ? '' : 'none';
+        if (sig) sig.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
+        if (pes) pes.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
+    } catch (_) {}
 }
 
 // Canonical state helpers
@@ -235,7 +312,7 @@ function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
     // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
-    if (!playlistModeEnabled && pendingPlaylistUrl) {
+    if (localStorage.getItem('spotify.enabled') === 'true' && !playlistModeEnabled && pendingPlaylistUrl) {
         maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
         pendingPlaylistUrl = null;
     }
@@ -243,8 +320,8 @@ function renderFromState(state) {
     // Round number
     if (roundNumber) roundNumber.textContent = state.round.number;
 
-    // If playlist mode is on and the round changed, prepare a song for this round
-    if (playlistModeEnabled) {
+    // If Spotify enabled and playlist mode is on and the round changed, prepare a song for this round
+    if (localStorage.getItem('spotify.enabled') === 'true' && playlistModeEnabled) {
         const rn = state.round.number;
         if (lastPreparedSongRoundNumber !== rn) {
             preparePlaylistSongForRound(rn).catch(e => console.warn('Failed to prepare playlist song:', e));
@@ -298,6 +375,13 @@ function renderFromState(state) {
 
     // Rebuild voting cards based on current state
     setupVotingUI();
+
+    // Enforce Spotify UI gating after state render
+    try {
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        if (songInputSection) songInputSection.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
+    } catch (_) {}
 }
 
 function updateLiveGraphicFromState(state) {
@@ -523,7 +607,8 @@ async function startCompetition(useSimpleContestantJudges) {
     const judges = judgeNamesInput.value.trim();
     const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
     const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
-    const playlistUrlRaw = playlistUrlInput ? playlistUrlInput.value.trim() : '';
+    const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+    const playlistUrlRaw = (spotifyOn && playlistUrlInput) ? playlistUrlInput.value.trim() : '';
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -552,9 +637,13 @@ async function startCompetition(useSimpleContestantJudges) {
         // Update session ID display
         updateSessionIdDisplay();
 
-        // Initialize playlist mode if a playlist URL is present
-        pendingPlaylistUrl = playlistUrlRaw;
-        await maybeEnablePlaylistMode(pendingPlaylistUrl);
+        // Initialize playlist mode if Spotify is enabled and a playlist URL is present
+        pendingPlaylistUrl = spotifyOn ? playlistUrlRaw : '';
+        if (spotifyOn && pendingPlaylistUrl) {
+            await maybeEnablePlaylistMode(pendingPlaylistUrl);
+        } else {
+            disablePlaylistMode('Spotify disabled or no playlist');
+        }
         
         // Render from canonical state
         await refreshCanonicalState();
@@ -577,7 +666,8 @@ function fetchScores() {
             
             // If server echoed playlist_url and we haven't enabled mode yet, enable it
             try {
-                if (!playlistModeEnabled && data.playlist_url) {
+                const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+                if (spotifyOn && !playlistModeEnabled && data.playlist_url) {
                     pendingPlaylistUrl = data.playlist_url;
                     await maybeEnablePlaylistMode(pendingPlaylistUrl);
                     pendingPlaylistUrl = null;
@@ -675,18 +765,22 @@ function updateRoundUI(data) {
     // Reset submit button
     submitVotesBtn.disabled = false;
     
-    // Only reset song input if we're not in auto-advance mode and not in playlist mode
-    if (!window.debugTools || !window.debugTools.autoAdvance) {
-        if (!playlistModeEnabled) {
-            const si = document.getElementById('song-input');
-            if (si) si.value = '';
-            if (songInputSection) songInputSection.style.display = '';
-            if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
-        } else {
-            if (songInputSection) songInputSection.style.display = 'none';
-            if (playlistEmbedSection) playlistEmbedSection.style.display = '';
-        }
-    }
+	// Only reset song input if we're not in auto-advance mode
+	if (!window.debugTools || !window.debugTools.autoAdvance) {
+		const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+		const si = document.getElementById('song-input');
+		if (si) si.value = '';
+		if (!spotifyOn) {
+			if (songInputSection) songInputSection.style.display = 'none';
+			if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+		} else if (!playlistModeEnabled) {
+			if (songInputSection) songInputSection.style.display = '';
+			if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
+		} else {
+			if (songInputSection) songInputSection.style.display = 'none';
+			if (playlistEmbedSection) playlistEmbedSection.style.display = '';
+		}
+	}
 }
 
 function setupVotingUI() {
@@ -1018,21 +1112,24 @@ async function submitCombinedVotes() {
         followVotesArray.push([judge, followVotes[judge]]);
     }
     
-    // Get song information
+    // Get song information (Spotify fields only when integration is enabled)
     const songInput = document.getElementById('song-input');
     const songInfo = {};
-    if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
-        songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
-        songInfo.title = currentRoundTrack.name || '';
-        songInfo.artist = currentRoundTrack.artists || '';
-    } else if (songInput && songInput.value) {
-        try {
-            const spotifyUrl = new URL(songInput.value);
-            if (spotifyUrl.hostname === 'open.spotify.com') {
-                songInfo.spotify_url = songInput.value;
+    const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+    if (spotifyOn) {
+        if (playlistModeEnabled && currentRoundTrack && currentRoundTrack.id) {
+            songInfo.spotify_url = `https://open.spotify.com/track/${currentRoundTrack.id}`;
+            songInfo.title = currentRoundTrack.name || '';
+            songInfo.artist = currentRoundTrack.artists || '';
+        } else if (songInput && songInput.value) {
+            try {
+                const spotifyUrl = new URL(songInput.value);
+                if (spotifyUrl.hostname === 'open.spotify.com') {
+                    songInfo.spotify_url = songInput.value;
+                }
+            } catch (e) {
+                console.error('Invalid Spotify URL:', e);
             }
-        } catch (e) {
-            console.error('Invalid Spotify URL:', e);
         }
     }
     
@@ -1161,7 +1258,8 @@ function resetCompetition() {
             localStorage.removeItem(`playlist:url:${sid}`);
         }
     } catch (_) {}
-    if (songInputSection) songInputSection.style.display = '';
+    const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+    if (songInputSection) songInputSection.style.display = spotifyOn ? '' : 'none';
     if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
     if (playlistUrlInput) playlistUrlInput.value = '';
     
@@ -1389,14 +1487,15 @@ async function displayResults(data) {
     
     console.log('Round history:', data.rounds);
     
-    // Fetch Spotify metadata for all rounds if available
-    if (data.rounds && data.rounds.length > 0) {
+    // Always render round history; optionally enrich with Spotify metadata if enabled
+    const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+    if (spotifyOn && data.rounds && data.rounds.length > 0) {
         try {
             const access_token = await getSpotifyToken();
             
             // Fetch metadata for all rounds in parallel
             await Promise.all(data.rounds.map(async (round) => {
-                if (round.song_info && round.song_info.spotify_url) {
+                if (spotifyOn && round.song_info && round.song_info.spotify_url) {
                     try {
                         const spotifyUrl = new URL(round.song_info.spotify_url);
                         const trackId = spotifyUrl.pathname.split('/').pop();
@@ -1408,7 +1507,7 @@ async function displayResults(data) {
                                 }
                             });
                             
-                            if (metadataResponse.status === 401) {
+                            if (metadataResponse.status === 401 && spotifyOn) {
                                 // Token expired, get a new one and retry
                                 const newToken = await getSpotifyToken();
                                 const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
@@ -1437,7 +1536,11 @@ async function displayResults(data) {
             console.error('Error fetching Spotify metadata:', error);
         }
         
-        // Display round history with the updated metadata
+        // Fallthrough to render below
+    }
+
+    // Display round history regardless of Spotify status
+    if (data.rounds && data.rounds.length > 0) {
         displayRoundHistory(data.rounds);
     } else {
         console.warn('No round history data available');
@@ -1504,7 +1607,7 @@ function displayRoundHistory(rounds) {
                 songHTML += '</div>';
             }
             
-            if (round.song_info.spotify_url) {
+            if (localStorage.getItem('spotify.enabled') === 'true' && round.song_info.spotify_url) {
                 try {
                     const spotifyUrl = new URL(round.song_info.spotify_url);
                     const trackId = spotifyUrl.pathname.split('/').pop();
@@ -1710,7 +1813,8 @@ async function fetchPlaylistTracks(offset = 0) {
 
 async function preparePlaylistSongForRound(roundNum) {
     try {
-        if (!playlistModeEnabled || !playlistId) return;
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        if (!spotifyOn || !playlistModeEnabled || !playlistId) return;
         if (playlistTracks.length === 0) await fetchPlaylistTracks();
         let track = pickNextUnusedTrack();
         if (!track) {
@@ -1724,7 +1828,9 @@ async function preparePlaylistSongForRound(roundNum) {
             renderPlaylistEmbed(null);
             currentRoundTrack = null;
             disablePlaylistMode('No more unused tracks available.');
-            try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+            if (localStorage.getItem('spotify.enabled') === 'true') {
+                try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+            }
             return;
         }
         currentRoundTrack = track;
@@ -1767,12 +1873,16 @@ async function downloadBattleData() {
         // Get the battle data as JSON first
         const battleData = await response.json();
         
-        // Get Spotify access token
-        const access_token = await getSpotifyToken();
+        // If Spotify integration is enabled, enrich with Spotify metadata
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        let access_token = null;
+        if (spotifyOn) {
+            access_token = await getSpotifyToken();
+        }
         
         // Fetch metadata for all rounds in parallel
         await Promise.all(battleData.rounds.map(async (round) => {
-            if (round.song_info && round.song_info.spotify_url) {
+            if (spotifyOn && round.song_info && round.song_info.spotify_url) {
                 try {
                     const spotifyUrl = new URL(round.song_info.spotify_url);
                     const trackId = spotifyUrl.pathname.split('/').pop();
@@ -1784,7 +1894,7 @@ async function downloadBattleData() {
                             }
                         });
                         
-                        if (metadataResponse.status === 401) {
+                        if (metadataResponse.status === 401 && spotifyOn) {
                             // Token expired, get a new one and retry
                             const newToken = await getSpotifyToken();
                             const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
@@ -2017,7 +2127,7 @@ async function initWebPlaybackPlayer() {
 }
 
 async function playCurrentRoundTrackViaSpotify() {
-    if (!playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
+    if (!(localStorage.getItem('spotify.enabled') === 'true') || !playlistModeEnabled || !currentRoundTrack || !currentRoundTrack.id) return;
     await initWebPlaybackPlayer();
 
     // Wait briefly for device readiness if needed
@@ -2071,9 +2181,13 @@ async function startSpotifyAuth(returnToUrl, authKey = '') {
         btn.className = 'btn secondary large';
         btn.textContent = 'Authenticate Spotify';
         btn.onclick = () => {
-            startSpotifyAuth(window.location.origin + window.location.pathname);
+            if (localStorage.getItem('spotify.enabled') === 'true') {
+                startSpotifyAuth(window.location.origin + window.location.pathname);
+            }
         };
-        actions.appendChild(btn);
+        if (localStorage.getItem('spotify.enabled') === 'true') {
+            actions.appendChild(btn);
+        }
     } catch (_) {}
 })();
 
