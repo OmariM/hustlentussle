@@ -531,7 +531,10 @@ def _find_contestant_by_name(game: Game, role: str, name: str) -> Contestant | N
 
 def _is_round_complete(r) -> bool:
     try:
-        # A round is complete when both roles have recorded votes
+        # Ad-hoc rounds are considered complete when winners are set
+        if getattr(r, 'is_ad_hoc', False):
+            return bool(getattr(r, 'lead_winner', None)) and bool(getattr(r, 'follow_winner', None))
+        # A normal round is complete when both roles have recorded votes
         return bool(getattr(r, 'lead_votes', None)) and bool(getattr(r, 'follow_votes', None))
     except Exception:
         return False
@@ -624,6 +627,17 @@ def ad_hoc_round():
 
     # Append to completed rounds history
     game.rounds.append(new_round)
+
+    # Ad-hoc rounds consume a round number and shift the in-progress normal round numbering by 1
+    try:
+        game.round_num += 1
+        if getattr(game, 'current_round', None):
+            try:
+                game.current_round.round_num += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     summary = {
         'round_num': new_round.round_num,
