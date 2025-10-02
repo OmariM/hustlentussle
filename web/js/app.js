@@ -287,6 +287,17 @@ function showScreen(screen) {
     // Reset error messages when switching screens
     uploadError.textContent = '';
     uploadError.classList.remove('visible');
+
+    // Apply Spotify UI gating on screen change
+    try {
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        const sig = document.getElementById('song-input-section');
+        const pes = document.getElementById('playlist-embed-section');
+        const pug = document.getElementById('playlist-url-group');
+        if (pug) pug.style.display = spotifyOn ? '' : 'none';
+        if (sig) sig.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
+        if (pes) pes.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
+    } catch (_) {}
 }
 
 // Canonical state helpers
@@ -301,7 +312,7 @@ function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
     // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
-    if (!playlistModeEnabled && pendingPlaylistUrl) {
+    if (localStorage.getItem('spotify.enabled') === 'true' && !playlistModeEnabled && pendingPlaylistUrl) {
         maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
         pendingPlaylistUrl = null;
     }
@@ -364,6 +375,13 @@ function renderFromState(state) {
 
     // Rebuild voting cards based on current state
     setupVotingUI();
+
+    // Enforce Spotify UI gating after state render
+    try {
+        const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+        if (songInputSection) songInputSection.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
+    } catch (_) {}
 }
 
 function updateLiveGraphicFromState(state) {
@@ -1240,7 +1258,8 @@ function resetCompetition() {
             localStorage.removeItem(`playlist:url:${sid}`);
         }
     } catch (_) {}
-    if (songInputSection) songInputSection.style.display = '';
+    const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
+    if (songInputSection) songInputSection.style.display = spotifyOn ? '' : 'none';
     if (playlistEmbedSection) playlistEmbedSection.style.display = 'none';
     if (playlistUrlInput) playlistUrlInput.value = '';
     
