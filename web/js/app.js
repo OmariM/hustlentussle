@@ -218,6 +218,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(json.error || 'Failed to generate judges');
                 return;
             }
+            // Show generated judges inline
+            try {
+                const label = document.createElement('span');
+                label.style.marginLeft = '8px';
+                label.style.fontSize = '12px';
+                label.style.color = '#666';
+                label.textContent = `→ ${json.judges.join(', ')}`;
+                // Remove previous if exists (keep last sibling span)
+                const parent = manualGenerateJudgesBtn.parentElement;
+                if (parent) {
+                    const prev = parent.querySelector('.judges-output');
+                    if (prev) prev.remove();
+                    label.className = 'judges-output';
+                    parent.appendChild(label);
+                }
+            } catch (_) {}
             await refreshCanonicalState();
         });
     }
@@ -358,8 +374,13 @@ function renderFromState(state) {
                 document.getElementById('manual-status').textContent = manual.enabled ? 'Enabled' : 'Disabled';
             }
             // Build reorder lists
+            const activeLeadNames = [state.round.pairs.pair_1.lead, state.round.pairs.pair_2.lead];
+            const activeFollowNames = [state.round.pairs.pair_1.follow, state.round.pairs.pair_2.follow];
             buildQueueEditor('lead', manual.queue && Array.isArray(manual.queue.leads) ? manual.queue.leads : [], document.getElementById('manual-leads-queue'));
             buildQueueEditor('follow', manual.queue && Array.isArray(manual.queue.follows) ? manual.queue.follows : [], document.getElementById('manual-follows-queue'));
+            // Grey out active contestants
+            greyOutActive(document.getElementById('manual-leads-queue'), new Set(activeLeadNames));
+            greyOutActive(document.getElementById('manual-follows-queue'), new Set(activeFollowNames));
             // Build active pairs selectors from full roster
             const allLeads = (state.initial_order && Array.isArray(state.initial_order.leads)) ? state.initial_order.leads : [];
             const allFollows = (state.initial_order && Array.isArray(state.initial_order.follows)) ? state.initial_order.follows : [];
@@ -367,6 +388,11 @@ function renderFromState(state) {
             fillSelect(pair2LeadSel, allLeads, state.round.pairs.pair_2.lead);
             fillSelect(pair1FollowSel, allFollows, state.round.pairs.pair_1.follow);
             fillSelect(pair2FollowSel, allFollows, state.round.pairs.pair_2.follow);
+            // Enforce uniqueness across active slots by disabling duplicates
+            enforceActiveUniqueness();
+            // Rebind change handlers to auto-resolve duplicates by clearing previous selection
+            [pair1LeadSel, pair2LeadSel].forEach(sel => sel && sel.addEventListener('change', handleActiveChange));
+            [pair1FollowSel, pair2FollowSel].forEach(sel => sel && sel.addEventListener('change', handleActiveChange));
         }
     } catch (e) { console.warn('Failed to render manual controls:', e); }
 
@@ -480,43 +506,69 @@ function buildQueueEditor(role, names, container) {
     if (!container || !Array.isArray(names)) return;
     container.innerHTML = '';
     const list = document.createElement('div');
+    list.className = 'queue-dnd-list';
     names.forEach((nm, idx) => {
-        const row = document.createElement('div');
-        row.className = 'queue-row';
+        const item = document.createElement('div');
+        item.className = 'queue-item';
+        item.draggable = true;
+        item.dataset.name = nm;
+        const handle = document.createElement('span');
+        handle.className = 'queue-handle';
+        handle.textContent = '⋮⋮';
         const label = document.createElement('span');
+        label.className = 'queue-label';
         label.textContent = `${idx + 1}. ${nm}`;
-        const upBtn = document.createElement('button');
-        upBtn.textContent = '↑';
-        upBtn.className = 'btn tiny';
-        upBtn.disabled = idx === 0;
-        const downBtn = document.createElement('button');
-        downBtn.textContent = '↓';
-        downBtn.className = 'btn tiny';
-        downBtn.disabled = idx === names.length - 1;
-        upBtn.addEventListener('click', async () => {
-            const newOrder = names.slice();
-            const t = newOrder[idx - 1];
-            newOrder[idx - 1] = newOrder[idx];
-            newOrder[idx] = t;
-            await applyQueueOrder(role, newOrder);
+        item.appendChild(handle);
+        item.appendChild(label);
+        list.appendChild(item);
+    });
+    // DnD behavior
+    let dragEl = null;
+    list.addEventListener('dragstart', (e) => {
+        const target = e.target.closest('.queue-item');
+        if (!target) return;
+        dragEl = target;
+        target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    list.addEventListener('dragend', async () => {
+        if (!dragEl) return;
+        dragEl.classList.remove('dragging');
+        dragEl = null;
+        // Collect new order
+        const order = Array.from(list.querySelectorAll('.queue-item')).map((el) => el.dataset.name);
+        await applyQueueOrder(role, order);
+    });
+    list.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(list, e.clientY);
+        const dragging = list.querySelector('.dragging');
+        if (!dragging) return;
+        if (afterElement == null) {
+            list.appendChild(dragging);
+        } else {
+            list.insertBefore(dragging, afterElement);
+        }
+        // Re-number labels live
+        Array.from(list.querySelectorAll('.queue-item .queue-label')).forEach((lbl, i) => {
+            const name = lbl.textContent.split('. ').slice(1).join('. ') || lbl.textContent;
+            lbl.textContent = `${i + 1}. ${name}`;
         });
-        downBtn.addEventListener('click', async () => {
-            const newOrder = names.slice();
-            const t = newOrder[idx + 1];
-            newOrder[idx + 1] = newOrder[idx];
-            newOrder[idx] = t;
-            await applyQueueOrder(role, newOrder);
-        });
-        const controls = document.createElement('span');
-        controls.style.display = 'inline-flex';
-        controls.style.gap = '6px';
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        row.appendChild(label);
-        row.appendChild(controls);
-        list.appendChild(row);
     });
     container.appendChild(list);
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.queue-item:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 async function applyQueueOrder(role, order) {
@@ -542,6 +594,79 @@ async function toggleManualMode(enabled) {
     } catch (e) { console.warn('toggleManualMode failed', e); }
 }
 
+function greyOutActive(container, activeSet) {
+    if (!container) return;
+    Array.from(container.querySelectorAll('.queue-item')).forEach(item => {
+        const isActive = activeSet.has(item.dataset.name);
+        item.style.opacity = isActive ? '0.5' : '';
+    });
+}
+
+function enforceActiveUniqueness() {
+    const leadSels = [document.getElementById('pair1-lead'), document.getElementById('pair2-lead')];
+    const followSels = [document.getElementById('pair1-follow'), document.getElementById('pair2-follow')];
+    // Disable options already chosen in the other select for each role
+    const apply = (sels) => {
+        sels.forEach(sel => {
+            if (!sel) return;
+            Array.from(sel.options).forEach(opt => {
+                opt.disabled = false;
+            });
+            sels.forEach(other => {
+                if (other && other !== sel && other.value) {
+                    const opt = Array.from(sel.options).find(o => o.value === other.value);
+                    if (opt) opt.disabled = true;
+                }
+            });
+        });
+    };
+    apply(leadSels);
+    apply(followSels);
+    // Enable/disable Apply button if duplicates or missing
+    try {
+        const btn = document.getElementById('manual-apply-pairs');
+        if (btn) {
+            const invalidLead = leadSels.some(s => !s || !s.value) || (leadSels[0] && leadSels[1] && leadSels[0].value && leadSels[0].value === leadSels[1].value);
+            const invalidFollow = followSels.some(s => !s || !s.value) || (followSels[0] && followSels[1] && followSels[0].value && followSels[0].value === followSels[1].value);
+            btn.disabled = invalidLead || invalidFollow;
+        }
+    } catch (_) {}
+}
+
+function handleActiveChange() {
+    const leadSels = [document.getElementById('pair1-lead'), document.getElementById('pair2-lead')];
+    const followSels = [document.getElementById('pair1-follow'), document.getElementById('pair2-follow')];
+    // Resolve duplicates by clearing the previous spot (choose first available different option)
+    const resolve = (sels) => {
+        const values = sels.map(s => s && s.value);
+        sels.forEach((sel, idx) => {
+            if (!sel || !sel.value) return;
+            sels.forEach((other, j) => {
+                if (j !== idx && other && other.value === sel.value) {
+                    // pick first available option not chosen elsewhere
+                    const chosen = new Set(sels.map(s => s && s.value).filter(Boolean));
+                    const replacement = Array.from(other.options).map(o => o.value).find(v => v && !chosen.has(v) && v !== sel.value);
+                    if (replacement) {
+                        other.value = replacement;
+                    } else {
+                        // no replacement available; clear by selecting first option that differs from current sel
+                        const alt = Array.from(other.options).map(o => o.value).find(v => v && v !== sel.value);
+                        if (alt) other.value = alt;
+                    }
+                }
+            });
+        });
+    };
+    resolve(leadSels);
+    resolve(followSels);
+    enforceActiveUniqueness();
+    // Grey out in queues live based on current selections
+    const leadsQueue = document.getElementById('manual-leads-queue');
+    const followsQueue = document.getElementById('manual-follows-queue');
+    greyOutActive(leadsQueue, new Set(leadSels.map(s => s && s.value).filter(Boolean)));
+    greyOutActive(followsQueue, new Set(followSels.map(s => s && s.value).filter(Boolean)));
+}
+
 async function refreshCanonicalState() {
     try {
         const state = await fetchCanonicalState();
@@ -550,6 +675,13 @@ async function refreshCanonicalState() {
             if (Array.isArray(state.initial_order?.leads)) initialLeads = state.initial_order.leads;
             if (Array.isArray(state.initial_order?.follows)) initialFollows = state.initial_order.follows;
             renderFromState(state);
+            try {
+                const defCj = Number(state.defaults && state.defaults.contestant_judges);
+                const inp = document.getElementById('manual-judge-count');
+                if (inp && !Number.isNaN(defCj)) {
+                    inp.value = String(defCj);
+                }
+            } catch (_) {}
         }
     } catch (e) {
         console.error('refreshCanonicalState failed:', e);

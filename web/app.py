@@ -285,6 +285,9 @@ def serialize_state(game: Game) -> dict:
                 'follows': [c.name for c in getattr(game, 'follows', [])],
             },
         },
+        'defaults': {
+            'contestant_judges': getattr(game, 'num_contestant_judges', 0)
+        }
     }
     return state
 
