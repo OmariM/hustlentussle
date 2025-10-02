@@ -598,7 +598,7 @@ function greyOutActive(container, activeSet) {
     if (!container) return;
     Array.from(container.querySelectorAll('.queue-item')).forEach(item => {
         const isActive = activeSet.has(item.dataset.name);
-        item.style.opacity = isActive ? '0.5' : '';
+        item.classList.toggle('disabled', !!isActive);
     });
 }
 

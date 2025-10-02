@@ -345,6 +345,72 @@ textarea {
     justify-content: center;
 }
 
+/* Manual mode controls */
+.manual-controls {
+    background: white;
+    border-radius: 8px;
+}
+
+.queue-dnd-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--muted-bg);
+    cursor: grab;
+    user-select: none;
+    transition: background-color 0.15s ease, transform 0.08s ease;
+}
+
+.queue-item:hover {
+    background: #eef2f7;
+}
+
+.queue-item.dragging {
+    opacity: 0.9;
+    transform: scale(0.99);
+    background: #e2e8f0;
+}
+
+.queue-handle {
+    font-weight: 700;
+    color: var(--light-text);
+    cursor: grab;
+}
+
+.queue-label {
+    font-weight: 600;
+}
+
+.queue-item.disabled {
+    opacity: 0.5;
+}
+
+/* Active pairs selects */
+#pair1-lead, #pair1-follow, #pair2-lead, #pair2-follow {
+    min-width: 180px;
+    height: 36px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: #fff;
+}
+
+[data-theme="dark"] #pair1-lead,
+[data-theme="dark"] #pair1-follow,
+[data-theme="dark"] #pair2-lead,
+[data-theme="dark"] #pair2-follow {
+    background: var(--muted-bg);
+}
+
 .judge-item {
     padding: 8px 15px;
     background-color: #f8f9fa;
