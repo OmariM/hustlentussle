@@ -219,6 +219,28 @@ document.addEventListener('DOMContentLoaded', () => {
 			if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
 			if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
 			if (spotifyToggle) spotifyToggle.textContent = isOn ? 'Disable Spotify Integration' : 'Enable Spotify Integration';
+			// Dynamically add/remove home auth button
+			try {
+				const home = document.getElementById('home-screen');
+				const actions = home ? home.querySelector('.home-actions') : null;
+				if (actions) {
+					let btn = document.getElementById('spotify-auth-btn');
+					if (isOn && !btn) {
+						btn = document.createElement('button');
+						btn.id = 'spotify-auth-btn';
+						btn.className = 'btn secondary large';
+						btn.textContent = 'Authenticate Spotify';
+						btn.onclick = () => {
+							if (localStorage.getItem('spotify.enabled') === 'true') {
+								startSpotifyAuth(window.location.origin + window.location.pathname);
+							}
+						};
+						actions.appendChild(btn);
+					} else if (!isOn && btn) {
+						actions.removeChild(btn);
+					}
+				}
+			} catch (_) {}
 		}
 		applySpotifyEnabledUI();
 		if (spotifyToggle) {
@@ -229,6 +251,16 @@ document.addEventListener('DOMContentLoaded', () => {
 				if (!next) {
 					// Turning off disables any active playlist mode and clears embeds
 					disablePlaylistMode('Spotify integration disabled');
+				} else {
+					// Turning on: if we have a playlist URL (in input or stored for session), try enabling playlist mode
+					const inputUrl = playlistUrlInput ? (playlistUrlInput.value || '').trim() : '';
+					let toEnable = inputUrl;
+					if (!toEnable && sessionId) {
+						try { toEnable = localStorage.getItem(`playlist:url:${sessionId}`) || ''; } catch (_) {}
+					}
+					if (toEnable) {
+						try { maybeEnablePlaylistMode(toEnable).catch(()=>{}); } catch (_) {}
+					}
 				}
 				applySpotifyEnabledUI();
 			});
@@ -1429,7 +1461,7 @@ async function displayResults(data) {
     
     console.log('Round history:', data.rounds);
     
-    // Fetch Spotify metadata for all rounds if available and Spotify is enabled
+    // Always render round history; optionally enrich with Spotify metadata if enabled
     const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
     if (spotifyOn && data.rounds && data.rounds.length > 0) {
         try {
@@ -1478,7 +1510,11 @@ async function displayResults(data) {
             console.error('Error fetching Spotify metadata:', error);
         }
         
-        // Display round history with the updated metadata
+        // Fallthrough to render below
+    }
+
+    // Display round history regardless of Spotify status
+    if (data.rounds && data.rounds.length > 0) {
         displayRoundHistory(data.rounds);
     } else {
         console.warn('No round history data available');
