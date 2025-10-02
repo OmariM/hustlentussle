@@ -22,6 +22,13 @@ let currentRoundTrack = null;
 let lastPreparedSongRoundNumber = null;
 let pendingPlaylistUrl = null;
 
+// Ensure Spotify integration default is persisted as off on first load
+try {
+    if (localStorage.getItem('spotify.enabled') === null) {
+        localStorage.setItem('spotify.enabled', 'false');
+    }
+} catch (_) {}
+
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
