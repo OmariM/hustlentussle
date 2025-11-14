@@ -309,6 +309,7 @@ def start_game():
     judge_names = data.get('judges', '').split(',')
     points_to_win = data.get('points_to_win', None)
     playlist_url = data.get('playlist_url', None)
+    randomize_order = data.get('randomize_order', True)
     contestant_judging_enabled = bool(data.get('contestant_judging_enabled', True))
     simple_contestant_judges = bool(data.get('simple_contestant_judges', False)) and contestant_judging_enabled
     
@@ -317,9 +318,15 @@ def start_game():
     follow_names = [name.strip() for name in follow_names if name.strip()]
     judge_names = [name.strip() for name in judge_names if name.strip()]
     
-    # Randomize the order of leads and follows
-    random.shuffle(lead_names)
-    random.shuffle(follow_names)
+    # Determine whether to randomize order
+    if isinstance(randomize_order, str):
+        randomize_order = randomize_order.strip().lower() in {"1", "true", "yes", "on"}
+    randomize_order = bool(randomize_order)
+    
+    # Randomize the order of leads and follows if requested
+    if randomize_order:
+        random.shuffle(lead_names)
+        random.shuffle(follow_names)
     
     # Create a new game with the randomized order
     game = Game(
@@ -355,6 +362,7 @@ def start_game():
         'playlist_url': playlist_url or '',
         'simple_contestant_judges': simple_contestant_judges,
         'contestant_judging_enabled': contestant_judging_enabled,
+        'randomize_order': randomize_order,
     })
 
 @app.route('/api/get_scores', methods=['GET'])

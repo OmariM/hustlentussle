@@ -36,7 +36,7 @@ let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
 let pointsToWinInput;
-let contestantJudgingToggle, simpleContestantJudgesInput;
+let contestantJudgingToggle, simpleContestantJudgesInput, randomizeOrderToggle;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
     let currentLeadScores, currentFollowScores;
     let liveLeadGraphic, liveFollowGraphic;
@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playlistUrlInput = document.getElementById('playlist-url');
     simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
     contestantJudgingToggle = document.getElementById('contestant-judging-toggle');
+    randomizeOrderToggle = document.getElementById('randomize-order-toggle');
 
     if (contestantJudgingToggle && simpleContestantJudgesInput) {
         const syncContestantJudgingControls = () => {
@@ -665,6 +666,7 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     const playlistUrlRaw = (spotifyOn && playlistUrlInput) ? playlistUrlInput.value.trim() : '';
     const contestantJudgingRequested = allowContestantJudging !== false;
     const simpleModeRequested = contestantJudgingRequested && !!useSimpleContestantJudges;
+    const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -682,7 +684,8 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
                 points_to_win,
                 playlist_url: playlistUrlRaw,
                 simple_contestant_judges: simpleModeRequested,
-                contestant_judging_enabled: contestantJudgingRequested
+                contestant_judging_enabled: contestantJudgingRequested,
+                randomize_order: randomizeOrder
             })
         });
         
@@ -1322,6 +1325,9 @@ function resetCompetition() {
     if (simpleContestantJudgesInput) {
         simpleContestantJudgesInput.checked = false;
         simpleContestantJudgesInput.disabled = contestantJudgingToggle ? !contestantJudgingToggle.checked : false;
+    }
+    if (randomizeOrderToggle) {
+        randomizeOrderToggle.checked = true;
     }
     
     // Clear file upload

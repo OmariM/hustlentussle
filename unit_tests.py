@@ -226,6 +226,25 @@ class TestGameLogic(unittest.TestCase):
         self.assertFalse(getattr(game.current_round, 'simple_contestant_judges', True))
         self.assertEqual(game.contestant_judges, [])
 
+    def test_start_game_can_disable_randomize_order(self):
+        """Ensure API preserves input order when randomization is disabled."""
+        payload = {
+            'leads': ','.join(self.lead_names),
+            'follows': ','.join(self.follow_names),
+            'judges': ','.join(self.judge_names),
+            'randomize_order': False,
+            'contestant_judging_enabled': True,
+        }
+        response = self.client.post('/api/start_game', json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['initial_leads'], self.lead_names)
+        self.assertEqual(data['initial_follows'], self.follow_names)
+        self.assertEqual(data['pair_1'][0], self.lead_names[0])
+        self.assertEqual(data['pair_1'][1], self.follow_names[0])
+        self.assertEqual(data['pair_2'][0], self.lead_names[1])
+        self.assertEqual(data['pair_2'][1], self.follow_names[1])
+
     def test_win_threshold_calculation(self):
         """Test that win threshold is correctly calculated for different numbers of contestants."""
         # Test case 1: More leads than follows
