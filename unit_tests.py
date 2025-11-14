@@ -194,6 +194,38 @@ class TestGameLogic(unittest.TestCase):
             f"Follow should be marked as winner with {follow.points} points"
         )
 
+    def test_contestant_judging_can_be_disabled(self):
+        """Ensure contestant judging can be disabled entirely."""
+        game = Game(
+            self.lead_names,
+            self.follow_names,
+            self.judge_names,
+            contestant_judging_enabled=False,
+        )
+        self.assertFalse(game.contestant_judging_enabled)
+        self.assertEqual(game.num_contestant_judges, 0)
+        self.assertEqual(game.contestant_judges, [])
+        self.assertEqual(game.current_round.contestant_judges, [])
+        self.assertFalse(getattr(game.current_round, 'contestant_judging_enabled', True))
+
+        # Advance to next round and ensure the setting persists
+        game.next_round()
+        self.assertEqual(game.contestant_judges, [])
+        self.assertFalse(getattr(game.current_round, 'contestant_judging_enabled', True))
+
+    def test_simple_mode_ignored_when_contestant_judging_disabled(self):
+        """Verify simple contestant judges flag is forced off when contestant judging is disabled."""
+        game = Game(
+            self.lead_names,
+            self.follow_names,
+            self.judge_names,
+            contestant_judging_enabled=False,
+            simple_contestant_judges=True,
+        )
+        self.assertFalse(game.simple_contestant_judges)
+        self.assertFalse(getattr(game.current_round, 'simple_contestant_judges', True))
+        self.assertEqual(game.contestant_judges, [])
+
     def test_win_threshold_calculation(self):
         """Test that win threshold is correctly calculated for different numbers of contestants."""
         # Test case 1: More leads than follows

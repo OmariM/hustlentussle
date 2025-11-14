@@ -218,6 +218,8 @@ def serialize_state(game: Game) -> dict:
 
     # Judges
     contestant_judges = [j.name for j in game.contestant_judges]
+    contestant_enabled = getattr(game, 'contestant_judging_enabled', True)
+    simple_flag = bool(getattr(game, 'simple_contestant_judges', False)) and contestant_enabled
 
     # Build lightweight rounds summary for live UI (include completed + current)
     rounds_data: list[dict] = []
@@ -253,7 +255,8 @@ def serialize_state(game: Game) -> dict:
             'judges': {
                 'guest': game.guest_judges,
                 'contestant': contestant_judges,
-                'simple_contestant_judges': getattr(game, 'simple_contestant_judges', False),
+                'simple_contestant_judges': simple_flag,
+                'contestant_judging_enabled': contestant_enabled,
             },
         },
         'scoreboard': {
@@ -306,7 +309,8 @@ def start_game():
     judge_names = data.get('judges', '').split(',')
     points_to_win = data.get('points_to_win', None)
     playlist_url = data.get('playlist_url', None)
-    simple_contestant_judges = bool(data.get('simple_contestant_judges', False))
+    contestant_judging_enabled = bool(data.get('contestant_judging_enabled', True))
+    simple_contestant_judges = bool(data.get('simple_contestant_judges', False)) and contestant_judging_enabled
     
     # Filter out any empty names
     lead_names = [name.strip() for name in lead_names if name.strip()]
@@ -318,12 +322,13 @@ def start_game():
     random.shuffle(follow_names)
     
     # Create a new game with the randomized order
-    game = Game(lead_names, follow_names, judge_names)
-    # Configure simple contestant judges flag on the game
-    try:
-        setattr(game, 'simple_contestant_judges', simple_contestant_judges)
-    except Exception:
-        pass
+    game = Game(
+        lead_names,
+        follow_names,
+        judge_names,
+        contestant_judging_enabled=contestant_judging_enabled,
+        simple_contestant_judges=simple_contestant_judges,
+    )
     # If a custom points_to_win is provided and valid, override the win_threshold
     try:
         if points_to_win is not None:
@@ -348,7 +353,8 @@ def start_game():
         'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
         'initial_follows': [c.name for c in game.initial_follows],  # Now contains the randomized order
         'playlist_url': playlist_url or '',
-        'simple_contestant_judges': simple_contestant_judges
+        'simple_contestant_judges': simple_contestant_judges,
+        'contestant_judging_enabled': contestant_judging_enabled,
     })
 
 @app.route('/api/get_scores', methods=['GET'])
@@ -447,6 +453,8 @@ def judge_combined():
     # If simple contestant judges is enabled, aggregate the proxy vote to all contestant judges
     def expand_with_mock_contestant_judges(votes_list: list[tuple[str, int]]) -> list[tuple[str, int]]:
         try:
+            if not getattr(game, 'contestant_judging_enabled', True):
+                return votes_list
             if not getattr(game, 'simple_contestant_judges', False):
                 return votes_list
             # Find the proxy vote if present

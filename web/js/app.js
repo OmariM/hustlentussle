@@ -9,6 +9,7 @@ let votingLocked = { lead: false, follow: false }; // Track if voting is locked
     let liveRounds = []; // Accumulate round records for live battle graphic
 let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
+let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
 // Playlist mode state
 let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
@@ -35,6 +36,7 @@ let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
 let pointsToWinInput;
+let contestantJudgingToggle, simpleContestantJudgesInput;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
     let currentLeadScores, currentFollowScores;
     let liveLeadGraphic, liveFollowGraphic;
@@ -77,7 +79,20 @@ document.addEventListener('DOMContentLoaded', () => {
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
-    const simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
+    simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
+    contestantJudgingToggle = document.getElementById('contestant-judging-toggle');
+
+    if (contestantJudgingToggle && simpleContestantJudgesInput) {
+        const syncContestantJudgingControls = () => {
+            const enabled = contestantJudgingToggle.checked;
+            if (!enabled) {
+                simpleContestantJudgesInput.checked = false;
+            }
+            simpleContestantJudgesInput.disabled = !enabled;
+        };
+        contestantJudgingToggle.addEventListener('change', syncContestantJudgingControls);
+        syncContestantJudgingControls();
+    }
 
 // Round screen elements
     roundNumber = document.getElementById('round-number');
@@ -157,7 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Setup screen
     setupBackToHomeBtn.addEventListener('click', setupBackToHomeHandler);
-    startCompetitionBtn.addEventListener('click', () => startCompetition(simpleContestantJudgesInput && simpleContestantJudgesInput.checked));
+    startCompetitionBtn.addEventListener('click', () => {
+        const allowContestantJudging = contestantJudgingToggle ? contestantJudgingToggle.checked : true;
+        startCompetition(
+            simpleContestantJudgesInput && simpleContestantJudgesInput.checked,
+            allowContestantJudging
+        );
+    });
 
     // Hydrate used tracks and playlist from localStorage for current session if available
     try {
@@ -346,20 +367,30 @@ function renderFromState(state) {
         });
         guestJudges = gj; // keep local cache for previews
     }
+    const contestantEnabledFromState = state.round?.judges?.contestant_judging_enabled !== false;
+    contestantJudgingEnabled = contestantEnabledFromState;
     if (contestantJudgesList) {
         contestantJudgesList.innerHTML = '';
         const cj = state.round.judges.contestant || [];
-        cj.forEach(judge => {
-            const el = document.createElement('div');
-            el.className = 'judge-item contestant';
-            el.textContent = judge;
-            contestantJudgesList.appendChild(el);
-        });
+        if (contestantEnabledFromState) {
+            cj.forEach(judge => {
+                const el = document.createElement('div');
+                el.className = 'judge-item contestant';
+                el.textContent = judge;
+                contestantJudgesList.appendChild(el);
+            });
+        }
+        const contestantSection = contestantJudgesList.closest('.judges-section');
+        if (contestantSection) {
+            contestantSection.style.display = contestantEnabledFromState ? '' : 'none';
+        }
     }
     // Store simple mode flag from state
     try {
-        simpleContestantJudgesEnabled = Boolean(state.round?.judges?.simple_contestant_judges);
-    } catch (_) { simpleContestantJudgesEnabled = false; }
+        simpleContestantJudgesEnabled = contestantJudgingEnabled && Boolean(state.round?.judges?.simple_contestant_judges);
+    } catch (_) {
+        simpleContestantJudgesEnabled = false;
+    }
 
     // Scoreboard
     updateLiveGraphicFromState(state);
@@ -382,6 +413,29 @@ function renderFromState(state) {
         if (songInputSection) songInputSection.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
         if (playlistEmbedSection) playlistEmbedSection.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
     } catch (_) {}
+}
+
+function getContestantJudgeNames() {
+    if (!contestantJudgingEnabled || !contestantJudgesList) {
+        return [];
+    }
+    const elements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
+    return Array.from(elements)
+        .map(el => el.textContent)
+        .filter(Boolean);
+}
+
+function buildJudgeRoster() {
+    const roster = [...guestJudges];
+    if (!contestantJudgingEnabled) {
+        return roster;
+    }
+    if (simpleContestantJudgesEnabled) {
+        roster.push('Contestant Judges');
+    } else {
+        roster.push(...getContestantJudgeNames());
+    }
+    return roster;
 }
 
 function updateLiveGraphicFromState(state) {
@@ -601,7 +655,7 @@ function updateSessionIdDisplay() {
 }
 
 // Update the startCompetition function
-async function startCompetition(useSimpleContestantJudges) {
+async function startCompetition(useSimpleContestantJudges, allowContestantJudging = true) {
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
@@ -609,6 +663,8 @@ async function startCompetition(useSimpleContestantJudges) {
     const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
     const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
     const playlistUrlRaw = (spotifyOn && playlistUrlInput) ? playlistUrlInput.value.trim() : '';
+    const contestantJudgingRequested = allowContestantJudging !== false;
+    const simpleModeRequested = contestantJudgingRequested && !!useSimpleContestantJudges;
     
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
@@ -619,7 +675,15 @@ async function startCompetition(useSimpleContestantJudges) {
         const response = await fetch('/api/start_game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, follows, judges, points_to_win, playlist_url: playlistUrlRaw, simple_contestant_judges: !!useSimpleContestantJudges })
+            body: JSON.stringify({
+                leads,
+                follows,
+                judges,
+                points_to_win,
+                playlist_url: playlistUrlRaw,
+                simple_contestant_judges: simpleModeRequested,
+                contestant_judging_enabled: contestantJudgingRequested
+            })
         });
         
         const data = await response.json();
@@ -628,10 +692,11 @@ async function startCompetition(useSimpleContestantJudges) {
         guestJudges = data.guest_judges;
         initialLeads = data.initial_leads;  // Store initial order
         initialFollows = data.initial_follows;  // Store initial order
+        contestantJudgingEnabled = data.contestant_judging_enabled !== false;
         if (Object.prototype.hasOwnProperty.call(data, 'simple_contestant_judges')) {
-            simpleContestantJudgesEnabled = !!data.simple_contestant_judges;
+            simpleContestantJudgesEnabled = contestantJudgingEnabled && !!data.simple_contestant_judges;
         } else {
-            simpleContestantJudgesEnabled = !!useSimpleContestantJudges;
+            simpleContestantJudgesEnabled = contestantJudgingEnabled && !!simpleModeRequested;
         }
         
         // Update session ID display
@@ -734,18 +799,24 @@ function updateRoundUI(data) {
     
     // Update contestant judges
     contestantJudgesList.innerHTML = '';
-    if (data.contestant_judges && data.contestant_judges.length > 0) {
-        data.contestant_judges.forEach(judge => {
-            const judgeItem = document.createElement('div');
-            judgeItem.className = 'judge-item contestant';
-            judgeItem.textContent = judge;
-            contestantJudgesList.appendChild(judgeItem);
-        });
+    const contestantSection = contestantJudgesList.closest('.judges-section');
+    if (!contestantJudgingEnabled) {
+        if (contestantSection) contestantSection.style.display = 'none';
     } else {
-        const noJudges = document.createElement('div');
-        noJudges.className = 'judge-item';
-        noJudges.textContent = 'No contestant judges assigned';
-        contestantJudgesList.appendChild(noJudges);
+        if (contestantSection) contestantSection.style.display = '';
+        if (data.contestant_judges && data.contestant_judges.length > 0) {
+            data.contestant_judges.forEach(judge => {
+                const judgeItem = document.createElement('div');
+                judgeItem.className = 'judge-item contestant';
+                judgeItem.textContent = judge;
+                contestantJudgesList.appendChild(judgeItem);
+            });
+        } else {
+            const noJudges = document.createElement('div');
+            noJudges.className = 'judge-item';
+            noJudges.textContent = 'No contestant judges assigned';
+            contestantJudgesList.appendChild(noJudges);
+        }
     }
     
     // Reset voting sections - both are now visible side by side
@@ -788,16 +859,7 @@ function setupVotingUI() {
     leadJudgesContainer.innerHTML = '';
     followJudgesContainer.innerHTML = '';
     
-    const allJudges = [...guestJudges];
-    
-    if (simpleContestantJudgesEnabled) {
-        allJudges.push('Contestant Judges');
-    } else {
-        // Get contestant judges from the DOM elements
-        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-        allJudges.push(...contestantJudges);
-    }
+    const allJudges = buildJudgeRoster();
     
     // Create lead voting UI
     allJudges.forEach(judge => {
@@ -934,15 +996,7 @@ function recordVote(judgeName, voteOption, voteType) {
 }
 
 function updateSubmitButtonState() {
-    let allJudges = [...guestJudges];
-    if (simpleContestantJudgesEnabled) {
-        allJudges.push('Contestant Judges');
-    } else {
-        // Get contestant judges from the DOM elements
-        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-        allJudges.push(...contestantJudges);
-    }
+    const allJudges = buildJudgeRoster();
     const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
     const followVotesComplete = allJudges.every(judge => followVotes[judge]);
     
@@ -976,15 +1030,7 @@ function updateSubmitButtonState() {
 }
 
 function calculateWinner(voteType) {
-    let allJudges = [...guestJudges];
-    if (simpleContestantJudgesEnabled) {
-        allJudges.push('Contestant Judges');
-    } else {
-        // Get contestant judges from the DOM elements
-        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-        allJudges.push(...contestantJudges);
-    }
+    const allJudges = buildJudgeRoster();
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -1080,15 +1126,7 @@ function lockVoting(voteType) {
 }
 
 async function submitCombinedVotes() {
-    let allJudges = [...guestJudges];
-    if (simpleContestantJudgesEnabled) {
-        allJudges.push('Contestant Judges');
-    } else {
-        // Get contestant judges from the DOM elements
-        const contestantJudgeElements = contestantJudgesList.querySelectorAll('.judge-item.contestant');
-        const contestantJudges = Array.from(contestantJudgeElements).map(el => el.textContent);
-        allJudges.push(...contestantJudges);
-    }
+    const allJudges = buildJudgeRoster();
     
     // Check if all judges have voted for both lead and follow
     const missingLeadVotes = allJudges.filter(judge => !leadVotes[judge]);
@@ -1104,13 +1142,17 @@ async function submitCombinedVotes() {
     const leadVotesArray = [];
     const followVotesArray = [];
     
-    for (const judge of Object.keys(leadVotes)) {
-        leadVotesArray.push([judge, leadVotes[judge]]);
-    }
+    allJudges.forEach(judge => {
+        if (typeof leadVotes[judge] !== 'undefined') {
+            leadVotesArray.push([judge, leadVotes[judge]]);
+        }
+    });
     
-    for (const judge of Object.keys(followVotes)) {
-        followVotesArray.push([judge, followVotes[judge]]);
-    }
+    allJudges.forEach(judge => {
+        if (typeof followVotes[judge] !== 'undefined') {
+            followVotesArray.push([judge, followVotes[judge]]);
+        }
+    });
     
     // Get song information (Spotify fields only when integration is enabled)
     const songInput = document.getElementById('song-input');
@@ -1242,6 +1284,8 @@ function resetCompetition() {
     votingLocked = { lead: false, follow: false };
     currentLeads = [];
     currentFollows = [];
+    contestantJudgingEnabled = true;
+    simpleContestantJudgesEnabled = false;
     
     // Reset playlist state
     playlistModeEnabled = false;
@@ -1271,6 +1315,14 @@ function resetCompetition() {
     leadNamesInput.value = '';
     followNamesInput.value = '';
     judgeNamesInput.value = '';
+    
+    if (contestantJudgingToggle) {
+        contestantJudgingToggle.checked = true;
+    }
+    if (simpleContestantJudgesInput) {
+        simpleContestantJudgesInput.checked = false;
+        simpleContestantJudgesInput.disabled = contestantJudgingToggle ? !contestantJudgingToggle.checked : false;
+    }
     
     // Clear file upload
     battleFileUpload.value = '';
