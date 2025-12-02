@@ -3,13 +3,29 @@ services:
   - type: web
     name: hustlentussle
     env: python
-    plan: free # or starter
+    plan: starter  # Starter tier for persistent disk and zero downtime
     buildCommand: pip install -r requirements.prod.txt
     startCommand: gunicorn wsgi:application
     envVars:
       - key: FLASK_ENV
         value: production
       - key: SECRET_KEY
-        generateValue: true # Will generate a random value on first deploy
+        generateValue: true  # Will generate a random value on first deploy
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hustlentussle-db
+          property: connectionString
+      - key: GAME_EXPIRATION_SECONDS
+        value: "21600"  # 6 hours in seconds
+      - key: CLEANUP_INTERVAL_SECONDS
+        value: "3600"  # 1 hour in seconds
+      - key: PERSISTENCE_FALLBACK_ENABLED
+        value: "false"  # In production, fail if database is unavailable
     domains:
-      - yourdomain.com # Replace with your actual domain 
+      - yourdomain.com  # Replace with your actual domain
+
+databases:
+  - name: hustlentussle-db
+    plan: free  # Free tier: 1GB storage, 90-day data retention
+    databaseName: hustlentussle
+    user: hustlentussle 

@@ -19,14 +19,29 @@ import time
 import urllib.parse
 import json
 import base64
+import logging
+import atexit
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Add parent directory to path to import game_logic
+# Add parent directory to path to import game_logic and persistence
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game, Contestant
 from web.config import get_config
+from persistence import (
+    RepositoryFactory,
+    CleanupScheduler,
+    PersistenceError,
+    MemoryGameRepository,
+)
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Get configuration based on environment
 config = get_config()
@@ -39,36 +54,56 @@ app.config.from_object(config)
 CORS(app)
 
 
-class GameRepository:
-    """Thread-safe in-memory repository for active games."""
-
-    def __init__(self) -> None:
-        self._games = {}
-        self._lock = threading.RLock()
-
-    def create(self, game: Game) -> str:
-        with self._lock:
-            session_id = uuid.uuid4().hex
-            game.session_id = session_id
-            # Also stamp the current round with session id if present
-            if getattr(game, 'current_round', None):
-                game.current_round.session_id = session_id
-            self._games[session_id] = game
-            return session_id
-
-    def get(self, session_id: str) -> Game | None:
-        with self._lock:
-            return self._games.get(session_id)
-
-    def exists(self, session_id: str) -> bool:
-        with self._lock:
-            return session_id in self._games
+# Initialize game repository using factory
+def init_repository():
+    """Initialize the game repository based on configuration."""
+    database_url = getattr(config, 'DATABASE_URL', None)
+    fallback_enabled = getattr(config, 'PERSISTENCE_FALLBACK_ENABLED', True)
+    expiration_seconds = getattr(config, 'GAME_EXPIRATION_SECONDS', 6 * 60 * 60)
+    
+    try:
+        repo = RepositoryFactory.create_repository(
+            database_url=database_url,
+            fallback_enabled=fallback_enabled,
+            expiration_seconds=expiration_seconds,
+        )
+        logger.info(f"Repository initialized: {type(repo).__name__}")
+        return repo
+    except PersistenceError as e:
+        logger.error(f"Failed to initialize repository: {e}")
+        if fallback_enabled:
+            logger.warning("Falling back to in-memory repository")
+            return MemoryGameRepository(expiration_seconds=expiration_seconds)
+        raise
 
 
-repo = GameRepository()
+repo = init_repository()
+
+# Initialize cleanup scheduler
+cleanup_scheduler = CleanupScheduler(
+    repository=repo,
+    interval_seconds=getattr(config, 'CLEANUP_INTERVAL_SECONDS', 60 * 60),
+)
+cleanup_scheduler.start()
+
+# Register cleanup on shutdown
+@atexit.register
+def shutdown_cleanup():
+    """Cleanup on application shutdown."""
+    # Guard against cleanup_scheduler not being defined
+    # (can happen if init_repository() raised an exception)
+    if 'cleanup_scheduler' in globals() and cleanup_scheduler is not None:
+        logger.info("Shutting down cleanup scheduler...")
+        cleanup_scheduler.stop()
+
+
 # Backwards compatibility for tests that import `games`
-# Expose the internal storage dict for now; prefer using `repo` going forward.
-games = repo._games
+# Note: This only works with MemoryGameRepository
+# For PostgreSQL, tests should use the repo interface directly
+if hasattr(repo, '_games'):
+    games = repo._games
+else:
+    games = {}  # Empty dict as placeholder for non-memory repositories
 
 # In-memory user OAuth token store keyed by provided key (session_id or auth_key)
 _spotify_user_tokens: dict[str, dict] = {}
@@ -379,6 +414,9 @@ def judge_leads():
     # Process votes and determine winner
     result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
     
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     return jsonify({
         'winner': result['winner'],
         'guest_votes': result['guest_votes'],
@@ -408,6 +446,9 @@ def judge_follows():
     
     # Check for win condition
     win_messages = game.check_for_win() or []
+    
+    # Persist game state changes
+    repo.save(session_id, game)
     
     return jsonify({
         'winner': result['winner'],
@@ -445,6 +486,9 @@ def judge_combined():
     # Check for win condition
     win_messages = game.check_for_win() or []
     
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     return jsonify({
         'lead_winner': lead_result['winner'],
         'lead_guest_votes': lead_result['guest_votes'],
@@ -471,6 +515,10 @@ def next_round():
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
+    
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     state = game.get_game_state()
     
     return jsonify({
