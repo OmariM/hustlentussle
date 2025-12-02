@@ -21,6 +21,7 @@ import json
 import base64
 import logging
 import atexit
+from typing import Optional, Dict, List
 
 # Load environment variables from .env file
 load_dotenv()
@@ -106,10 +107,10 @@ else:
     games = {}  # Empty dict as placeholder for non-memory repositories
 
 # In-memory user OAuth token store keyed by provided key (session_id or auth_key)
-_spotify_user_tokens: dict[str, dict] = {}
+_spotify_user_tokens: Dict[str, dict] = {}
 _spotify_user_tokens_lock = threading.RLock()
 
-def _resolve_key(session_id: str | None, auth_key: str | None) -> str | None:
+def _resolve_key(session_id: Optional[str], auth_key: Optional[str]) -> Optional[str]:
     return auth_key or session_id
 
 
@@ -130,7 +131,7 @@ def _now() -> float:
     return time.time()
 
 
-def _store_user_tokens(key: str, access_token: str, refresh_token: str | None, expires_in: int) -> None:
+def _store_user_tokens(key: str, access_token: str, refresh_token: Optional[str], expires_in: int) -> None:
     if not key:
         return
     with _spotify_user_tokens_lock:
@@ -141,14 +142,14 @@ def _store_user_tokens(key: str, access_token: str, refresh_token: str | None, e
         }
 
 
-def _get_user_tokens(key: str) -> dict | None:
+def _get_user_tokens(key: str) -> Optional[dict]:
     if not key:
         return None
     with _spotify_user_tokens_lock:
         return _spotify_user_tokens.get(key)
 
 
-def _refresh_user_token(key: str) -> str | None:
+def _refresh_user_token(key: str) -> Optional[str]:
     tokens = _get_user_tokens(key)
     if not tokens or not tokens.get('refresh_token'):
         return None
@@ -175,7 +176,7 @@ def _refresh_user_token(key: str) -> str | None:
     return access_token
 
 
-def _ensure_user_access_token(key: str) -> str | None:
+def _ensure_user_access_token(key: str) -> Optional[str]:
     tokens = _get_user_tokens(key)
     if not tokens:
         return None
@@ -193,8 +194,8 @@ def serialize_state(game: Game) -> dict:
         return contestant.points >= game.win_threshold and game.has_winning_follow
 
     # Build unique contestant maps including current pairs, queues and tracked winners
-    lead_dict: dict[str, dict] = {}
-    follow_dict: dict[str, dict] = {}
+    lead_dict: Dict[str, dict] = {}
+    follow_dict: Dict[str, dict] = {}
 
     # Add current pair contestants first
     if game.pair_1 and game.pair_2:
@@ -257,7 +258,7 @@ def serialize_state(game: Game) -> dict:
     simple_flag = bool(getattr(game, 'simple_contestant_judges', False)) and contestant_enabled
 
     # Build lightweight rounds summary for live UI (include completed + current)
-    rounds_data: list[dict] = []
+    rounds_data: List[dict] = []
     try:
         for r in getattr(game, 'rounds', []):
             rounds_data.append({
@@ -500,7 +501,7 @@ def judge_combined():
         game.current_round.song_info = song_info
     
     # If simple contestant judges is enabled, aggregate the proxy vote to all contestant judges
-    def expand_with_mock_contestant_judges(votes_list: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    def expand_with_mock_contestant_judges(votes_list: List[tuple]) -> List[tuple]:
         try:
             if not getattr(game, 'contestant_judging_enabled', True):
                 return votes_list

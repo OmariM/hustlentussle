@@ -54,6 +54,8 @@ class GameSerializer:
             'follow_winner': round_obj.follow_winner,
             'song_info': round_obj.song_info,
             'session_id': round_obj.session_id,
+            'contestant_judging_enabled': getattr(round_obj, 'contestant_judging_enabled', True),
+            'simple_contestant_judges': getattr(round_obj, 'simple_contestant_judges', False),
         }
     
     @staticmethod
@@ -66,6 +68,8 @@ class GameSerializer:
             judges=data.get('judges', []),
             contestant_judges=data.get('contestant_judges', []),
             session_id=data.get('session_id'),
+            contestant_judging_enabled=data.get('contestant_judging_enabled', True),
+            simple_contestant_judges=data.get('simple_contestant_judges', False),
         )
         round_obj.win_messages = data.get('win_messages')
         round_obj.pairs = data.get('pairs', {})
@@ -211,6 +215,10 @@ class GameSerializer:
             'total_num_follows': game.total_num_follows,
             'win_threshold': game.win_threshold,
             'num_contestant_judges': game.num_contestant_judges,
+            
+            # Contestant judging settings
+            'contestant_judging_enabled': getattr(game, 'contestant_judging_enabled', True),
+            'simple_contestant_judges': getattr(game, 'simple_contestant_judges', False),
         }
         
         return json.dumps(game_data)
@@ -398,6 +406,12 @@ class GameSerializer:
         game.total_num_follows = data.get('total_num_follows', len(initial_follows))
         game.win_threshold = data.get('win_threshold', max(game.total_num_leads, game.total_num_follows) - 1)
         game.num_contestant_judges = data.get('num_contestant_judges', 0)
+        
+        # Set contestant judging settings
+        # Enforce constraint: simple_contestant_judges must be False if contestant_judging_enabled is False
+        game.contestant_judging_enabled = data.get('contestant_judging_enabled', True)
+        simple_flag = data.get('simple_contestant_judges', False)
+        game.simple_contestant_judges = bool(simple_flag) if game.contestant_judging_enabled else False
         
         return game
     
