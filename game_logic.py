@@ -12,13 +12,24 @@ class Contestant:
 
 class Round:
     def __init__(
-        self, round_num, lead_votes, follow_votes, judges, contestant_judges, session_id
+        self,
+        round_num,
+        lead_votes,
+        follow_votes,
+        judges,
+        contestant_judges,
+        session_id,
+        *,
+        contestant_judging_enabled: bool = True,
+        simple_contestant_judges: bool = False,
     ) -> None:
         self.round_num = round_num
         self.lead_votes = lead_votes
         self.follow_votes = follow_votes
         self.judges = judges
         self.contestant_judges = contestant_judges
+        self.contestant_judging_enabled = contestant_judging_enabled
+        self.simple_contestant_judges = simple_contestant_judges
         self.win_messages = None  # Will store win messages for this round
         self.pairs = {}  # Will store the pairs for this round
         self.lead_winner = None  # Will store the name of the lead winner
@@ -105,34 +116,46 @@ class ContestantQueueProxy:
 
 class Game:
     state = 0
-    
-    def __init__(self, lead_names, follow_names, guest_judge_names) -> None:
+
+    def __init__(
+        self,
+        lead_names,
+        follow_names,
+        guest_judge_names,
+        *,
+        contestant_judging_enabled: bool = True,
+        simple_contestant_judges: bool = False,
+    ) -> None:
         # Store the session ID
         self.session_id = None  # Will be set when the game is created
-        
+
         # Initialize contestants (backing lists)
         self._leads = [Contestant(name) for name in lead_names]
         self._follows = [Contestant(name) for name in follow_names]
-        
+
         # Public queue proxies (hide current competitors from iteration)
         self.leads = ContestantQueueProxy(self, 'lead')
         self.follows = ContestantQueueProxy(self, 'follow')
-        
+
         # Store initial order
         self.initial_leads = self._leads.copy()
         self.initial_follows = self._follows.copy()
-        
+
         # Initialize judges
         self.guest_judges = guest_judge_names
         self.contestant_judges = []
-        
+        self.contestant_judging_enabled = bool(contestant_judging_enabled)
+        self.simple_contestant_judges = (
+            bool(simple_contestant_judges) if self.contestant_judging_enabled else False
+        )
+
         # Initialize game state
         self.round_num = 1
         self.pair_1 = None
         self.pair_2 = None
         self.rounds = []
         self.current_round = None
-        
+
         # Initialize winning state
         self.winning_lead = None
         self.winning_follow = None
@@ -140,39 +163,42 @@ class Game:
         self.has_winning_follow = False
         self.last_lead_winner = None
         self.last_follow_winner = None
-        
+
         # Initialize tie state
         self.tie_lead_pair = None
         self.tie_follow_pair = None
-        
+
         # Initialize previous pairs tracking
         self.previous_pairs = {}
-        
+
         # Calculate total number of contestants
         self.total_num_leads = len(self._leads)
         self.total_num_follows = len(self._follows)
-        
+
         # Calculate win threshold based on maximum number of contestants
         self.win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
-        
+
         # Calculate number of contestant judges needed - always use 3 if possible
         available_for_judging = len(self._leads) + len(self._follows) - 4
-        self.num_contestant_judges = max(0, min(3, available_for_judging))
-        
+        if self.contestant_judging_enabled:
+            self.num_contestant_judges = max(0, min(3, available_for_judging))
+        else:
+            self.num_contestant_judges = 0
+
         # Pending queue updates (applied at round transition)
         self._pending_leads_enqueue = []
         self._pending_follows_enqueue = []
-        
+
         # Special transition flags
         self.no_contest_pending = False
-        
+
         # Carryover round winners (used when role already has overall winner)
         self.carryover_lead_winner = None
         self.carryover_follow_winner = None
-        
+
         # Start the first round
         self.start_round()
-        
+
     def start_round(self):
         """Start a new round by selecting pairs and contestant judges."""
         # Handle cases with insufficient contestants gracefully
@@ -206,7 +232,9 @@ class Game:
                 {},
                 self.guest_judges,
                 [j.name for j in self.contestant_judges],
-                self.session_id
+                self.session_id,
+                contestant_judging_enabled=self.contestant_judging_enabled,
+                simple_contestant_judges=self.simple_contestant_judges,
             )
             
             # Store the pairs for this round
@@ -234,7 +262,9 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
-            self.session_id
+            self.session_id,
+            contestant_judging_enabled=self.contestant_judging_enabled,
+            simple_contestant_judges=self.simple_contestant_judges,
         )
         
         # Store the pairs for this round
@@ -250,6 +280,8 @@ class Game:
         }
 
     def get_contestant_judges(self):
+        if not self.contestant_judging_enabled:
+            return []
         # Pool is remaining contestants in queues only (competitors already popped)
         pool = list(self.leads) + list(self.follows)
         if self.num_contestant_judges <= 0 or not pool:
@@ -561,7 +593,9 @@ class Game:
             {},
             self.guest_judges,
             [j.name for j in self.contestant_judges],
-            self.session_id
+            self.session_id,
+            contestant_judging_enabled=self.contestant_judging_enabled,
+            simple_contestant_judges=self.simple_contestant_judges,
         )
         
         # Store the pairs for this round

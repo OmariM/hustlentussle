@@ -194,6 +194,57 @@ class TestGameLogic(unittest.TestCase):
             f"Follow should be marked as winner with {follow.points} points"
         )
 
+    def test_contestant_judging_can_be_disabled(self):
+        """Ensure contestant judging can be disabled entirely."""
+        game = Game(
+            self.lead_names,
+            self.follow_names,
+            self.judge_names,
+            contestant_judging_enabled=False,
+        )
+        self.assertFalse(game.contestant_judging_enabled)
+        self.assertEqual(game.num_contestant_judges, 0)
+        self.assertEqual(game.contestant_judges, [])
+        self.assertEqual(game.current_round.contestant_judges, [])
+        self.assertFalse(getattr(game.current_round, 'contestant_judging_enabled', True))
+
+        # Advance to next round and ensure the setting persists
+        game.next_round()
+        self.assertEqual(game.contestant_judges, [])
+        self.assertFalse(getattr(game.current_round, 'contestant_judging_enabled', True))
+
+    def test_simple_mode_ignored_when_contestant_judging_disabled(self):
+        """Verify simple contestant judges flag is forced off when contestant judging is disabled."""
+        game = Game(
+            self.lead_names,
+            self.follow_names,
+            self.judge_names,
+            contestant_judging_enabled=False,
+            simple_contestant_judges=True,
+        )
+        self.assertFalse(game.simple_contestant_judges)
+        self.assertFalse(getattr(game.current_round, 'simple_contestant_judges', True))
+        self.assertEqual(game.contestant_judges, [])
+
+    def test_start_game_can_disable_randomize_order(self):
+        """Ensure API preserves input order when randomization is disabled."""
+        payload = {
+            'leads': ','.join(self.lead_names),
+            'follows': ','.join(self.follow_names),
+            'judges': ','.join(self.judge_names),
+            'randomize_order': False,
+            'contestant_judging_enabled': True,
+        }
+        response = self.client.post('/api/start_game', json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['initial_leads'], self.lead_names)
+        self.assertEqual(data['initial_follows'], self.follow_names)
+        self.assertEqual(data['pair_1'][0], self.lead_names[0])
+        self.assertEqual(data['pair_1'][1], self.follow_names[0])
+        self.assertEqual(data['pair_2'][0], self.lead_names[1])
+        self.assertEqual(data['pair_2'][1], self.follow_names[1])
+
     def test_win_threshold_calculation(self):
         """Test that win threshold is correctly calculated for different numbers of contestants."""
         # Test case 1: More leads than follows
