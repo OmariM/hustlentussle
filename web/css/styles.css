@@ -478,6 +478,126 @@ textarea {
     margin: 20px 0;
 }
 
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 10000;
+}
+
+.modal {
+    width: 100%;
+    max-width: 720px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--muted-bg);
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+.modal-close:hover {
+    background: rgba(0,0,0,0.06);
+}
+
+[data-theme="dark"] .modal-close:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.modal-body {
+    padding: 16px;
+}
+
+.modal-subtitle {
+    margin: 0 0 12px 0;
+    color: var(--light-text);
+}
+
+.modal-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 12px 0;
+}
+
+@media (max-width: 768px) {
+    .modal-summary {
+        grid-template-columns: 1fr;
+    }
+}
+
+.modal-summary-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--muted-bg);
+}
+
+.modal-summary-section h4 {
+    margin: 0 0 8px 0;
+    color: var(--primary-color);
+}
+
+.modal-pair {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.modal-winner {
+    color: var(--text-color);
+}
+
+.modal-note {
+    margin: 10px 0 0 0;
+    font-size: 0.95rem;
+    color: var(--light-text);
+}
+
+.modal-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #dc3545;
+    background: rgba(220, 53, 69, 0.12);
+    color: #dc3545;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border-color);
+    background: var(--muted-bg);
+}
+
 .vote-submission .btn.partial-votes {
     background-color: #ffc107;
     border-color: #ffc107;

@@ -120,18 +120,22 @@ def generate_screenshots() -> None:
 						card.locator('.vote-option-2').click()
 					time.sleep(0.1)
 
-				# Submit votes
+				# Confirm -> modal -> submit (auto-advances)
 				page.wait_for_function("document.getElementById('submit-votes') && !document.getElementById('submit-votes').disabled")
+				prev_round = page.text_content('#round-number').strip()
 				page.click('#submit-votes')
-				page.wait_for_selector('#voting-results:not(.hidden)')
-				time.sleep(0.2)
+				page.wait_for_selector('#vote-confirm-modal:not(.hidden)')
+				time.sleep(0.15)
+				# Capture the confirmation step
 				frames.append(pil_from_bytes(page.screenshot(full_page=True)))
+				page.click('#vote-confirm-submit')
 
-				# Proceed to next round unless this was round 5
+				# Wait for round to advance (or for next UI to render)
 				if round_index < 5:
-					page.click('#next-round')
-					# Wait for results to hide and next round to render
-					page.wait_for_selector('#voting-results.hidden', state='attached')
+					page.wait_for_function(
+						"(prev) => { const rn = document.getElementById('round-number'); return rn && rn.textContent.trim() !== prev; }",
+						arg=prev_round,
+					)
 					page.wait_for_selector('#lead-judges-container .judge-card')
 					time.sleep(0.2)
 
