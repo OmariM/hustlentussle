@@ -57,8 +57,8 @@ class DebugTools {
             right: 6px;
             bottom: 6px;
             cursor: se-resize;
-            border-right: 2px solid #4CAF50;
-            border-bottom: 2px solid #4CAF50;
+            border-right: 2px solid var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
             opacity: 0.8;
         `;
         this.panel.appendChild(resizeHandle);
@@ -76,7 +76,7 @@ class DebugTools {
             right: 20px;
             z-index: 10000;
             padding: 8px 15px;
-            background: #4CAF50;
+            background: var(--primary-color);
             color: white;
             border: none;
             border-radius: 4px;
@@ -276,7 +276,7 @@ class DebugTools {
             padding: 4px 8px;
             background: #333;
             color: white;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
             cursor: pointer;
         `;
@@ -302,7 +302,7 @@ class DebugTools {
             margin: 5px 0;
             padding: 5px;
             background: #333;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
         `;
         
@@ -1006,7 +1006,7 @@ class DebugTools {
         header.style.cssText = `
             margin: 0 0 5px 0;
             font-size: 14px;
-            color: #4CAF50;
+            color: var(--primary-color);
         `;
         
         section.appendChild(header);
@@ -1023,7 +1023,7 @@ class DebugTools {
             padding: 5px;
             background: #333;
             color: white;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
             cursor: pointer;
         `;
