@@ -324,6 +324,21 @@ def serialize_state(game: Game) -> dict:
 def index():
     return render_template('index.html', config=app.config)
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to verify persistence status."""
+    repo_type = type(repo).__name__
+    game_count = len(repo.list_sessions()) if hasattr(repo, 'list_sessions') else 'unknown'
+    
+    return jsonify({
+        'status': 'healthy',
+        'persistence': {
+            'repository_type': repo_type,
+            'using_postgres': repo_type == 'PostgresGameRepository',
+            'active_games': game_count,
+        }
+    })
+
 @app.route('/api/state', methods=['GET'])
 def get_state():
     session_id = request.args.get('session_id')
