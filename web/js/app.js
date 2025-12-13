@@ -215,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
-    submitVotesBtn.addEventListener('click', openVoteConfirmModal);
+    submitVotesBtn.addEventListener('click', (e) => openVoteConfirmModal(e));
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
 
@@ -238,6 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
             closeVoteConfirmModal();
         }
     });
+
+    // Ensure modal is never shown by default on load
+    closeVoteConfirmModal();
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -435,6 +438,7 @@ function renderFromState(state) {
     updateLiveGraphicFromState(state);
 
     // Reset voting UI for the current round
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -861,6 +865,7 @@ function updateRoundUI(data) {
     }
     
     // Reset voting sections - both are now visible side by side
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -1084,8 +1089,18 @@ function showVoteConfirmError(message) {
     }
 }
 
-function openVoteConfirmModal() {
+function openVoteConfirmModal(evt) {
     if (!voteConfirmModal) return;
+
+    // Guard: should not be available until after votes are cast
+    const allJudges = buildJudgeRoster();
+    const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
+    const followVotesComplete = allJudges.every(judge => followVotes[judge]);
+    if (!leadVotesComplete || !followVotesComplete) {
+        // If something tries to open it early, keep it closed.
+        closeVoteConfirmModal();
+        return;
+    }
 
     showVoteConfirmError('');
 
