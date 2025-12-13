@@ -489,6 +489,10 @@ textarea {
     z-index: 10000;
 }
 
+.modal-overlay.hidden {
+    display: none;
+}
+
 .modal {
     width: 100%;
     max-width: 720px;
