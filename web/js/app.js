@@ -48,6 +48,10 @@ let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
+// Vote confirmation modal elements
+let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
+let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
+let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -131,6 +135,20 @@ document.addEventListener('DOMContentLoaded', () => {
     leadPreviewName = document.getElementById('lead-preview-name');
     followPreviewName = document.getElementById('follow-preview-name');
 
+    // Vote confirmation modal
+    voteConfirmModal = document.getElementById('vote-confirm-modal');
+    voteConfirmCloseBtn = document.getElementById('vote-confirm-close');
+    voteConfirmCancelBtn = document.getElementById('vote-confirm-cancel');
+    voteConfirmSubmitBtn = document.getElementById('vote-confirm-submit');
+    voteConfirmRound = document.getElementById('vote-confirm-round');
+    voteConfirmLead1 = document.getElementById('vote-confirm-lead1');
+    voteConfirmLead2 = document.getElementById('vote-confirm-lead2');
+    voteConfirmFollow1 = document.getElementById('vote-confirm-follow1');
+    voteConfirmFollow2 = document.getElementById('vote-confirm-follow2');
+    voteConfirmLeadWinner = document.getElementById('vote-confirm-lead-winner');
+    voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner');
+    voteConfirmError = document.getElementById('vote-confirm-error');
+
 // Results elements
     roundResultsSection = document.getElementById('round-results');
     winMessages = document.getElementById('win-messages');
@@ -197,9 +215,32 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
-    submitVotesBtn.addEventListener('click', submitCombinedVotes);
+    submitVotesBtn.addEventListener('click', (e) => openVoteConfirmModal(e));
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
+
+    // Modal controls
+    if (voteConfirmCloseBtn) voteConfirmCloseBtn.addEventListener('click', closeVoteConfirmModal);
+    if (voteConfirmCancelBtn) voteConfirmCancelBtn.addEventListener('click', closeVoteConfirmModal);
+    if (voteConfirmModal) {
+        voteConfirmModal.addEventListener('click', (e) => {
+            // click outside the modal closes
+            if (e.target === voteConfirmModal) closeVoteConfirmModal();
+        });
+    }
+    if (voteConfirmSubmitBtn) {
+        voteConfirmSubmitBtn.addEventListener('click', async () => {
+            await submitCombinedVotes({ autoAdvance: true, source: 'modal' });
+        });
+    }
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            closeVoteConfirmModal();
+        }
+    });
+
+    // Ensure modal is never shown by default on load
+    closeVoteConfirmModal();
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -397,6 +438,7 @@ function renderFromState(state) {
     updateLiveGraphicFromState(state);
 
     // Reset voting UI for the current round
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -823,6 +865,7 @@ function updateRoundUI(data) {
     }
     
     // Reset voting sections - both are now visible side by side
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -1005,15 +1048,19 @@ function updateSubmitButtonState() {
     
     const submitBtn = document.getElementById('submit-votes');
     if (submitBtn) {
+        const leadCount = allJudges.filter(judge => leadVotes[judge]).length;
+        const followCount = allJudges.filter(judge => followVotes[judge]).length;
+        const total = allJudges.length * 2;
+        const cast = leadCount + followCount;
+
         if (leadVotesComplete && followVotesComplete) {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit All Votes';
+            submitBtn.textContent = 'Confirm Votes';
             submitBtn.classList.remove('partial-votes');
         } else {
-            submitBtn.disabled = false; // Allow partial submission for testing, but show visual feedback
-            const leadCount = allJudges.filter(judge => leadVotes[judge]).length;
-            const followCount = allJudges.filter(judge => followVotes[judge]).length;
-            submitBtn.textContent = `Submit Votes (${leadCount + followCount}/${allJudges.length * 2} cast)`;
+            // Smooth flow: disable confirm until all votes are in
+            submitBtn.disabled = true;
+            submitBtn.textContent = `Confirm Votes (${cast}/${total} cast)`;
             submitBtn.classList.add('partial-votes');
         }
     }
@@ -1030,6 +1077,66 @@ function updateSubmitButtonState() {
     } else {
         hideWinnerPreview('follow');
     }
+}
+
+function showVoteConfirmError(message) {
+    if (!voteConfirmError) return;
+    voteConfirmError.textContent = message || '';
+    if (message) {
+        voteConfirmError.classList.remove('hidden');
+    } else {
+        voteConfirmError.classList.add('hidden');
+    }
+}
+
+function openVoteConfirmModal(evt) {
+    if (!voteConfirmModal) return;
+
+    // Guard: should not be available until after votes are cast
+    const allJudges = buildJudgeRoster();
+    const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
+    const followVotesComplete = allJudges.every(judge => followVotes[judge]);
+    if (!leadVotesComplete || !followVotesComplete) {
+        // If something tries to open it early, keep it closed.
+        closeVoteConfirmModal();
+        return;
+    }
+
+    showVoteConfirmError('');
+
+    // Populate round/contestants
+    if (voteConfirmRound) voteConfirmRound.textContent = roundNumber ? roundNumber.textContent : '?';
+    if (voteConfirmLead1) voteConfirmLead1.textContent = lead1Name ? lead1Name.textContent : '';
+    if (voteConfirmLead2) voteConfirmLead2.textContent = lead2Name ? lead2Name.textContent : '';
+    if (voteConfirmFollow1) voteConfirmFollow1.textContent = follow1Name ? follow1Name.textContent : '';
+    if (voteConfirmFollow2) voteConfirmFollow2.textContent = follow2Name ? follow2Name.textContent : '';
+
+    // Preview winners (requires all votes)
+    const leadPreview = calculateWinner('lead');
+    const followPreview = calculateWinner('follow');
+    if (voteConfirmLeadWinner) voteConfirmLeadWinner.textContent = leadPreview || '—';
+    if (voteConfirmFollowWinner) voteConfirmFollowWinner.textContent = followPreview || '—';
+
+    if (!leadPreview || !followPreview) {
+        showVoteConfirmError('Votes are not complete yet. Please make sure every judge has voted for both leads and follows.');
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
+    } else {
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+    }
+
+    voteConfirmModal.classList.remove('hidden');
+    try {
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.focus();
+    } catch (_) {}
+}
+
+function closeVoteConfirmModal() {
+    if (!voteConfirmModal) return;
+    voteConfirmModal.classList.add('hidden');
+    showVoteConfirmError('');
+    try {
+        if (submitVotesBtn) submitVotesBtn.focus();
+    } catch (_) {}
 }
 
 function calculateWinner(voteType) {
@@ -1128,7 +1235,7 @@ function lockVoting(voteType) {
     });
 }
 
-async function submitCombinedVotes() {
+async function submitCombinedVotes(options = {}) {
     const allJudges = buildJudgeRoster();
     
     // Check if all judges have voted for both lead and follow
@@ -1137,7 +1244,13 @@ async function submitCombinedVotes() {
     
     if (missingLeadVotes.length > 0 || missingFollowVotes.length > 0) {
         const totalMissing = Math.max(missingLeadVotes.length, missingFollowVotes.length);
-        alert(`Waiting for votes from ${totalMissing} judge(s). Please ensure all judges have voted for both leads and follows.`);
+        const msg = `Waiting for votes from ${totalMissing} judge(s). Please ensure all judges have voted for both leads and follows.`;
+        // If the modal is open, show inline error; otherwise fallback to alert
+        if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            showVoteConfirmError(msg);
+        } else {
+            alert(msg);
+        }
         return;
     }
     
@@ -1182,6 +1295,7 @@ async function submitCombinedVotes() {
     lockVoting('lead');
     lockVoting('follow');
     submitVotesBtn.disabled = true;
+    if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
     
     try {
         const response = await fetch('/api/judge_combined', {
@@ -1205,29 +1319,42 @@ async function submitCombinedVotes() {
             } catch (_) {}
         }
         
-        // Update results UI
-        leadWinner.textContent = data.lead_winner;
-        leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
-        leadContestantVotes.textContent = data.lead_contestant_votes.join(', ') || 'None';
-        
-        followWinner.textContent = data.follow_winner;
-        followGuestVotes.textContent = data.follow_guest_votes.join(', ') || 'None';
-        followContestantVotes.textContent = data.follow_contestant_votes.join(', ') || 'None';
-        
-        // Show results
-        votingResults.classList.remove('hidden');
-        
-        // Show win messages if any
-        if (data.win_messages && data.win_messages.length > 0) {
-            winMessages.innerHTML = data.win_messages.map(msg => `<p>${msg}</p>`).join('');
-        }
-        
-        // Show round results section
-        roundResultsSection.classList.remove('hidden');
-        
-        // If game is finished, disable next round button
-        if (data.game_finished) {
-            nextRoundBtn.disabled = true;
+        // Close the modal on successful submit
+        closeVoteConfirmModal();
+
+        const shouldAutoAdvance = options && options.autoAdvance === true;
+        const showResultsInRound = !shouldAutoAdvance || data.game_finished;
+
+        if (showResultsInRound) {
+            // Update results UI
+            leadWinner.textContent = data.lead_winner;
+            leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
+            leadContestantVotes.textContent = data.lead_contestant_votes.join(', ') || 'None';
+            
+            followWinner.textContent = data.follow_winner;
+            followGuestVotes.textContent = data.follow_guest_votes.join(', ') || 'None';
+            followContestantVotes.textContent = data.follow_contestant_votes.join(', ') || 'None';
+            
+            // Show results
+            votingResults.classList.remove('hidden');
+            
+            // Show win messages if any
+            if (data.win_messages && data.win_messages.length > 0) {
+                winMessages.innerHTML = data.win_messages.map(msg => `<p>${msg}</p>`).join('');
+            }
+            
+            // Show round results section
+            roundResultsSection.classList.remove('hidden');
+            
+            // If game is finished, disable next round button
+            if (data.game_finished) {
+                nextRoundBtn.disabled = true;
+            }
+        } else {
+            // Keep the UI clean; we’re auto-advancing
+            votingResults.classList.add('hidden');
+            roundResultsSection.classList.add('hidden');
+            winMessages.innerHTML = '';
         }
         
         // Update live graphic immediately with the latest canonical state
@@ -1235,12 +1362,31 @@ async function submitCombinedVotes() {
             const state = await fetchCanonicalState();
             if (state) updateLiveGraphicFromState(state);
         } catch (_) {}
+
+        // Auto-advance to the next round (unless game finished)
+        if (shouldAutoAdvance && !data.game_finished) {
+            try {
+                await goToNextRound();
+            } catch (_) {
+                // If next round fails, allow the user to try again
+                votingLocked.lead = false;
+                votingLocked.follow = false;
+                submitVotesBtn.disabled = false;
+                if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+            }
+        }
     } catch (error) {
         console.error('Error submitting combined votes:', error);
-        alert('Failed to submit votes. Please try again.');
+        const msg = 'Failed to submit votes. Please try again.';
+        if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            showVoteConfirmError(msg);
+        } else {
+            alert(msg);
+        }
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
         submitVotesBtn.disabled = false;
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
     }
 }
 

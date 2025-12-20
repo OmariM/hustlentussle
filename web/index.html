@@ -217,7 +217,47 @@
                 </div>
                 
                 <div class="vote-submission">
-                    <button id="submit-votes" class="btn primary">Submit All Votes</button>
+                    <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                </div>
+
+                <!-- Vote confirmation modal -->
+                <div id="vote-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h3 id="vote-confirm-title">Confirm submission</h3>
+                            <button id="vote-confirm-close" class="modal-close" aria-label="Close">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="modal-subtitle">You’re about to submit votes for <strong>Round <span id="vote-confirm-round">?</span></strong>.</p>
+
+                            <div class="modal-summary">
+                                <div class="modal-summary-section">
+                                    <h4>Leads</h4>
+                                    <div class="modal-pair">
+                                        <span class="contestant lead" id="vote-confirm-lead1"></span> vs
+                                        <span class="contestant lead" id="vote-confirm-lead2"></span>
+                                    </div>
+                                    <div class="modal-winner">Preview winner: <strong id="vote-confirm-lead-winner">—</strong></div>
+                                </div>
+
+                                <div class="modal-summary-section">
+                                    <h4>Follows</h4>
+                                    <div class="modal-pair">
+                                        <span class="contestant follow" id="vote-confirm-follow1"></span> vs
+                                        <span class="contestant follow" id="vote-confirm-follow2"></span>
+                                    </div>
+                                    <div class="modal-winner">Preview winner: <strong id="vote-confirm-follow-winner">—</strong></div>
+                                </div>
+                            </div>
+
+                            <p class="modal-note">Submitting will automatically advance to the next round (unless the battle is finished).</p>
+                            <div id="vote-confirm-error" class="modal-error hidden"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="vote-confirm-cancel" class="btn secondary">Cancel</button>
+                            <button id="vote-confirm-submit" class="btn primary">Submit &amp; Next Round</button>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="voting-results" class="results hidden">

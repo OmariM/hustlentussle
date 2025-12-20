@@ -908,29 +908,35 @@ class DebugTools {
                 return;
             }
 
-            // Submit all votes using the combined submit button
-            const submitBtn = document.getElementById('submit-votes');
-            if (submitBtn && !submitBtn.disabled) {
-                console.log('Submitting all votes...');
-                submitBtn.click();
-                // Wait for results to render (votingResults visible or button disabled)
-                await this.waitFor(() => {
-                    const vr = document.getElementById('voting-results');
-                    return (vr && !vr.classList.contains('hidden')) || (submitBtn.disabled === true);
-                }, 7000);
-            } else {
-                console.warn('Submit button not available or already disabled');
-            }
+            // Confirm + submit votes via modal (new flow auto-advances)
+            const confirmBtn = document.getElementById('submit-votes');
+            if (confirmBtn && !confirmBtn.disabled) {
+                console.log('Confirming votes...');
+                const prevRound = (document.getElementById('round-number')?.textContent || '').trim();
+                confirmBtn.click();
 
-            // Find and click the Next Round button once enabled
-            const nextRoundButton = document.getElementById('next-round');
-            if (nextRoundButton) {
-                // Ensure any async UI updates are finished and button is enabled
-                await this.waitFor(() => !nextRoundButton.disabled, 7000);
-                console.log('Clicking Next Round button...');
-                nextRoundButton.click();
+                // Wait for modal to appear
+                await this.waitFor(() => {
+                    const m = document.getElementById('vote-confirm-modal');
+                    return m && !m.classList.contains('hidden');
+                }, 5000);
+
+                const modalSubmit = document.getElementById('vote-confirm-submit');
+                if (modalSubmit) {
+                    console.log('Submitting votes (modal)...');
+                    modalSubmit.click();
+                } else {
+                    console.warn('Modal submit button not found');
+                }
+
+                // Wait for round to advance (or game to end)
+                await this.waitFor(() => {
+                    const rn = (document.getElementById('round-number')?.textContent || '').trim();
+                    const battleActive = document.getElementById('battle-screen')?.classList.contains('active');
+                    return !battleActive || (prevRound && rn && rn !== prevRound);
+                }, 12000);
             } else {
-                console.warn('Next Round button not found');
+                console.warn('Confirm button not available or disabled');
             }
         } catch (error) {
             console.error('Error in next round process:', error);
