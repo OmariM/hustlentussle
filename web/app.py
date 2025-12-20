@@ -52,6 +52,16 @@ app = Flask(__name__,
             static_url_path='',
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
+
+# Cache-busting for static assets (helps ensure browsers pull latest JS/CSS after deploy)
+if not app.config.get('ASSET_VERSION'):
+    # Prefer deploy-provided versioning when available; fallback to process start time.
+    app.config['ASSET_VERSION'] = (
+        os.environ.get('ASSET_VERSION')
+        or os.environ.get('RENDER_GIT_COMMIT')
+        or os.environ.get('GIT_COMMIT')
+        or str(int(time.time()))
+    )
 CORS(app)
 
 
