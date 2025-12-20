@@ -11,6 +11,10 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Voting constants (frontend-only)
+const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
+const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
+
 // Playlist mode state
 let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
 let playlistModeEnabled = false;
@@ -474,11 +478,73 @@ function buildJudgeRoster() {
         return roster;
     }
     if (simpleContestantJudgesEnabled) {
-        roster.push('Contestant Judges');
+        roster.push(PROXY_CONTESTANT_JUDGES_NAME);
     } else {
         roster.push(...getContestantJudgeNames());
     }
     return roster;
+}
+
+function computeGuestWinnerDecision(votesObj) {
+    // Decide which contestant is "winning" based on guest judges only.
+    // vote=1 => contestant 1 (+2), vote=2 => contestant 2 (+2), vote=3 => tie (+1 each), vote=4 => no contest (+0).
+    let s1 = 0;
+    let s2 = 0;
+    (guestJudges || []).forEach(j => {
+        const v = votesObj ? votesObj[j] : undefined;
+        if (v === 1) s1 += 2;
+        else if (v === 2) s2 += 2;
+        else if (v === 3) { s1 += 1; s2 += 1; }
+    });
+    return s1 >= s2 ? 1 : 2;
+}
+
+function expandSimpleContestantJudgesVotes(votesObj) {
+    const proxyVote = votesObj ? votesObj[PROXY_CONTESTANT_JUDGES_NAME] : undefined;
+    const cjNames = getContestantJudgeNames();
+    if (!contestantJudgingEnabled || !simpleContestantJudgesEnabled) {
+        return [];
+    }
+    if (!cjNames || cjNames.length === 0) {
+        // No contestant judges assigned this round; proxy vote has no effect.
+        return [];
+    }
+
+    if (proxyVote === 1 || proxyVote === 2) {
+        return cjNames.map(n => [n, proxyVote]);
+    }
+
+    if (proxyVote === VOTE_MIXED) {
+        // "Mixed" means contestant judges are not unanimous. Split votes ~in half, but
+        // give the majority to the contestant currently winning among the guest judges.
+        const winnerDecision = computeGuestWinnerDecision(votesObj);
+        const loserDecision = winnerDecision === 1 ? 2 : 1;
+        const majorityCount = Math.floor(cjNames.length / 2) + 1;
+        return cjNames.map((n, idx) => [n, idx < majorityCount ? winnerDecision : loserDecision]);
+    }
+
+    return [];
+}
+
+function buildEffectiveVotesArray(voteType) {
+    const roster = buildJudgeRoster();
+    const votesObj = voteType === 'lead' ? leadVotes : followVotes;
+
+    const out = [];
+
+    roster.forEach(judge => {
+        if (judge === PROXY_CONTESTANT_JUDGES_NAME && contestantJudgingEnabled && simpleContestantJudgesEnabled) {
+            // Replace proxy with expanded contestant-judge votes (unanimous or mixed).
+            const expanded = expandSimpleContestantJudgesVotes(votesObj);
+            expanded.forEach(v => out.push(v));
+            return;
+        }
+        if (typeof votesObj[judge] !== 'undefined') {
+            out.push([judge, votesObj[judge]]);
+        }
+    });
+
+    return out;
 }
 
 function updateLiveGraphicFromState(state) {
@@ -943,6 +1009,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     
     const option1Name = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
     const option2Name = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
+    const isProxyContestantJudges = simpleContestantJudgesEnabled && judgeName === PROXY_CONTESTANT_JUDGES_NAME;
     
     // Option 1 button
     const option1Btn = document.createElement('button');
@@ -962,6 +1029,23 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         judgeCard.classList.add('voted');
     });
     
+    // Mixed option (proxy contestant judges only)
+    let mixedBtn = null;
+    if (isProxyContestantJudges) {
+        mixedBtn = document.createElement('button');
+        mixedBtn.className = 'vote-btn vote-option-mixed';
+        mixedBtn.textContent = 'Mixed';
+        mixedBtn.addEventListener('click', () => {
+            if (votingLocked[voteType]) return;
+            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            mixedBtn.classList.add('selected');
+            recordVote(judgeName, VOTE_MIXED, voteType);
+            judgeCard.classList.add('voted');
+        });
+    }
+
     // Option 2 button
     const option2Btn = document.createElement('button');
     option2Btn.className = 'vote-btn vote-option-2';
@@ -981,6 +1065,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     });
     
     voteOptions.appendChild(option1Btn);
+    if (mixedBtn) voteOptions.appendChild(mixedBtn);
     voteOptions.appendChild(option2Btn);
     
     // Tie and No Contest options for guest judges
@@ -1140,7 +1225,6 @@ function closeVoteConfirmModal() {
 }
 
 function calculateWinner(voteType) {
-    const allJudges = buildJudgeRoster();
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -1148,16 +1232,14 @@ function calculateWinner(voteType) {
     const contestant2 = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
     
     // Check if all votes are present
+    const allJudges = buildJudgeRoster();
     const hasAllVotes = allJudges.every(judge => votes[judge]);
     if (!hasAllVotes) {
         return null; // Not all votes are in yet
     }
     
     // Convert votes to the format expected by the game logic
-    const votesArray = [];
-    for (const judge of allJudges) {
-        votesArray.push([judge, votes[judge]]);
-    }
+    const votesArray = buildEffectiveVotesArray(voteType);
     
     // Calculate winner using the same logic as the backend
     const guestVotes = votesArray.filter(([judge, vote]) => guestJudges.includes(judge)).map(([judge, vote]) => vote);
@@ -1254,21 +1336,9 @@ async function submitCombinedVotes(options = {}) {
         return;
     }
     
-    // Convert votes objects to array format for API
-    const leadVotesArray = [];
-    const followVotesArray = [];
-    
-    allJudges.forEach(judge => {
-        if (typeof leadVotes[judge] !== 'undefined') {
-            leadVotesArray.push([judge, leadVotes[judge]]);
-        }
-    });
-    
-    allJudges.forEach(judge => {
-        if (typeof followVotes[judge] !== 'undefined') {
-            followVotesArray.push([judge, followVotes[judge]]);
-        }
-    });
+    // Convert votes to arrays for API, expanding the proxy judge when simple contestant judges is enabled.
+    const leadVotesArray = buildEffectiveVotesArray('lead');
+    const followVotesArray = buildEffectiveVotesArray('follow');
     
     // Get song information (Spotify fields only when integration is enabled)
     const songInput = document.getElementById('song-input');

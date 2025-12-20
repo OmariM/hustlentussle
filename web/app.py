@@ -52,7 +52,42 @@ app = Flask(__name__,
             static_url_path='',
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
+
+# Cache-busting for static assets (helps ensure browsers pull latest JS/CSS after deploy)
+if not app.config.get('ASSET_VERSION'):
+    # Prefer deploy-provided versioning when available; fallback to process start time.
+    app.config['ASSET_VERSION'] = (
+        os.environ.get('ASSET_VERSION')
+        or os.environ.get('RENDER_GIT_COMMIT')
+        or os.environ.get('GIT_COMMIT')
+        or str(int(time.time()))
+    )
 CORS(app)
+
+# Stronger cache control: ensure index.html and assets revalidate after deploy.
+# This prevents "hard to shake" stale JS/CSS in some browsers/CDNs.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def add_cache_control_headers(response):
+    try:
+        path = request.path or ''
+        # Never cache the HTML shell; it is the entry point that references versioned assets.
+        if path == '/' or response.mimetype == 'text/html':
+            response.headers['Cache-Control'] = 'no-store, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
+        # For static assets, require revalidation (query-param versioning already busts caches,
+        # but this makes refreshes more reliable across intermediaries).
+        if path.endswith('.js') or path.endswith('.css'):
+            response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+    except Exception:
+        # Never fail a request due to cache headers.
+        pass
+    return response
 
 
 # Initialize game repository using factory
