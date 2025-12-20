@@ -39,7 +39,8 @@ let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
-let pointsToWinInput;
+let pointsToWinInput, pointsToWinModeSelect, customPointsContainer, pointsToWinHelper;
+let numContestantJudgesInput, contestantJudgesWarning;
 let contestantJudgingToggle, simpleContestantJudgesInput, randomizeOrderToggle;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
     let currentLeadScores, currentFollowScores;
@@ -84,6 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
     followNamesInput = document.getElementById('follow-names');
     judgeNamesInput = document.getElementById('judge-names');
     pointsToWinInput = document.getElementById('points-to-win');
+    pointsToWinModeSelect = document.getElementById('points-to-win-mode');
+    customPointsContainer = document.getElementById('custom-points-container');
+    pointsToWinHelper = document.getElementById('points-to-win-helper');
+    numContestantJudgesInput = document.getElementById('num-contestant-judges');
+    contestantJudgesWarning = document.getElementById('contestant-judges-warning');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
@@ -98,9 +104,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 simpleContestantJudgesInput.checked = false;
             }
             simpleContestantJudgesInput.disabled = !enabled;
+            // Also disable/enable num contestant judges input
+            if (numContestantJudgesInput) {
+                numContestantJudgesInput.disabled = !enabled;
+                const numContestantJudgesGroup = document.getElementById('num-contestant-judges-group');
+                if (numContestantJudgesGroup) {
+                    numContestantJudgesGroup.style.opacity = enabled ? '1' : '0.5';
+                }
+            }
         };
         contestantJudgingToggle.addEventListener('change', syncContestantJudgingControls);
         syncContestantJudgingControls();
+    }
+
+    // Points to win mode toggle
+    if (pointsToWinModeSelect && customPointsContainer && pointsToWinHelper) {
+        const updatePointsToWinUI = () => {
+            const mode = pointsToWinModeSelect.value;
+            if (mode === 'custom') {
+                customPointsContainer.style.display = 'block';
+                pointsToWinHelper.textContent = 'Enter a custom number of points required to win.';
+            } else if (mode === 'auto') {
+                customPointsContainer.style.display = 'none';
+                pointsToWinHelper.textContent = 'Points to win = max(leads, follows) - 1';
+            } else {
+                customPointsContainer.style.display = 'none';
+                pointsToWinHelper.textContent = 'First contestant to reach 7 points wins.';
+            }
+        };
+        pointsToWinModeSelect.addEventListener('change', updatePointsToWinUI);
+        updatePointsToWinUI();
+    }
+
+    // Contestant judges validation
+    if (numContestantJudgesInput && judgeNamesInput && contestantJudgesWarning) {
+        const validateContestantJudges = () => {
+            const numContestantJudgesRaw = numContestantJudgesInput.value.trim();
+            if (numContestantJudgesRaw === '') {
+                contestantJudgesWarning.style.display = 'none';
+                return;
+            }
+            const numContestantJudges = parseInt(numContestantJudgesRaw, 10);
+            const guestJudgeCount = judgeNamesInput.value.split(',').filter(n => n.trim()).length;
+            const expected = guestJudgeCount + 1;
+            if (!isNaN(numContestantJudges) && numContestantJudges !== expected) {
+                contestantJudgesWarning.textContent = `Warning: You specified ${numContestantJudges} contestant judge(s), but the recommended number is ${expected} (1 more than the ${guestJudgeCount} guest judge(s)). This may cause undetermined behavior.`;
+                contestantJudgesWarning.style.display = 'block';
+            } else {
+                contestantJudgesWarning.style.display = 'none';
+            }
+        };
+        numContestantJudgesInput.addEventListener('input', validateContestantJudges);
+        judgeNamesInput.addEventListener('input', validateContestantJudges);
     }
 
 // Round screen elements
@@ -768,19 +823,38 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
-    const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
-    const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
+    
+    // Handle points to win mode
+    const pointsToWinMode = pointsToWinModeSelect ? pointsToWinModeSelect.value : 'default';
+    let points_to_win = null;
+    let points_to_win_mode = pointsToWinMode;
+    
+    if (pointsToWinMode === 'custom') {
+        const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
+        if (pointsToWinRaw !== '') {
+            points_to_win = parseInt(pointsToWinRaw, 10);
+        }
+        // If custom but no value entered, fall back to default
+        if (points_to_win === null || isNaN(points_to_win)) {
+            points_to_win_mode = 'default';
+        }
+    }
+    
+    // Handle num contestant judges
+    const numContestantJudgesRaw = numContestantJudgesInput ? numContestantJudgesInput.value.trim() : '';
+    const num_contestant_judges = numContestantJudgesRaw === '' ? null : parseInt(numContestantJudgesRaw, 10);
+    
     const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
     const playlistUrlRaw = (spotifyOn && playlistUrlInput) ? playlistUrlInput.value.trim() : '';
     const contestantJudgingRequested = allowContestantJudging !== false;
     const simpleModeRequested = contestantJudgingRequested && !!useSimpleContestantJudges;
     const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
-    
+
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/start_game', {
             method: 'POST',
@@ -790,6 +864,8 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
                 follows,
                 judges,
                 points_to_win,
+                points_to_win_mode,
+                num_contestant_judges,
                 playlist_url: playlistUrlRaw,
                 simple_contestant_judges: simpleModeRequested,
                 contestant_judging_enabled: contestantJudgingRequested,
@@ -798,6 +874,15 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         });
         
         const data = await response.json();
+        
+        // Check for contestant judges warning and show confirmation if needed
+        if (data.contestant_judges_warning) {
+            const proceed = confirm(data.contestant_judges_warning + '\n\nDo you want to proceed anyway?');
+            if (!proceed) {
+                return; // User cancelled, don't start the game
+            }
+        }
+        
         sessionId = data.session_id;
         localStorage.setItem('sessionId', data.session_id);  // Store in localStorage
         guestJudges = data.guest_judges;
@@ -808,6 +893,11 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
             simpleContestantJudgesEnabled = contestantJudgingEnabled && !!data.simple_contestant_judges;
         } else {
             simpleContestantJudgesEnabled = contestantJudgingEnabled && !!simpleModeRequested;
+        }
+        
+        // Store the actual points to win for display
+        if (data.points_to_win) {
+            console.log(`Game started with points to win: ${data.points_to_win} (auto-calculated would be: ${data.auto_win_threshold})`);
         }
         
         // Update session ID display

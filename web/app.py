@@ -328,6 +328,8 @@ def serialize_state(game: Game) -> dict:
                 'contestant': contestant_judges,
                 'simple_contestant_judges': simple_flag,
                 'contestant_judging_enabled': contestant_enabled,
+                'num_contestant_judges': getattr(game, 'num_contestant_judges', len(contestant_judges)),
+                'expected_contestant_judges': getattr(game, 'expected_contestant_judges', len(game.guest_judges) + 1),
             },
         },
         'scoreboard': {
@@ -337,6 +339,7 @@ def serialize_state(game: Game) -> dict:
         'rounds': rounds_data,
         'thresholds': {
             'win': game.win_threshold,
+            'auto_win': getattr(game, 'auto_win_threshold', game.win_threshold),
         },
         'flags': {
             'has_winning_lead': game.has_winning_lead,
@@ -393,7 +396,6 @@ def start_game():
     lead_names = data.get('leads', '').split(',')
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
-    points_to_win = data.get('points_to_win', None)
     playlist_url = data.get('playlist_url', None)
     randomize_order = data.get('randomize_order', True)
     contestant_judging_enabled = bool(data.get('contestant_judging_enabled', True))
@@ -403,6 +405,58 @@ def start_game():
     lead_names = [name.strip() for name in lead_names if name.strip()]
     follow_names = [name.strip() for name in follow_names if name.strip()]
     judge_names = [name.strip() for name in judge_names if name.strip()]
+    
+    # Parse points_to_win_mode: "default" (7), "auto" (formula), or numeric value
+    points_to_win_mode = data.get('points_to_win_mode', 'default')
+    points_to_win = data.get('points_to_win', None)  # Legacy support
+    
+    if points_to_win is not None:
+        # Legacy: direct points_to_win value takes precedence
+        try:
+            parsed = int(points_to_win)
+            if parsed >= 1:
+                points_to_win = parsed
+            else:
+                points_to_win = 7
+        except (ValueError, TypeError):
+            points_to_win = 7
+    elif points_to_win_mode == 'auto':
+        # Auto-calculate based on number of contestants
+        points_to_win = max(len(lead_names), len(follow_names)) - 1
+        if points_to_win < 1:
+            points_to_win = 1
+    elif points_to_win_mode == 'default':
+        points_to_win = 7
+    else:
+        # Treat as custom numeric value
+        try:
+            points_to_win = int(points_to_win_mode)
+            if points_to_win < 1:
+                points_to_win = 7
+        except (ValueError, TypeError):
+            points_to_win = 7
+    
+    # Parse num_contestant_judges
+    num_contestant_judges_raw = data.get('num_contestant_judges', None)
+    num_contestant_judges = None
+    contestant_judges_warning = None
+    expected_contestant_judges = len(judge_names) + 1
+    
+    if num_contestant_judges_raw is not None:
+        try:
+            num_contestant_judges = int(num_contestant_judges_raw)
+            if num_contestant_judges < 0:
+                num_contestant_judges = 0
+            # Check if it violates the recommended rule
+            if num_contestant_judges != expected_contestant_judges:
+                contestant_judges_warning = (
+                    f"Warning: You specified {num_contestant_judges} contestant judge(s), "
+                    f"but the recommended number is {expected_contestant_judges} "
+                    f"(1 more than the {len(judge_names)} guest judge(s)). "
+                    "This may cause undetermined behavior."
+                )
+        except (ValueError, TypeError):
+            num_contestant_judges = None
     
     # Determine whether to randomize order
     if isinstance(randomize_order, str):
@@ -414,42 +468,46 @@ def start_game():
         random.shuffle(lead_names)
         random.shuffle(follow_names)
     
-    # Create a new game with the randomized order
+    # Create a new game with the configuration
     game = Game(
         lead_names,
         follow_names,
         judge_names,
         contestant_judging_enabled=contestant_judging_enabled,
         simple_contestant_judges=simple_contestant_judges,
+        num_contestant_judges=num_contestant_judges,
+        points_to_win=points_to_win,
     )
-    # If a custom points_to_win is provided and valid, override the win_threshold
-    try:
-        if points_to_win is not None:
-            parsed = int(points_to_win)
-            if parsed >= 1:
-                game.win_threshold = parsed
-    except (ValueError, TypeError):
-        pass
 
     session_id = repo.create(game)
     
     # Get initial game state
     state = game.get_game_state()
     
-    return jsonify({
+    response = {
         'session_id': session_id,
         'round': state['round'],
         'pair_1': state['pair_1'],
         'pair_2': state['pair_2'],
         'contestant_judges': state['contestant_judges'],
         'guest_judges': game.guest_judges,
-        'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
-        'initial_follows': [c.name for c in game.initial_follows],  # Now contains the randomized order
+        'initial_leads': [c.name for c in game.initial_leads],
+        'initial_follows': [c.name for c in game.initial_follows],
         'playlist_url': playlist_url or '',
         'simple_contestant_judges': simple_contestant_judges,
         'contestant_judging_enabled': contestant_judging_enabled,
         'randomize_order': randomize_order,
-    })
+        'points_to_win': game.win_threshold,
+        'auto_win_threshold': game.auto_win_threshold,
+        'num_contestant_judges': game.num_contestant_judges,
+        'expected_contestant_judges': game.expected_contestant_judges,
+    }
+    
+    # Add warning if contestant judges rule is violated
+    if contestant_judges_warning:
+        response['contestant_judges_warning'] = contestant_judges_warning
+    
+    return jsonify(response)
 
 @app.route('/api/get_scores', methods=['GET'])
 def get_scores():

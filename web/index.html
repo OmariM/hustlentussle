@@ -106,9 +106,23 @@
                     Enable simple contestant judges (use a single proxy judge)
                 </label>
             </div>
+            <div class="form-group" id="num-contestant-judges-group">
+                <label for="num-contestant-judges">Number of contestant judges (optional):</label>
+                <input type="number" id="num-contestant-judges" min="0" placeholder="Auto (guest judges + 1)" />
+                <p class="form-helper-text">Leave blank to use the default: 1 more than the number of guest judges.</p>
+                <div id="contestant-judges-warning" class="warning-message" style="display:none;"></div>
+            </div>
             <div class="form-group">
-                <label for="points-to-win">Points to win (optional):</label>
-                <input type="number" id="points-to-win" min="1" placeholder="Auto (default calculated)" />
+                <label for="points-to-win-mode">Points to win:</label>
+                <select id="points-to-win-mode">
+                    <option value="default" selected>Default (7 points)</option>
+                    <option value="auto">Auto-calculate (contestants - 1)</option>
+                    <option value="custom">Custom value</option>
+                </select>
+                <div id="custom-points-container" style="display:none; margin-top:8px;">
+                    <input type="number" id="points-to-win" min="1" placeholder="Enter points to win" />
+                </div>
+                <p class="form-helper-text" id="points-to-win-helper">First contestant to reach 7 points wins.</p>
             </div>
 			<div class="form-group" id="playlist-url-group">
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
