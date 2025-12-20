@@ -254,6 +254,52 @@ class VotingRulesTestSuite(unittest.TestCase):
                 violations = validator.validate_all_rules(validator.capture_state())
                 self.assertEqual(violations, [], f"Violations: {violations}")
 
+    def test_unanimous_contestant_judges_required_to_override_single_guest_tie_or_no_contest(self):
+        """
+        When one guest judge votes Tie (3) or No Contest (4) and the other guest judge votes for a contestant,
+        a panel of 3 contestant judges can only overturn that guest-judge advantage if they vote unanimously
+        for the other contestant.
+        """
+        game = self.create_game()
+        lead_pair = (game.pair_1[0], game.pair_2[0])
+
+        # Ensure we actually have 3 contestant judges in this typical config
+        self.assertGreaterEqual(len(game.contestant_judges), 3)
+        cj = [j.name for j in game.contestant_judges[:3]]
+
+        # Case A: One guest votes Tie, the other votes for contestant 1.
+        # Guest points: c1 gets 2 + 1 = 3, c2 gets 1.
+        # If contestant judges are not unanimous for contestant 2 (e.g., 2-1), c1 should still win.
+        votes_mixed = [("Judge1", 3), ("Judge2", 1), (cj[0], 2), (cj[1], 2), (cj[2], 1)]
+        result = game.judge_round(lead_pair[0], lead_pair[1], "lead", votes_mixed)
+        self.assertEqual(result["winner"], lead_pair[0].name)
+
+        # But if contestant judges are unanimous for contestant 2, contestant 2 should win (4 vs 3).
+        game = self.create_game()
+        lead_pair = (game.pair_1[0], game.pair_2[0])
+        cj = [j.name for j in game.contestant_judges[:3]]
+        votes_unanimous = [("Judge1", 3), ("Judge2", 1), (cj[0], 2), (cj[1], 2), (cj[2], 2)]
+        result = game.judge_round(lead_pair[0], lead_pair[1], "lead", votes_unanimous)
+        self.assertEqual(result["winner"], lead_pair[1].name)
+
+        # Case B: One guest votes No Contest, the other votes for contestant 1.
+        # Guest points: c1 gets 2, c2 gets 0.
+        # A 2-1 split for contestant 2 is not enough to overturn (c1=3, c2=2).
+        game = self.create_game()
+        lead_pair = (game.pair_1[0], game.pair_2[0])
+        cj = [j.name for j in game.contestant_judges[:3]]
+        votes_mixed_nc = [("Judge1", 4), ("Judge2", 1), (cj[0], 2), (cj[1], 2), (cj[2], 1)]
+        result = game.judge_round(lead_pair[0], lead_pair[1], "lead", votes_mixed_nc)
+        self.assertEqual(result["winner"], lead_pair[0].name)
+
+        # Unanimous for contestant 2 overturns (c1=2, c2=3).
+        game = self.create_game()
+        lead_pair = (game.pair_1[0], game.pair_2[0])
+        cj = [j.name for j in game.contestant_judges[:3]]
+        votes_unanimous_nc = [("Judge1", 4), ("Judge2", 1), (cj[0], 2), (cj[1], 2), (cj[2], 2)]
+        result = game.judge_round(lead_pair[0], lead_pair[1], "lead", votes_unanimous_nc)
+        self.assertEqual(result["winner"], lead_pair[1].name)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

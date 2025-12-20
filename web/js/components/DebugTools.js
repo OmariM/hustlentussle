@@ -787,8 +787,10 @@ class DebugTools {
                     if (buttons.length > 0) {
                         // For guest judges, we can click any button (1-4)
                         // For contestant judges, we can only click buttons 1-2
+                        // In simple contestant judges mode, the proxy "Contestant Judges" has 3 options (1, Mixed, 2)
                         const isGuest = card.querySelector('.judge-name').textContent.includes('(Guest)');
-                        const validButtons = isGuest ? buttons : buttons.slice(0, 2);
+                        const isProxyContestantJudges = !isGuest && judgeName.trim() === 'Contestant Judges';
+                        const validButtons = isGuest ? buttons : (isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2));
                         console.log(`Valid buttons for ${judgeName}: ${validButtons.length} (isGuest: ${isGuest})`);
                         
                         // Get a random button from the valid options
@@ -800,6 +802,8 @@ class DebugTools {
                         const classMatch = randomButton.className.match(/vote-option-(\d+)/);
                         if (classMatch) {
                             voteValue = parseInt(classMatch[1]);
+                        } else if (randomButton.className.includes('vote-option-mixed')) {
+                            voteValue = 5;
                         } else {
                             // Fallback: determine vote value based on button text
                             const buttonText = randomButton.textContent.trim();
