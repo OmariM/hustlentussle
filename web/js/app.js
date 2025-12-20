@@ -1014,7 +1014,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     // Option 1 button
     const option1Btn = document.createElement('button');
     option1Btn.className = 'vote-btn vote-option-1';
-    option1Btn.textContent = isProxyContestantJudges ? 'Contestant 1' : option1Name;
+    option1Btn.textContent = option1Name;
     option1Btn.addEventListener('click', () => {
         // If voting is locked, don't allow changes
         if (votingLocked[voteType]) return;
@@ -1049,7 +1049,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     // Option 2 button
     const option2Btn = document.createElement('button');
     option2Btn.className = 'vote-btn vote-option-2';
-    option2Btn.textContent = isProxyContestantJudges ? 'Contestant 2' : option2Name;
+    option2Btn.textContent = option2Name;
     option2Btn.addEventListener('click', () => {
         // If voting is locked, don't allow changes
         if (votingLocked[voteType]) return;
