@@ -1120,13 +1120,16 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     });
     
     // Mixed option (proxy contestant judges only)
+    // Only enabled when at least one guest judge votes tie or no contest
     let mixedBtn = null;
     if (isProxyContestantJudges) {
         mixedBtn = document.createElement('button');
         mixedBtn.className = 'vote-btn vote-option-mixed';
         mixedBtn.textContent = 'Mixed';
+        mixedBtn.disabled = true; // Initially disabled until a guest judge votes tie/no contest
         mixedBtn.addEventListener('click', () => {
             if (votingLocked[voteType]) return;
+            if (mixedBtn.disabled) return;
             voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
                 btn.classList.remove('selected');
             });
@@ -1212,8 +1215,47 @@ function recordVote(judgeName, voteOption, voteType) {
     }
     console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
     
+    // Update mixed button availability based on tie/no contest votes
+    updateMixedButtonState(voteType);
+    
     // Update submit button state based on voting progress
     updateSubmitButtonState();
+}
+
+// Check if any guest judge has voted tie (3) or no contest (4) for the given vote type
+function hasGuestTieOrNoContest(voteType) {
+    const votes = voteType === 'lead' ? leadVotes : followVotes;
+    return (guestJudges || []).some(judge => {
+        const vote = votes[judge];
+        return vote === 3 || vote === 4; // 3 = tie, 4 = no contest
+    });
+}
+
+// Update the mixed button's enabled/disabled state for the given vote type
+function updateMixedButtonState(voteType) {
+    if (!simpleContestantJudgesEnabled) return;
+    
+    const proxyCardId = `${voteType}-judge-${PROXY_CONTESTANT_JUDGES_NAME.replace(/\s+/g, '-').toLowerCase()}`;
+    const proxyCard = document.getElementById(proxyCardId);
+    if (!proxyCard) return;
+    
+    const mixedBtn = proxyCard.querySelector('.vote-option-mixed');
+    if (!mixedBtn) return;
+    
+    const shouldEnable = hasGuestTieOrNoContest(voteType);
+    mixedBtn.disabled = !shouldEnable;
+    
+    // If mixed was selected but is now disabled, clear the selection
+    if (!shouldEnable && mixedBtn.classList.contains('selected')) {
+        mixedBtn.classList.remove('selected');
+        // Clear the vote for the proxy judge
+        if (voteType === 'lead') {
+            delete leadVotes[PROXY_CONTESTANT_JUDGES_NAME];
+        } else {
+            delete followVotes[PROXY_CONTESTANT_JUDGES_NAME];
+        }
+        proxyCard.classList.remove('voted');
+    }
 }
 
 function updateSubmitButtonState() {

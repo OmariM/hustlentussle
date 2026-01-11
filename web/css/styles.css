@@ -1016,6 +1016,19 @@ textarea {
     transform: none;
 }
 
+.vote-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: var(--muted-bg);
+    border-color: var(--border-color);
+}
+
+.vote-btn:disabled:hover {
+    opacity: 0.4;
+    transform: none;
+    background-color: var(--muted-bg);
+}
+
 /* Add table styles */
 .score-table, .results-table {
     width: 100%;
