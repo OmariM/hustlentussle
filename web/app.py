@@ -19,14 +19,30 @@ import time
 import urllib.parse
 import json
 import base64
+import logging
+import atexit
+from typing import Optional, Dict, List
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Add parent directory to path to import game_logic
+# Add parent directory to path to import game_logic and persistence
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game, Contestant
 from web.config import get_config
+from persistence import (
+    RepositoryFactory,
+    CleanupScheduler,
+    PersistenceError,
+    MemoryGameRepository,
+)
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Get configuration based on environment
 config = get_config()
@@ -36,45 +52,100 @@ app = Flask(__name__,
             static_url_path='',
             template_folder='.')  # Set template folder to current directory
 app.config.from_object(config)
+
+# Cache-busting for static assets (helps ensure browsers pull latest JS/CSS after deploy)
+if not app.config.get('ASSET_VERSION'):
+    # Prefer deploy-provided versioning when available; fallback to process start time.
+    app.config['ASSET_VERSION'] = (
+        os.environ.get('ASSET_VERSION')
+        or os.environ.get('RENDER_GIT_COMMIT')
+        or os.environ.get('GIT_COMMIT')
+        or str(int(time.time()))
+    )
 CORS(app)
 
+# Stronger cache control: ensure index.html and assets revalidate after deploy.
+# This prevents "hard to shake" stale JS/CSS in some browsers/CDNs.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-class GameRepository:
-    """Thread-safe in-memory repository for active games."""
-
-    def __init__(self) -> None:
-        self._games = {}
-        self._lock = threading.RLock()
-
-    def create(self, game: Game) -> str:
-        with self._lock:
-            session_id = uuid.uuid4().hex
-            game.session_id = session_id
-            # Also stamp the current round with session id if present
-            if getattr(game, 'current_round', None):
-                game.current_round.session_id = session_id
-            self._games[session_id] = game
-            return session_id
-
-    def get(self, session_id: str) -> Game | None:
-        with self._lock:
-            return self._games.get(session_id)
-
-    def exists(self, session_id: str) -> bool:
-        with self._lock:
-            return session_id in self._games
+@app.after_request
+def add_cache_control_headers(response):
+    try:
+        path = request.path or ''
+        # Never cache the HTML shell; it is the entry point that references versioned assets.
+        if path == '/' or response.mimetype == 'text/html':
+            response.headers['Cache-Control'] = 'no-store, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
+        # For static assets, require revalidation (query-param versioning already busts caches,
+        # but this makes refreshes more reliable across intermediaries).
+        if path.endswith('.js') or path.endswith('.css'):
+            response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+    except Exception:
+        # Never fail a request due to cache headers.
+        pass
+    return response
 
 
-repo = GameRepository()
+# Initialize game repository using factory
+def init_repository():
+    """Initialize the game repository based on configuration."""
+    database_url = getattr(config, 'DATABASE_URL', None)
+    fallback_enabled = getattr(config, 'PERSISTENCE_FALLBACK_ENABLED', True)
+    expiration_seconds = getattr(config, 'GAME_EXPIRATION_SECONDS', 6 * 60 * 60)
+    
+    try:
+        repo = RepositoryFactory.create_repository(
+            database_url=database_url,
+            fallback_enabled=fallback_enabled,
+            expiration_seconds=expiration_seconds,
+        )
+        logger.info(f"Repository initialized: {type(repo).__name__}")
+        return repo
+    except PersistenceError as e:
+        logger.error(f"Failed to initialize repository: {e}")
+        if fallback_enabled:
+            logger.warning("Falling back to in-memory repository")
+            return MemoryGameRepository(expiration_seconds=expiration_seconds)
+        raise
+
+
+repo = init_repository()
+
+# Initialize cleanup scheduler
+cleanup_scheduler = CleanupScheduler(
+    repository=repo,
+    interval_seconds=getattr(config, 'CLEANUP_INTERVAL_SECONDS', 60 * 60),
+)
+cleanup_scheduler.start()
+
+# Register cleanup on shutdown
+@atexit.register
+def shutdown_cleanup():
+    """Cleanup on application shutdown."""
+    # Guard against cleanup_scheduler not being defined
+    # (can happen if init_repository() raised an exception)
+    if 'cleanup_scheduler' in globals() and cleanup_scheduler is not None:
+        logger.info("Shutting down cleanup scheduler...")
+        cleanup_scheduler.stop()
+
+
 # Backwards compatibility for tests that import `games`
-# Expose the internal storage dict for now; prefer using `repo` going forward.
-games = repo._games
+# Note: This only works with MemoryGameRepository
+# For PostgreSQL, tests should use the repo interface directly
+if hasattr(repo, '_games'):
+    games = repo._games
+else:
+    games = {}  # Empty dict as placeholder for non-memory repositories
 
 # In-memory user OAuth token store keyed by provided key (session_id or auth_key)
-_spotify_user_tokens: dict[str, dict] = {}
+_spotify_user_tokens: Dict[str, dict] = {}
 _spotify_user_tokens_lock = threading.RLock()
 
-def _resolve_key(session_id: str | None, auth_key: str | None) -> str | None:
+def _resolve_key(session_id: Optional[str], auth_key: Optional[str]) -> Optional[str]:
     return auth_key or session_id
 
 
@@ -95,7 +166,7 @@ def _now() -> float:
     return time.time()
 
 
-def _store_user_tokens(key: str, access_token: str, refresh_token: str | None, expires_in: int) -> None:
+def _store_user_tokens(key: str, access_token: str, refresh_token: Optional[str], expires_in: int) -> None:
     if not key:
         return
     with _spotify_user_tokens_lock:
@@ -106,14 +177,14 @@ def _store_user_tokens(key: str, access_token: str, refresh_token: str | None, e
         }
 
 
-def _get_user_tokens(key: str) -> dict | None:
+def _get_user_tokens(key: str) -> Optional[dict]:
     if not key:
         return None
     with _spotify_user_tokens_lock:
         return _spotify_user_tokens.get(key)
 
 
-def _refresh_user_token(key: str) -> str | None:
+def _refresh_user_token(key: str) -> Optional[str]:
     tokens = _get_user_tokens(key)
     if not tokens or not tokens.get('refresh_token'):
         return None
@@ -140,7 +211,7 @@ def _refresh_user_token(key: str) -> str | None:
     return access_token
 
 
-def _ensure_user_access_token(key: str) -> str | None:
+def _ensure_user_access_token(key: str) -> Optional[str]:
     tokens = _get_user_tokens(key)
     if not tokens:
         return None
@@ -158,8 +229,8 @@ def serialize_state(game: Game) -> dict:
         return contestant.points >= game.win_threshold and game.has_winning_follow
 
     # Build unique contestant maps including current pairs, queues and tracked winners
-    lead_dict: dict[str, dict] = {}
-    follow_dict: dict[str, dict] = {}
+    lead_dict: Dict[str, dict] = {}
+    follow_dict: Dict[str, dict] = {}
 
     # Add current pair contestants first
     if game.pair_1 and game.pair_2:
@@ -222,7 +293,7 @@ def serialize_state(game: Game) -> dict:
     simple_flag = bool(getattr(game, 'simple_contestant_judges', False)) and contestant_enabled
 
     # Build lightweight rounds summary for live UI (include completed + current)
-    rounds_data: list[dict] = []
+    rounds_data: List[dict] = []
     try:
         for r in getattr(game, 'rounds', []):
             rounds_data.append({
@@ -257,6 +328,8 @@ def serialize_state(game: Game) -> dict:
                 'contestant': contestant_judges,
                 'simple_contestant_judges': simple_flag,
                 'contestant_judging_enabled': contestant_enabled,
+                'num_contestant_judges': getattr(game, 'num_contestant_judges', len(contestant_judges)),
+                'expected_contestant_judges': getattr(game, 'expected_contestant_judges', len(game.guest_judges) + 1),
             },
         },
         'scoreboard': {
@@ -266,6 +339,7 @@ def serialize_state(game: Game) -> dict:
         'rounds': rounds_data,
         'thresholds': {
             'win': game.win_threshold,
+            'auto_win': getattr(game, 'auto_win_threshold', game.win_threshold),
         },
         'flags': {
             'has_winning_lead': game.has_winning_lead,
@@ -288,6 +362,21 @@ def serialize_state(game: Game) -> dict:
 def index():
     return render_template('index.html', config=app.config)
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to verify persistence status."""
+    repo_type = type(repo).__name__
+    game_count = len(repo.list_sessions()) if hasattr(repo, 'list_sessions') else 'unknown'
+    
+    return jsonify({
+        'status': 'healthy',
+        'persistence': {
+            'repository_type': repo_type,
+            'using_postgres': repo_type == 'PostgresGameRepository',
+            'active_games': game_count,
+        }
+    })
+
 @app.route('/api/state', methods=['GET'])
 def get_state():
     session_id = request.args.get('session_id')
@@ -307,7 +396,6 @@ def start_game():
     lead_names = data.get('leads', '').split(',')
     follow_names = data.get('follows', '').split(',')
     judge_names = data.get('judges', '').split(',')
-    points_to_win = data.get('points_to_win', None)
     playlist_url = data.get('playlist_url', None)
     randomize_order = data.get('randomize_order', True)
     contestant_judging_enabled = bool(data.get('contestant_judging_enabled', True))
@@ -317,6 +405,58 @@ def start_game():
     lead_names = [name.strip() for name in lead_names if name.strip()]
     follow_names = [name.strip() for name in follow_names if name.strip()]
     judge_names = [name.strip() for name in judge_names if name.strip()]
+    
+    # Parse points_to_win_mode: "default" (7), "auto" (formula), or numeric value
+    points_to_win_mode = data.get('points_to_win_mode', 'default')
+    points_to_win = data.get('points_to_win', None)  # Legacy support
+    
+    if points_to_win is not None:
+        # Legacy: direct points_to_win value takes precedence
+        try:
+            parsed = int(points_to_win)
+            if parsed >= 1:
+                points_to_win = parsed
+            else:
+                points_to_win = 7
+        except (ValueError, TypeError):
+            points_to_win = 7
+    elif points_to_win_mode == 'auto':
+        # Auto-calculate based on number of contestants
+        points_to_win = max(len(lead_names), len(follow_names)) - 1
+        if points_to_win < 1:
+            points_to_win = 1
+    elif points_to_win_mode == 'default':
+        points_to_win = 7
+    else:
+        # Treat as custom numeric value
+        try:
+            points_to_win = int(points_to_win_mode)
+            if points_to_win < 1:
+                points_to_win = 7
+        except (ValueError, TypeError):
+            points_to_win = 7
+    
+    # Parse num_contestant_judges
+    num_contestant_judges_raw = data.get('num_contestant_judges', None)
+    num_contestant_judges = None
+    contestant_judges_warning = None
+    expected_contestant_judges = len(judge_names) + 1
+    
+    if num_contestant_judges_raw is not None:
+        try:
+            num_contestant_judges = int(num_contestant_judges_raw)
+            if num_contestant_judges < 0:
+                num_contestant_judges = 0
+            # Check if it violates the recommended rule
+            if num_contestant_judges != expected_contestant_judges:
+                contestant_judges_warning = (
+                    f"Warning: You specified {num_contestant_judges} contestant judge(s), "
+                    f"but the recommended number is {expected_contestant_judges} "
+                    f"(1 more than the {len(judge_names)} guest judge(s)). "
+                    "This may cause undetermined behavior."
+                )
+        except (ValueError, TypeError):
+            num_contestant_judges = None
     
     # Determine whether to randomize order
     if isinstance(randomize_order, str):
@@ -328,42 +468,46 @@ def start_game():
         random.shuffle(lead_names)
         random.shuffle(follow_names)
     
-    # Create a new game with the randomized order
+    # Create a new game with the configuration
     game = Game(
         lead_names,
         follow_names,
         judge_names,
         contestant_judging_enabled=contestant_judging_enabled,
         simple_contestant_judges=simple_contestant_judges,
+        num_contestant_judges=num_contestant_judges,
+        points_to_win=points_to_win,
     )
-    # If a custom points_to_win is provided and valid, override the win_threshold
-    try:
-        if points_to_win is not None:
-            parsed = int(points_to_win)
-            if parsed >= 1:
-                game.win_threshold = parsed
-    except (ValueError, TypeError):
-        pass
 
     session_id = repo.create(game)
     
     # Get initial game state
     state = game.get_game_state()
     
-    return jsonify({
+    response = {
         'session_id': session_id,
         'round': state['round'],
         'pair_1': state['pair_1'],
         'pair_2': state['pair_2'],
         'contestant_judges': state['contestant_judges'],
         'guest_judges': game.guest_judges,
-        'initial_leads': [c.name for c in game.initial_leads],  # Now contains the randomized order
-        'initial_follows': [c.name for c in game.initial_follows],  # Now contains the randomized order
+        'initial_leads': [c.name for c in game.initial_leads],
+        'initial_follows': [c.name for c in game.initial_follows],
         'playlist_url': playlist_url or '',
         'simple_contestant_judges': simple_contestant_judges,
         'contestant_judging_enabled': contestant_judging_enabled,
         'randomize_order': randomize_order,
-    })
+        'points_to_win': game.win_threshold,
+        'auto_win_threshold': game.auto_win_threshold,
+        'num_contestant_judges': game.num_contestant_judges,
+        'expected_contestant_judges': game.expected_contestant_judges,
+    }
+    
+    # Add warning if contestant judges rule is violated
+    if contestant_judges_warning:
+        response['contestant_judges_warning'] = contestant_judges_warning
+    
+    return jsonify(response)
 
 @app.route('/api/get_scores', methods=['GET'])
 def get_scores():
@@ -401,6 +545,9 @@ def judge_leads():
     # Process votes and determine winner
     result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
     
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     return jsonify({
         'winner': result['winner'],
         'guest_votes': result['guest_votes'],
@@ -431,6 +578,9 @@ def judge_follows():
     # Check for win condition
     win_messages = game.check_for_win() or []
     
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     return jsonify({
         'winner': result['winner'],
         'guest_votes': result['guest_votes'],
@@ -459,7 +609,7 @@ def judge_combined():
         game.current_round.song_info = song_info
     
     # If simple contestant judges is enabled, aggregate the proxy vote to all contestant judges
-    def expand_with_mock_contestant_judges(votes_list: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    def expand_with_mock_contestant_judges(votes_list: List[tuple]) -> List[tuple]:
         try:
             if not getattr(game, 'contestant_judging_enabled', True):
                 return votes_list
@@ -496,6 +646,9 @@ def judge_combined():
     # Check for win condition
     win_messages = game.check_for_win() or []
     
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     return jsonify({
         'lead_winner': lead_result['winner'],
         'lead_guest_votes': lead_result['guest_votes'],
@@ -522,6 +675,10 @@ def next_round():
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
     game.next_round()
+    
+    # Persist game state changes
+    repo.save(session_id, game)
+    
     state = game.get_game_state()
     
     return jsonify({

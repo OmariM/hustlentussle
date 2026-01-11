@@ -11,6 +11,10 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Voting constants (frontend-only)
+const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
+const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
+
 // Playlist mode state
 let songInputSection, playlistUrlInput, playlistEmbedSection, playlistEmbedContainer;
 let playlistModeEnabled = false;
@@ -35,7 +39,8 @@ let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
 let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
 let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
-let pointsToWinInput;
+let pointsToWinInput, pointsToWinModeSelect, customPointsContainer, pointsToWinHelper;
+let numContestantJudgesInput, contestantJudgesWarning;
 let contestantJudgingToggle, simpleContestantJudgesInput, randomizeOrderToggle;
 let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
     let currentLeadScores, currentFollowScores;
@@ -48,6 +53,10 @@ let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
 let backToHomeFromResultsBtn, downloadBattleDataBtn;
+// Vote confirmation modal elements
+let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
+let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
+let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -76,6 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
     followNamesInput = document.getElementById('follow-names');
     judgeNamesInput = document.getElementById('judge-names');
     pointsToWinInput = document.getElementById('points-to-win');
+    pointsToWinModeSelect = document.getElementById('points-to-win-mode');
+    customPointsContainer = document.getElementById('custom-points-container');
+    pointsToWinHelper = document.getElementById('points-to-win-helper');
+    numContestantJudgesInput = document.getElementById('num-contestant-judges');
+    contestantJudgesWarning = document.getElementById('contestant-judges-warning');
     startCompetitionBtn = document.getElementById('start-competition');
     setupBackToHomeBtn = document.getElementById('setup-back-to-home');
     playlistUrlInput = document.getElementById('playlist-url');
@@ -90,9 +104,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 simpleContestantJudgesInput.checked = false;
             }
             simpleContestantJudgesInput.disabled = !enabled;
+            // Also disable/enable num contestant judges input
+            if (numContestantJudgesInput) {
+                numContestantJudgesInput.disabled = !enabled;
+                const numContestantJudgesGroup = document.getElementById('num-contestant-judges-group');
+                if (numContestantJudgesGroup) {
+                    numContestantJudgesGroup.style.opacity = enabled ? '1' : '0.5';
+                }
+            }
         };
         contestantJudgingToggle.addEventListener('change', syncContestantJudgingControls);
         syncContestantJudgingControls();
+    }
+
+    // Points to win mode toggle
+    if (pointsToWinModeSelect && customPointsContainer && pointsToWinHelper) {
+        const updatePointsToWinUI = () => {
+            const mode = pointsToWinModeSelect.value;
+            if (mode === 'custom') {
+                customPointsContainer.style.display = 'block';
+                pointsToWinHelper.textContent = 'Enter a custom number of points required to win.';
+            } else if (mode === 'auto') {
+                customPointsContainer.style.display = 'none';
+                pointsToWinHelper.textContent = 'Points to win = max(leads, follows) - 1';
+            } else {
+                customPointsContainer.style.display = 'none';
+                pointsToWinHelper.textContent = 'First contestant to reach 7 points wins.';
+            }
+        };
+        pointsToWinModeSelect.addEventListener('change', updatePointsToWinUI);
+        updatePointsToWinUI();
+    }
+
+    // Contestant judges validation
+    if (numContestantJudgesInput && judgeNamesInput && contestantJudgesWarning) {
+        const validateContestantJudges = () => {
+            const numContestantJudgesRaw = numContestantJudgesInput.value.trim();
+            if (numContestantJudgesRaw === '') {
+                contestantJudgesWarning.style.display = 'none';
+                return;
+            }
+            const numContestantJudges = parseInt(numContestantJudgesRaw, 10);
+            const guestJudgeCount = judgeNamesInput.value.split(',').filter(n => n.trim()).length;
+            const expected = guestJudgeCount + 1;
+            if (!isNaN(numContestantJudges) && numContestantJudges !== expected) {
+                contestantJudgesWarning.textContent = `Warning: You specified ${numContestantJudges} contestant judge(s), but the recommended number is ${expected} (1 more than the ${guestJudgeCount} guest judge(s)). This may cause undetermined behavior.`;
+                contestantJudgesWarning.style.display = 'block';
+            } else {
+                contestantJudgesWarning.style.display = 'none';
+            }
+        };
+        numContestantJudgesInput.addEventListener('input', validateContestantJudges);
+        judgeNamesInput.addEventListener('input', validateContestantJudges);
     }
 
 // Round screen elements
@@ -130,6 +193,20 @@ document.addEventListener('DOMContentLoaded', () => {
     followWinnerPreview = document.getElementById('follow-winner-preview');
     leadPreviewName = document.getElementById('lead-preview-name');
     followPreviewName = document.getElementById('follow-preview-name');
+
+    // Vote confirmation modal
+    voteConfirmModal = document.getElementById('vote-confirm-modal');
+    voteConfirmCloseBtn = document.getElementById('vote-confirm-close');
+    voteConfirmCancelBtn = document.getElementById('vote-confirm-cancel');
+    voteConfirmSubmitBtn = document.getElementById('vote-confirm-submit');
+    voteConfirmRound = document.getElementById('vote-confirm-round');
+    voteConfirmLead1 = document.getElementById('vote-confirm-lead1');
+    voteConfirmLead2 = document.getElementById('vote-confirm-lead2');
+    voteConfirmFollow1 = document.getElementById('vote-confirm-follow1');
+    voteConfirmFollow2 = document.getElementById('vote-confirm-follow2');
+    voteConfirmLeadWinner = document.getElementById('vote-confirm-lead-winner');
+    voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner');
+    voteConfirmError = document.getElementById('vote-confirm-error');
 
 // Results elements
     roundResultsSection = document.getElementById('round-results');
@@ -197,9 +274,32 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.warn('Failed to hydrate used tracks/playlist', e); }
     
     // Battle flow
-    submitVotesBtn.addEventListener('click', submitCombinedVotes);
+    submitVotesBtn.addEventListener('click', (e) => openVoteConfirmModal(e));
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
+
+    // Modal controls
+    if (voteConfirmCloseBtn) voteConfirmCloseBtn.addEventListener('click', closeVoteConfirmModal);
+    if (voteConfirmCancelBtn) voteConfirmCancelBtn.addEventListener('click', closeVoteConfirmModal);
+    if (voteConfirmModal) {
+        voteConfirmModal.addEventListener('click', (e) => {
+            // click outside the modal closes
+            if (e.target === voteConfirmModal) closeVoteConfirmModal();
+        });
+    }
+    if (voteConfirmSubmitBtn) {
+        voteConfirmSubmitBtn.addEventListener('click', async () => {
+            await submitCombinedVotes({ autoAdvance: true, source: 'modal' });
+        });
+    }
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            closeVoteConfirmModal();
+        }
+    });
+
+    // Ensure modal is never shown by default on load
+    closeVoteConfirmModal();
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -397,6 +497,7 @@ function renderFromState(state) {
     updateLiveGraphicFromState(state);
 
     // Reset voting UI for the current round
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -432,11 +533,73 @@ function buildJudgeRoster() {
         return roster;
     }
     if (simpleContestantJudgesEnabled) {
-        roster.push('Contestant Judges');
+        roster.push(PROXY_CONTESTANT_JUDGES_NAME);
     } else {
         roster.push(...getContestantJudgeNames());
     }
     return roster;
+}
+
+function computeGuestWinnerDecision(votesObj) {
+    // Decide which contestant is "winning" based on guest judges only.
+    // vote=1 => contestant 1 (+2), vote=2 => contestant 2 (+2), vote=3 => tie (+1 each), vote=4 => no contest (+0).
+    let s1 = 0;
+    let s2 = 0;
+    (guestJudges || []).forEach(j => {
+        const v = votesObj ? votesObj[j] : undefined;
+        if (v === 1) s1 += 2;
+        else if (v === 2) s2 += 2;
+        else if (v === 3) { s1 += 1; s2 += 1; }
+    });
+    return s1 >= s2 ? 1 : 2;
+}
+
+function expandSimpleContestantJudgesVotes(votesObj) {
+    const proxyVote = votesObj ? votesObj[PROXY_CONTESTANT_JUDGES_NAME] : undefined;
+    const cjNames = getContestantJudgeNames();
+    if (!contestantJudgingEnabled || !simpleContestantJudgesEnabled) {
+        return [];
+    }
+    if (!cjNames || cjNames.length === 0) {
+        // No contestant judges assigned this round; proxy vote has no effect.
+        return [];
+    }
+
+    if (proxyVote === 1 || proxyVote === 2) {
+        return cjNames.map(n => [n, proxyVote]);
+    }
+
+    if (proxyVote === VOTE_MIXED) {
+        // "Mixed" means contestant judges are not unanimous. Split votes ~in half, but
+        // give the majority to the contestant currently winning among the guest judges.
+        const winnerDecision = computeGuestWinnerDecision(votesObj);
+        const loserDecision = winnerDecision === 1 ? 2 : 1;
+        const majorityCount = Math.floor(cjNames.length / 2) + 1;
+        return cjNames.map((n, idx) => [n, idx < majorityCount ? winnerDecision : loserDecision]);
+    }
+
+    return [];
+}
+
+function buildEffectiveVotesArray(voteType) {
+    const roster = buildJudgeRoster();
+    const votesObj = voteType === 'lead' ? leadVotes : followVotes;
+
+    const out = [];
+
+    roster.forEach(judge => {
+        if (judge === PROXY_CONTESTANT_JUDGES_NAME && contestantJudgingEnabled && simpleContestantJudgesEnabled) {
+            // Replace proxy with expanded contestant-judge votes (unanimous or mixed).
+            const expanded = expandSimpleContestantJudgesVotes(votesObj);
+            expanded.forEach(v => out.push(v));
+            return;
+        }
+        if (typeof votesObj[judge] !== 'undefined') {
+            out.push([judge, votesObj[judge]]);
+        }
+    });
+
+    return out;
 }
 
 function updateLiveGraphicFromState(state) {
@@ -660,19 +823,38 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
-    const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
-    const points_to_win = pointsToWinRaw === '' ? null : parseInt(pointsToWinRaw, 10);
+    
+    // Handle points to win mode
+    const pointsToWinMode = pointsToWinModeSelect ? pointsToWinModeSelect.value : 'default';
+    let points_to_win = null;
+    let points_to_win_mode = pointsToWinMode;
+    
+    if (pointsToWinMode === 'custom') {
+        const pointsToWinRaw = pointsToWinInput ? pointsToWinInput.value.trim() : '';
+        if (pointsToWinRaw !== '') {
+            points_to_win = parseInt(pointsToWinRaw, 10);
+        }
+        // If custom but no value entered, fall back to default
+        if (points_to_win === null || isNaN(points_to_win)) {
+            points_to_win_mode = 'default';
+        }
+    }
+    
+    // Handle num contestant judges
+    const numContestantJudgesRaw = numContestantJudgesInput ? numContestantJudgesInput.value.trim() : '';
+    const num_contestant_judges = numContestantJudgesRaw === '' ? null : parseInt(numContestantJudgesRaw, 10);
+    
     const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
     const playlistUrlRaw = (spotifyOn && playlistUrlInput) ? playlistUrlInput.value.trim() : '';
     const contestantJudgingRequested = allowContestantJudging !== false;
     const simpleModeRequested = contestantJudgingRequested && !!useSimpleContestantJudges;
     const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
-    
+
     if (!leads || !follows || !judges) {
         alert('Please enter names for leads, follows, and judges.');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/start_game', {
             method: 'POST',
@@ -682,6 +864,8 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
                 follows,
                 judges,
                 points_to_win,
+                points_to_win_mode,
+                num_contestant_judges,
                 playlist_url: playlistUrlRaw,
                 simple_contestant_judges: simpleModeRequested,
                 contestant_judging_enabled: contestantJudgingRequested,
@@ -690,6 +874,15 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         });
         
         const data = await response.json();
+        
+        // Check for contestant judges warning and show confirmation if needed
+        if (data.contestant_judges_warning) {
+            const proceed = confirm(data.contestant_judges_warning + '\n\nDo you want to proceed anyway?');
+            if (!proceed) {
+                return; // User cancelled, don't start the game
+            }
+        }
+        
         sessionId = data.session_id;
         localStorage.setItem('sessionId', data.session_id);  // Store in localStorage
         guestJudges = data.guest_judges;
@@ -700,6 +893,11 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
             simpleContestantJudgesEnabled = contestantJudgingEnabled && !!data.simple_contestant_judges;
         } else {
             simpleContestantJudgesEnabled = contestantJudgingEnabled && !!simpleModeRequested;
+        }
+        
+        // Store the actual points to win for display
+        if (data.points_to_win) {
+            console.log(`Game started with points to win: ${data.points_to_win} (auto-calculated would be: ${data.auto_win_threshold})`);
         }
         
         // Update session ID display
@@ -823,6 +1021,7 @@ function updateRoundUI(data) {
     }
     
     // Reset voting sections - both are now visible side by side
+    closeVoteConfirmModal();
     votingResults.classList.add('hidden');
     roundResultsSection.classList.add('hidden');
     winMessages.innerHTML = '';
@@ -900,6 +1099,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     
     const option1Name = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
     const option2Name = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
+    const isProxyContestantJudges = simpleContestantJudgesEnabled && judgeName === PROXY_CONTESTANT_JUDGES_NAME;
     
     // Option 1 button
     const option1Btn = document.createElement('button');
@@ -919,6 +1119,26 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         judgeCard.classList.add('voted');
     });
     
+    // Mixed option (proxy contestant judges only)
+    // Only enabled when at least one guest judge votes tie or no contest
+    let mixedBtn = null;
+    if (isProxyContestantJudges) {
+        mixedBtn = document.createElement('button');
+        mixedBtn.className = 'vote-btn vote-option-mixed';
+        mixedBtn.textContent = 'Mixed';
+        mixedBtn.disabled = true; // Initially disabled until a guest judge votes tie/no contest
+        mixedBtn.addEventListener('click', () => {
+            if (votingLocked[voteType]) return;
+            if (mixedBtn.disabled) return;
+            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            mixedBtn.classList.add('selected');
+            recordVote(judgeName, VOTE_MIXED, voteType);
+            judgeCard.classList.add('voted');
+        });
+    }
+
     // Option 2 button
     const option2Btn = document.createElement('button');
     option2Btn.className = 'vote-btn vote-option-2';
@@ -938,6 +1158,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     });
     
     voteOptions.appendChild(option1Btn);
+    if (mixedBtn) voteOptions.appendChild(mixedBtn);
     voteOptions.appendChild(option2Btn);
     
     // Tie and No Contest options for guest judges
@@ -994,8 +1215,47 @@ function recordVote(judgeName, voteOption, voteType) {
     }
     console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
     
+    // Update mixed button availability based on tie/no contest votes
+    updateMixedButtonState(voteType);
+    
     // Update submit button state based on voting progress
     updateSubmitButtonState();
+}
+
+// Check if any guest judge has voted tie (3) or no contest (4) for the given vote type
+function hasGuestTieOrNoContest(voteType) {
+    const votes = voteType === 'lead' ? leadVotes : followVotes;
+    return (guestJudges || []).some(judge => {
+        const vote = votes[judge];
+        return vote === 3 || vote === 4; // 3 = tie, 4 = no contest
+    });
+}
+
+// Update the mixed button's enabled/disabled state for the given vote type
+function updateMixedButtonState(voteType) {
+    if (!simpleContestantJudgesEnabled) return;
+    
+    const proxyCardId = `${voteType}-judge-${PROXY_CONTESTANT_JUDGES_NAME.replace(/\s+/g, '-').toLowerCase()}`;
+    const proxyCard = document.getElementById(proxyCardId);
+    if (!proxyCard) return;
+    
+    const mixedBtn = proxyCard.querySelector('.vote-option-mixed');
+    if (!mixedBtn) return;
+    
+    const shouldEnable = hasGuestTieOrNoContest(voteType);
+    mixedBtn.disabled = !shouldEnable;
+    
+    // If mixed was selected but is now disabled, clear the selection
+    if (!shouldEnable && mixedBtn.classList.contains('selected')) {
+        mixedBtn.classList.remove('selected');
+        // Clear the vote for the proxy judge
+        if (voteType === 'lead') {
+            delete leadVotes[PROXY_CONTESTANT_JUDGES_NAME];
+        } else {
+            delete followVotes[PROXY_CONTESTANT_JUDGES_NAME];
+        }
+        proxyCard.classList.remove('voted');
+    }
 }
 
 function updateSubmitButtonState() {
@@ -1005,15 +1265,19 @@ function updateSubmitButtonState() {
     
     const submitBtn = document.getElementById('submit-votes');
     if (submitBtn) {
+        const leadCount = allJudges.filter(judge => leadVotes[judge]).length;
+        const followCount = allJudges.filter(judge => followVotes[judge]).length;
+        const total = allJudges.length * 2;
+        const cast = leadCount + followCount;
+
         if (leadVotesComplete && followVotesComplete) {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit All Votes';
+            submitBtn.textContent = 'Confirm Votes';
             submitBtn.classList.remove('partial-votes');
         } else {
-            submitBtn.disabled = false; // Allow partial submission for testing, but show visual feedback
-            const leadCount = allJudges.filter(judge => leadVotes[judge]).length;
-            const followCount = allJudges.filter(judge => followVotes[judge]).length;
-            submitBtn.textContent = `Submit Votes (${leadCount + followCount}/${allJudges.length * 2} cast)`;
+            // Smooth flow: disable confirm until all votes are in
+            submitBtn.disabled = true;
+            submitBtn.textContent = `Confirm Votes (${cast}/${total} cast)`;
             submitBtn.classList.add('partial-votes');
         }
     }
@@ -1032,8 +1296,67 @@ function updateSubmitButtonState() {
     }
 }
 
-function calculateWinner(voteType) {
+function showVoteConfirmError(message) {
+    if (!voteConfirmError) return;
+    voteConfirmError.textContent = message || '';
+    if (message) {
+        voteConfirmError.classList.remove('hidden');
+    } else {
+        voteConfirmError.classList.add('hidden');
+    }
+}
+
+function openVoteConfirmModal(evt) {
+    if (!voteConfirmModal) return;
+
+    // Guard: should not be available until after votes are cast
     const allJudges = buildJudgeRoster();
+    const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
+    const followVotesComplete = allJudges.every(judge => followVotes[judge]);
+    if (!leadVotesComplete || !followVotesComplete) {
+        // If something tries to open it early, keep it closed.
+        closeVoteConfirmModal();
+        return;
+    }
+
+    showVoteConfirmError('');
+
+    // Populate round/contestants
+    if (voteConfirmRound) voteConfirmRound.textContent = roundNumber ? roundNumber.textContent : '?';
+    if (voteConfirmLead1) voteConfirmLead1.textContent = lead1Name ? lead1Name.textContent : '';
+    if (voteConfirmLead2) voteConfirmLead2.textContent = lead2Name ? lead2Name.textContent : '';
+    if (voteConfirmFollow1) voteConfirmFollow1.textContent = follow1Name ? follow1Name.textContent : '';
+    if (voteConfirmFollow2) voteConfirmFollow2.textContent = follow2Name ? follow2Name.textContent : '';
+
+    // Preview winners (requires all votes)
+    const leadPreview = calculateWinner('lead');
+    const followPreview = calculateWinner('follow');
+    if (voteConfirmLeadWinner) voteConfirmLeadWinner.textContent = leadPreview || '—';
+    if (voteConfirmFollowWinner) voteConfirmFollowWinner.textContent = followPreview || '—';
+
+    if (!leadPreview || !followPreview) {
+        showVoteConfirmError('Votes are not complete yet. Please make sure every judge has voted for both leads and follows.');
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
+    } else {
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+    }
+
+    voteConfirmModal.classList.remove('hidden');
+    try {
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.focus();
+    } catch (_) {}
+}
+
+function closeVoteConfirmModal() {
+    if (!voteConfirmModal) return;
+    voteConfirmModal.classList.add('hidden');
+    showVoteConfirmError('');
+    try {
+        if (submitVotesBtn) submitVotesBtn.focus();
+    } catch (_) {}
+}
+
+function calculateWinner(voteType) {
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -1041,16 +1364,14 @@ function calculateWinner(voteType) {
     const contestant2 = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
     
     // Check if all votes are present
+    const allJudges = buildJudgeRoster();
     const hasAllVotes = allJudges.every(judge => votes[judge]);
     if (!hasAllVotes) {
         return null; // Not all votes are in yet
     }
     
     // Convert votes to the format expected by the game logic
-    const votesArray = [];
-    for (const judge of allJudges) {
-        votesArray.push([judge, votes[judge]]);
-    }
+    const votesArray = buildEffectiveVotesArray(voteType);
     
     // Calculate winner using the same logic as the backend
     const guestVotes = votesArray.filter(([judge, vote]) => guestJudges.includes(judge)).map(([judge, vote]) => vote);
@@ -1128,7 +1449,7 @@ function lockVoting(voteType) {
     });
 }
 
-async function submitCombinedVotes() {
+async function submitCombinedVotes(options = {}) {
     const allJudges = buildJudgeRoster();
     
     // Check if all judges have voted for both lead and follow
@@ -1137,25 +1458,19 @@ async function submitCombinedVotes() {
     
     if (missingLeadVotes.length > 0 || missingFollowVotes.length > 0) {
         const totalMissing = Math.max(missingLeadVotes.length, missingFollowVotes.length);
-        alert(`Waiting for votes from ${totalMissing} judge(s). Please ensure all judges have voted for both leads and follows.`);
+        const msg = `Waiting for votes from ${totalMissing} judge(s). Please ensure all judges have voted for both leads and follows.`;
+        // If the modal is open, show inline error; otherwise fallback to alert
+        if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            showVoteConfirmError(msg);
+        } else {
+            alert(msg);
+        }
         return;
     }
     
-    // Convert votes objects to array format for API
-    const leadVotesArray = [];
-    const followVotesArray = [];
-    
-    allJudges.forEach(judge => {
-        if (typeof leadVotes[judge] !== 'undefined') {
-            leadVotesArray.push([judge, leadVotes[judge]]);
-        }
-    });
-    
-    allJudges.forEach(judge => {
-        if (typeof followVotes[judge] !== 'undefined') {
-            followVotesArray.push([judge, followVotes[judge]]);
-        }
-    });
+    // Convert votes to arrays for API, expanding the proxy judge when simple contestant judges is enabled.
+    const leadVotesArray = buildEffectiveVotesArray('lead');
+    const followVotesArray = buildEffectiveVotesArray('follow');
     
     // Get song information (Spotify fields only when integration is enabled)
     const songInput = document.getElementById('song-input');
@@ -1182,6 +1497,7 @@ async function submitCombinedVotes() {
     lockVoting('lead');
     lockVoting('follow');
     submitVotesBtn.disabled = true;
+    if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
     
     try {
         const response = await fetch('/api/judge_combined', {
@@ -1205,29 +1521,42 @@ async function submitCombinedVotes() {
             } catch (_) {}
         }
         
-        // Update results UI
-        leadWinner.textContent = data.lead_winner;
-        leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
-        leadContestantVotes.textContent = data.lead_contestant_votes.join(', ') || 'None';
-        
-        followWinner.textContent = data.follow_winner;
-        followGuestVotes.textContent = data.follow_guest_votes.join(', ') || 'None';
-        followContestantVotes.textContent = data.follow_contestant_votes.join(', ') || 'None';
-        
-        // Show results
-        votingResults.classList.remove('hidden');
-        
-        // Show win messages if any
-        if (data.win_messages && data.win_messages.length > 0) {
-            winMessages.innerHTML = data.win_messages.map(msg => `<p>${msg}</p>`).join('');
-        }
-        
-        // Show round results section
-        roundResultsSection.classList.remove('hidden');
-        
-        // If game is finished, disable next round button
-        if (data.game_finished) {
-            nextRoundBtn.disabled = true;
+        // Close the modal on successful submit
+        closeVoteConfirmModal();
+
+        const shouldAutoAdvance = options && options.autoAdvance === true;
+        const showResultsInRound = !shouldAutoAdvance || data.game_finished;
+
+        if (showResultsInRound) {
+            // Update results UI
+            leadWinner.textContent = data.lead_winner;
+            leadGuestVotes.textContent = data.lead_guest_votes.join(', ') || 'None';
+            leadContestantVotes.textContent = data.lead_contestant_votes.join(', ') || 'None';
+            
+            followWinner.textContent = data.follow_winner;
+            followGuestVotes.textContent = data.follow_guest_votes.join(', ') || 'None';
+            followContestantVotes.textContent = data.follow_contestant_votes.join(', ') || 'None';
+            
+            // Show results
+            votingResults.classList.remove('hidden');
+            
+            // Show win messages if any
+            if (data.win_messages && data.win_messages.length > 0) {
+                winMessages.innerHTML = data.win_messages.map(msg => `<p>${msg}</p>`).join('');
+            }
+            
+            // Show round results section
+            roundResultsSection.classList.remove('hidden');
+            
+            // If game is finished, disable next round button
+            if (data.game_finished) {
+                nextRoundBtn.disabled = true;
+            }
+        } else {
+            // Keep the UI clean; we’re auto-advancing
+            votingResults.classList.add('hidden');
+            roundResultsSection.classList.add('hidden');
+            winMessages.innerHTML = '';
         }
         
         // Update live graphic immediately with the latest canonical state
@@ -1235,12 +1564,31 @@ async function submitCombinedVotes() {
             const state = await fetchCanonicalState();
             if (state) updateLiveGraphicFromState(state);
         } catch (_) {}
+
+        // Auto-advance to the next round (unless game finished)
+        if (shouldAutoAdvance && !data.game_finished) {
+            try {
+                await goToNextRound();
+            } catch (_) {
+                // If next round fails, allow the user to try again
+                votingLocked.lead = false;
+                votingLocked.follow = false;
+                submitVotesBtn.disabled = false;
+                if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+            }
+        }
     } catch (error) {
         console.error('Error submitting combined votes:', error);
-        alert('Failed to submit votes. Please try again.');
+        const msg = 'Failed to submit votes. Please try again.';
+        if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
+            showVoteConfirmError(msg);
+        } else {
+            alert(msg);
+        }
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
         submitVotesBtn.disabled = false;
+        if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
     }
 }
 

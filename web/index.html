@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hustle n' Tussle - Dance Competition</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v={{ config.ASSET_VERSION }}">
 </head>
 <body>
     <div id="session-id-display" class="session-id-display"></div>
@@ -106,9 +106,23 @@
                     Enable simple contestant judges (use a single proxy judge)
                 </label>
             </div>
+            <div class="form-group" id="num-contestant-judges-group">
+                <label for="num-contestant-judges">Number of contestant judges (optional):</label>
+                <input type="number" id="num-contestant-judges" min="0" placeholder="Auto (guest judges + 1)" />
+                <p class="form-helper-text">Leave blank to use the default: 1 more than the number of guest judges.</p>
+                <div id="contestant-judges-warning" class="warning-message" style="display:none;"></div>
+            </div>
             <div class="form-group">
-                <label for="points-to-win">Points to win (optional):</label>
-                <input type="number" id="points-to-win" min="1" placeholder="Auto (default calculated)" />
+                <label for="points-to-win-mode">Points to win:</label>
+                <select id="points-to-win-mode">
+                    <option value="default" selected>Default (7 points)</option>
+                    <option value="auto">Auto-calculate (contestants - 1)</option>
+                    <option value="custom">Custom value</option>
+                </select>
+                <div id="custom-points-container" style="display:none; margin-top:8px;">
+                    <input type="number" id="points-to-win" min="1" placeholder="Enter points to win" />
+                </div>
+                <p class="form-helper-text" id="points-to-win-helper">First contestant to reach 7 points wins.</p>
             </div>
 			<div class="form-group" id="playlist-url-group">
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
@@ -217,7 +231,47 @@
                 </div>
                 
                 <div class="vote-submission">
-                    <button id="submit-votes" class="btn primary">Submit All Votes</button>
+                    <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                </div>
+
+                <!-- Vote confirmation modal -->
+                <div id="vote-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h3 id="vote-confirm-title">Confirm submission</h3>
+                            <button id="vote-confirm-close" class="modal-close" aria-label="Close">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="modal-subtitle">You’re about to submit votes for <strong>Round <span id="vote-confirm-round">?</span></strong>.</p>
+
+                            <div class="modal-summary">
+                                <div class="modal-summary-section">
+                                    <h4>Leads</h4>
+                                    <div class="modal-pair">
+                                        <span class="contestant lead" id="vote-confirm-lead1"></span> vs
+                                        <span class="contestant lead" id="vote-confirm-lead2"></span>
+                                    </div>
+                                    <div class="modal-winner">Preview winner: <strong id="vote-confirm-lead-winner">—</strong></div>
+                                </div>
+
+                                <div class="modal-summary-section">
+                                    <h4>Follows</h4>
+                                    <div class="modal-pair">
+                                        <span class="contestant follow" id="vote-confirm-follow1"></span> vs
+                                        <span class="contestant follow" id="vote-confirm-follow2"></span>
+                                    </div>
+                                    <div class="modal-winner">Preview winner: <strong id="vote-confirm-follow-winner">—</strong></div>
+                                </div>
+                            </div>
+
+                            <p class="modal-note">Submitting will automatically advance to the next round (unless the battle is finished).</p>
+                            <div id="vote-confirm-error" class="modal-error hidden"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="vote-confirm-cancel" class="btn secondary">Cancel</button>
+                            <button id="vote-confirm-submit" class="btn primary">Submit &amp; Next Round</button>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="voting-results" class="results hidden">
@@ -343,7 +397,7 @@
             });
         })();
     </script>
-    <script src="js/components/DebugTools.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/components/DebugTools.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/app.js?v={{ config.ASSET_VERSION }}"></script>
 </body>
 </html> 

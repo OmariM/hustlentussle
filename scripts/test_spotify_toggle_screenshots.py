@@ -87,8 +87,15 @@ def run() -> None:
 			page.wait_for_selector('#follow-judges-container .judge-card')
 			page.locator('#follow-judges-container .judge-card .vote-option-1').first.click()
 			page.wait_for_function("() => { const b = document.getElementById('submit-votes'); return b && !b.disabled; }")
+			prev_round = page.text_content('#round-number').strip()
 			page.click('#submit-votes')
-			page.wait_for_selector('#voting-results:not(.hidden)')
+			page.wait_for_selector('#vote-confirm-modal:not(.hidden)')
+			page.click('#vote-confirm-submit')
+			# Wait for auto-advance (or for battle to finish and leave battle screen)
+			page.wait_for_function(
+				"(prev) => { const battle = document.getElementById('battle-screen'); if (!battle || !battle.classList.contains('active')) return true; const rn = document.getElementById('round-number'); return rn && rn.textContent.trim() !== prev; }",
+				arg=prev_round,
+			)
 
 			# End battle and verify history renders while Spotify is off
 			page.click('#end-battle')

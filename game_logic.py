@@ -125,6 +125,8 @@ class Game:
         *,
         contestant_judging_enabled: bool = True,
         simple_contestant_judges: bool = False,
+        num_contestant_judges: int = None,
+        points_to_win: int = None,
     ) -> None:
         # Store the session ID
         self.session_id = None  # Will be set when the game is created
@@ -175,15 +177,29 @@ class Game:
         self.total_num_leads = len(self._leads)
         self.total_num_follows = len(self._follows)
 
-        # Calculate win threshold based on maximum number of contestants
-        self.win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
+        # Calculate auto win threshold (for reference)
+        self.auto_win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
 
-        # Calculate number of contestant judges needed - always use 3 if possible
-        available_for_judging = len(self._leads) + len(self._follows) - 4
-        if self.contestant_judging_enabled:
-            self.num_contestant_judges = max(0, min(3, available_for_judging))
+        # Set win threshold: use provided value, or default to 7
+        if points_to_win is not None:
+            self.win_threshold = points_to_win
         else:
+            self.win_threshold = 7
+
+        # Calculate expected contestant judges (1 more than guest judges)
+        self.expected_contestant_judges = len(guest_judge_names) + 1
+
+        # Calculate number of contestant judges
+        available_for_judging = len(self._leads) + len(self._follows) - 4
+        if not self.contestant_judging_enabled:
             self.num_contestant_judges = 0
+        elif num_contestant_judges is not None:
+            # Use custom value if provided
+            self.num_contestant_judges = num_contestant_judges
+        else:
+            # Default: 1 more than guest judges, but limited by available contestants
+            default_num = self.expected_contestant_judges
+            self.num_contestant_judges = max(0, min(default_num, available_for_judging))
 
         # Pending queue updates (applied at round transition)
         self._pending_leads_enqueue = []

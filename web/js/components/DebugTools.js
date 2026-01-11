@@ -57,8 +57,8 @@ class DebugTools {
             right: 6px;
             bottom: 6px;
             cursor: se-resize;
-            border-right: 2px solid #4CAF50;
-            border-bottom: 2px solid #4CAF50;
+            border-right: 2px solid var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
             opacity: 0.8;
         `;
         this.panel.appendChild(resizeHandle);
@@ -76,7 +76,7 @@ class DebugTools {
             right: 20px;
             z-index: 10000;
             padding: 8px 15px;
-            background: #4CAF50;
+            background: var(--primary-color);
             color: white;
             border: none;
             border-radius: 4px;
@@ -276,7 +276,7 @@ class DebugTools {
             padding: 4px 8px;
             background: #333;
             color: white;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
             cursor: pointer;
         `;
@@ -302,7 +302,7 @@ class DebugTools {
             margin: 5px 0;
             padding: 5px;
             background: #333;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
         `;
         
@@ -787,8 +787,10 @@ class DebugTools {
                     if (buttons.length > 0) {
                         // For guest judges, we can click any button (1-4)
                         // For contestant judges, we can only click buttons 1-2
+                        // In simple contestant judges mode, the proxy "Contestant Judges" has 3 options (1, Mixed, 2)
                         const isGuest = card.querySelector('.judge-name').textContent.includes('(Guest)');
-                        const validButtons = isGuest ? buttons : buttons.slice(0, 2);
+                        const isProxyContestantJudges = !isGuest && judgeName.trim() === 'Contestant Judges';
+                        const validButtons = isGuest ? buttons : (isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2));
                         console.log(`Valid buttons for ${judgeName}: ${validButtons.length} (isGuest: ${isGuest})`);
                         
                         // Get a random button from the valid options
@@ -800,6 +802,8 @@ class DebugTools {
                         const classMatch = randomButton.className.match(/vote-option-(\d+)/);
                         if (classMatch) {
                             voteValue = parseInt(classMatch[1]);
+                        } else if (randomButton.className.includes('vote-option-mixed')) {
+                            voteValue = 5;
                         } else {
                             // Fallback: determine vote value based on button text
                             const buttonText = randomButton.textContent.trim();
@@ -908,29 +912,35 @@ class DebugTools {
                 return;
             }
 
-            // Submit all votes using the combined submit button
-            const submitBtn = document.getElementById('submit-votes');
-            if (submitBtn && !submitBtn.disabled) {
-                console.log('Submitting all votes...');
-                submitBtn.click();
-                // Wait for results to render (votingResults visible or button disabled)
-                await this.waitFor(() => {
-                    const vr = document.getElementById('voting-results');
-                    return (vr && !vr.classList.contains('hidden')) || (submitBtn.disabled === true);
-                }, 7000);
-            } else {
-                console.warn('Submit button not available or already disabled');
-            }
+            // Confirm + submit votes via modal (new flow auto-advances)
+            const confirmBtn = document.getElementById('submit-votes');
+            if (confirmBtn && !confirmBtn.disabled) {
+                console.log('Confirming votes...');
+                const prevRound = (document.getElementById('round-number')?.textContent || '').trim();
+                confirmBtn.click();
 
-            // Find and click the Next Round button once enabled
-            const nextRoundButton = document.getElementById('next-round');
-            if (nextRoundButton) {
-                // Ensure any async UI updates are finished and button is enabled
-                await this.waitFor(() => !nextRoundButton.disabled, 7000);
-                console.log('Clicking Next Round button...');
-                nextRoundButton.click();
+                // Wait for modal to appear
+                await this.waitFor(() => {
+                    const m = document.getElementById('vote-confirm-modal');
+                    return m && !m.classList.contains('hidden');
+                }, 5000);
+
+                const modalSubmit = document.getElementById('vote-confirm-submit');
+                if (modalSubmit) {
+                    console.log('Submitting votes (modal)...');
+                    modalSubmit.click();
+                } else {
+                    console.warn('Modal submit button not found');
+                }
+
+                // Wait for round to advance (or game to end)
+                await this.waitFor(() => {
+                    const rn = (document.getElementById('round-number')?.textContent || '').trim();
+                    const battleActive = document.getElementById('battle-screen')?.classList.contains('active');
+                    return !battleActive || (prevRound && rn && rn !== prevRound);
+                }, 12000);
             } else {
-                console.warn('Next Round button not found');
+                console.warn('Confirm button not available or disabled');
             }
         } catch (error) {
             console.error('Error in next round process:', error);
@@ -1006,7 +1016,7 @@ class DebugTools {
         header.style.cssText = `
             margin: 0 0 5px 0;
             font-size: 14px;
-            color: #4CAF50;
+            color: var(--primary-color);
         `;
         
         section.appendChild(header);
@@ -1023,7 +1033,7 @@ class DebugTools {
             padding: 5px;
             background: #333;
             color: white;
-            border: 1px solid #4CAF50;
+            border: 1px solid var(--primary-color);
             border-radius: 3px;
             cursor: pointer;
         `;
