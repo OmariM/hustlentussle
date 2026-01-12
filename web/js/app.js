@@ -11,6 +11,11 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Display mode state (for viewer-only mode without voting controls)
+let displayMode = false;
+let displayPollInterval = null;
+const DISPLAY_POLL_INTERVAL_MS = 3000; // Poll every 3 seconds in display mode
+
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
@@ -61,6 +66,9 @@ let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded');
+    
+    // Detect display mode early (before DOM element setup)
+    detectDisplayMode();
     
     // Initialize DOM elements
     homeScreen = document.getElementById('home-screen');
@@ -394,6 +402,11 @@ document.addEventListener('DOMContentLoaded', () => {
 				applySpotifyEnabledUI();
 			});
 		}
+
+    // Initialize display mode if detected (this goes directly to battle screen)
+    if (displayMode) {
+        initDisplayMode();
+    }
 });
 
 // Functions
@@ -420,6 +433,129 @@ function showScreen(screen) {
         if (sig) sig.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
         if (pes) pes.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
     } catch (_) {}
+
+    // Apply display mode UI changes when switching screens
+    if (displayMode) {
+        applyDisplayModeUI();
+        // Start/stop polling based on which screen is active
+        if (screen === roundScreen) {
+            startDisplayPolling();
+        } else {
+            stopDisplayPolling();
+        }
+    }
+}
+
+// Display mode functions
+function detectDisplayMode() {
+    try {
+        const url = new URL(window.location.href);
+        const mode = url.searchParams.get('mode');
+        const urlSessionId = url.searchParams.get('session_id');
+        
+        if (mode === 'display') {
+            displayMode = true;
+            document.body.classList.add('display-mode');
+            console.log('Display mode enabled');
+            
+            // If session_id is provided in URL, use it
+            if (urlSessionId) {
+                sessionId = urlSessionId;
+                localStorage.setItem('sessionId', sessionId);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to detect display mode:', e);
+    }
+    return displayMode;
+}
+
+function startDisplayPolling() {
+    if (!displayMode || displayPollInterval) return;
+    
+    console.log('Starting display mode polling...');
+    displayPollInterval = setInterval(async () => {
+        try {
+            const state = await fetchCanonicalState();
+            if (state) {
+                renderFromState(state);
+                
+                // Check if game is finished and redirect to results
+                if (state.flags && state.flags.finished) {
+                    stopDisplayPolling();
+                    // Trigger end game to show results
+                    endCompetition();
+                }
+            }
+        } catch (e) {
+            console.warn('Display polling error:', e);
+        }
+    }, DISPLAY_POLL_INTERVAL_MS);
+}
+
+function stopDisplayPolling() {
+    if (displayPollInterval) {
+        clearInterval(displayPollInterval);
+        displayPollInterval = null;
+        console.log('Display mode polling stopped');
+    }
+}
+
+function applyDisplayModeUI() {
+    if (!displayMode) return;
+    
+    // Hide voting sections
+    const combinedVoting = document.getElementById('combined-voting');
+    if (combinedVoting) combinedVoting.style.display = 'none';
+    
+    // Hide round results section (Next Round / End Battle buttons)
+    const roundResults = document.getElementById('round-results');
+    if (roundResults) roundResults.style.display = 'none';
+    
+    // Hide theme and spotify toggles for cleaner display
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) themeToggle.parentElement.style.display = 'none';
+    
+    const spotifyToggle = document.getElementById('spotify-toggle');
+    if (spotifyToggle) spotifyToggle.parentElement.style.display = 'none';
+}
+
+async function initDisplayMode() {
+    if (!displayMode) return;
+    
+    if (!sessionId) {
+        // No session ID - show error on home screen
+        alert('Display mode requires a session_id parameter. Example: ?mode=display&session_id=YOUR_SESSION_ID');
+        return;
+    }
+    
+    // Apply display mode UI changes
+    applyDisplayModeUI();
+    
+    // Fetch initial state and go directly to battle screen
+    try {
+        const state = await fetchCanonicalState();
+        if (state) {
+            // Update session ID display
+            const sessionIdDisplay = document.getElementById('session-id-display');
+            if (sessionIdDisplay) {
+                sessionIdDisplay.textContent = `Session: ${sessionId}`;
+                sessionIdDisplay.style.display = 'block';
+            }
+            
+            // Go directly to battle screen
+            showScreen(roundScreen);
+            renderFromState(state);
+            
+            // Start polling for updates
+            startDisplayPolling();
+        } else {
+            alert('Failed to load game state. Session may not exist.');
+        }
+    } catch (e) {
+        console.error('Failed to initialize display mode:', e);
+        alert('Failed to connect to game session.');
+    }
 }
 
 // Canonical state helpers
@@ -859,7 +995,24 @@ function showUploadError(message) {
 function updateSessionIdDisplay() {
     const sessionIdDisplay = document.getElementById('session-id-display');
     if (sessionIdDisplay) {
-        sessionIdDisplay.textContent = sessionId ? `Session: ${sessionId}` : '';
+        if (sessionId && !displayMode) {
+            // In admin mode, show session ID and shareable display URL
+            const baseUrl = window.location.origin + window.location.pathname;
+            const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
+            sessionIdDisplay.innerHTML = `
+                <div>Session: ${sessionId}</div>
+                <div class="display-url-info">
+                    <span>Display URL (for viewers):</span>
+                    <input type="text" readonly value="${displayUrl}" onclick="this.select()" class="display-url-input" />
+                    <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText('${displayUrl}').then(() => this.textContent = 'Copied!').catch(() => {})">Copy</button>
+                </div>
+            `;
+        } else if (sessionId) {
+            // In display mode, just show session ID
+            sessionIdDisplay.textContent = `Session: ${sessionId}`;
+        } else {
+            sessionIdDisplay.textContent = '';
+        }
     }
 }
 
