@@ -354,6 +354,15 @@ def serialize_state(game: Game) -> dict:
             'leads': [c.name for c in getattr(game, 'initial_leads', [])],
             'follows': [c.name for c in getattr(game, 'initial_follows', [])],
         },
+        'queue_order': {
+            # Current competitors (positions 1-2) then queue (positions 3+)
+            'leads': (
+                [game.pair_1[0].name, game.pair_2[0].name] if game.pair_1 and game.pair_2 else []
+            ) + [c.name for c in game.leads],
+            'follows': (
+                [game.pair_1[1].name, game.pair_2[1].name] if game.pair_1 and game.pair_2 else []
+            ) + [c.name for c in game.follows],
+        },
     }
     return state
 

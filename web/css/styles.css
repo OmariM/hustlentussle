@@ -1751,3 +1751,126 @@ td span.crown {
 	margin-top: 8px;
 	border: none;
 }
+
+/* Contestant Order Section */
+.contestant-order-section {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.contestant-order-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.contestant-order-container {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+}
+
+.order-column {
+    flex: 1;
+    max-width: 250px;
+}
+
+.order-column h4 {
+    color: var(--text-color);
+    margin-bottom: 12px;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.order-column:first-child h4 {
+    color: var(--lead-color);
+}
+
+.order-column:last-child h4 {
+    color: var(--follow-color);
+}
+
+.order-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: order-counter;
+}
+
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    background-color: var(--muted-bg);
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+    counter-increment: order-counter;
+}
+
+.order-item::before {
+    content: counter(order-counter) ".";
+    margin-right: 10px;
+    color: var(--light-text);
+    font-weight: 500;
+    min-width: 24px;
+}
+
+.order-item.current-participant {
+    background-color: rgba(67, 97, 238, 0.12);
+    border-left-color: var(--primary-color);
+}
+
+.order-item.current-participant .order-name {
+    font-weight: 700;
+}
+
+.order-item.next-participant {
+    background-color: rgba(67, 97, 238, 0.06);
+    border-left-color: rgba(67, 97, 238, 0.4);
+}
+
+.order-item.next-participant .order-name {
+    font-weight: 600;
+}
+
+.order-name {
+    flex: 1;
+    font-size: 0.95rem;
+}
+
+/* Dark mode support for contestant order */
+[data-theme="dark"] .contestant-order-section {
+    background-color: var(--panel-bg);
+}
+
+[data-theme="dark"] .order-item {
+    background-color: var(--muted-bg);
+}
+
+[data-theme="dark"] .order-item.current-participant {
+    background-color: rgba(122, 162, 255, 0.15);
+    border-left-color: var(--primary-color);
+}
+
+[data-theme="dark"] .order-item.next-participant {
+    background-color: rgba(122, 162, 255, 0.08);
+    border-left-color: rgba(122, 162, 255, 0.4);
+}
+
+/* Responsive design for contestant order */
+@media (max-width: 768px) {
+    .contestant-order-container {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .order-column {
+        max-width: 100%;
+    }
+}

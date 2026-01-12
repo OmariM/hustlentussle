@@ -496,6 +496,9 @@ function renderFromState(state) {
     // Scoreboard
     updateLiveGraphicFromState(state);
 
+    // Update contestant order visualization
+    updateContestantOrder(state);
+
     // Reset voting UI for the current round
     closeVoteConfirmModal();
     votingResults.classList.add('hidden');
@@ -690,6 +693,48 @@ function updateLiveGraphicFromState(state) {
         : (follows || []).map(f => f.name);
     renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
+}
+
+function updateContestantOrder(state) {
+    // Update the contestant order visualization showing who's competing now and who's next
+    const leadOrderList = document.getElementById('lead-order-list');
+    const followOrderList = document.getElementById('follow-order-list');
+    
+    if (!leadOrderList || !followOrderList) return;
+    
+    // Clear existing lists
+    leadOrderList.innerHTML = '';
+    followOrderList.innerHTML = '';
+    
+    // Get queue order from state
+    const leadOrder = state.queue_order?.leads || [];
+    const followOrder = state.queue_order?.follows || [];
+    
+    // Helper to render an ordered list
+    const renderOrderList = (order, container, role) => {
+        order.forEach((name, idx) => {
+            const li = document.createElement('li');
+            li.className = 'order-item';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'order-name';
+            nameSpan.textContent = name;
+            
+            if (idx < 2) {
+                // Current round participants - bold
+                li.classList.add('current-participant');
+            } else if (idx === 2) {
+                // Next new participant - semi-bold
+                li.classList.add('next-participant');
+            }
+            
+            li.appendChild(nameSpan);
+            container.appendChild(li);
+        });
+    };
+    
+    renderOrderList(leadOrder, leadOrderList, 'lead');
+    renderOrderList(followOrder, followOrderList, 'follow');
 }
 
 async function refreshCanonicalState() {
