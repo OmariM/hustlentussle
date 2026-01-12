@@ -711,6 +711,11 @@ def end_game():
     game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Mark the game as finished so display mode polling detects it
+    game.state = 1
+    repo.save(session_id, game)
+    
     leads, follows = game.finalize_results()
     
     # Format the results - include all leads

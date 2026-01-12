@@ -62,6 +62,8 @@ let backToHomeFromResultsBtn, downloadBattleDataBtn;
 let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
 let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
 let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
+// End battle early modal elements
+let endEarlyBtn, endEarlyModal, endEarlyCloseBtn, endEarlyCancelBtn, endEarlyConfirmBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -216,6 +218,13 @@ document.addEventListener('DOMContentLoaded', () => {
     voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner');
     voteConfirmError = document.getElementById('vote-confirm-error');
 
+    // End battle early modal
+    endEarlyBtn = document.getElementById('end-battle-early');
+    endEarlyModal = document.getElementById('end-early-modal');
+    endEarlyCloseBtn = document.getElementById('end-early-close');
+    endEarlyCancelBtn = document.getElementById('end-early-cancel');
+    endEarlyConfirmBtn = document.getElementById('end-early-confirm');
+
 // Results elements
     roundResultsSection = document.getElementById('round-results');
     winMessages = document.getElementById('win-messages');
@@ -304,10 +313,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape' && voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             closeVoteConfirmModal();
         }
+        if (e.key === 'Escape' && endEarlyModal && !endEarlyModal.classList.contains('hidden')) {
+            closeEndEarlyModal();
+        }
     });
+
+    // End battle early modal controls
+    if (endEarlyBtn) endEarlyBtn.addEventListener('click', openEndEarlyModal);
+    if (endEarlyCloseBtn) endEarlyCloseBtn.addEventListener('click', closeEndEarlyModal);
+    if (endEarlyCancelBtn) endEarlyCancelBtn.addEventListener('click', closeEndEarlyModal);
+    if (endEarlyModal) {
+        endEarlyModal.addEventListener('click', (e) => {
+            if (e.target === endEarlyModal) closeEndEarlyModal();
+        });
+    }
+    if (endEarlyConfirmBtn) {
+        endEarlyConfirmBtn.addEventListener('click', () => {
+            closeEndEarlyModal();
+            endCompetition();
+        });
+    }
 
     // Ensure modal is never shown by default on load
     closeVoteConfirmModal();
+    closeEndEarlyModal();
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -1552,6 +1581,19 @@ function closeVoteConfirmModal() {
     try {
         if (submitVotesBtn) submitVotesBtn.focus();
     } catch (_) {}
+}
+
+function openEndEarlyModal() {
+    if (!endEarlyModal) return;
+    endEarlyModal.classList.remove('hidden');
+    try {
+        if (endEarlyConfirmBtn) endEarlyConfirmBtn.focus();
+    } catch (_) {}
+}
+
+function closeEndEarlyModal() {
+    if (!endEarlyModal) return;
+    endEarlyModal.classList.add('hidden');
 }
 
 function calculateWinner(voteType) {

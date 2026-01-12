@@ -250,6 +250,25 @@
                 
                 <div class="vote-submission">
                     <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                    <button id="end-battle-early" class="btn warning">End Battle Early</button>
+                </div>
+
+                <!-- End battle early confirmation modal -->
+                <div id="end-early-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-early-title">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h3 id="end-early-title">End Battle Early?</h3>
+                            <button id="end-early-close" class="modal-close" aria-label="Close">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Are you sure you want to end the battle now?</p>
+                            <p class="modal-note">Winners will be determined by current standings (most rounds won).</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="end-early-cancel" class="btn secondary">Cancel</button>
+                            <button id="end-early-confirm" class="btn warning">End Battle</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Vote confirmation modal -->
