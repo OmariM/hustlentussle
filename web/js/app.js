@@ -1958,6 +1958,8 @@ async function goToNextRound() {
 }
 
 async function endCompetition() {
+    // Stop any display mode polling before ending the game
+    stopDisplayPolling();
     // Call our updated endGame function that works with the new UI components
     endGame();
 }
@@ -2070,6 +2072,9 @@ function updateScoreTable(leads, follows) {
 
 async function displayResults(data) {
     console.log('Displaying results with data:', data);
+    
+    // Ensure display mode polling is stopped when showing results
+    stopDisplayPolling();
     
     // Use the showScreen function with the correct screen element
     showScreen(resultsScreen);
