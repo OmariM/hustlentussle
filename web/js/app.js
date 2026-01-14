@@ -21,6 +21,9 @@ let previousLeadOrder = [];
 let previousFollowOrder = [];
 let previousRoundNumber = null;
 let animationInProgress = false;
+let roundTransitionInProgress = false; // Track if round transition overlay is showing
+let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
+let pendingQueueAnimationData = null; // Store data for queue animation after stagger
 
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
@@ -508,12 +511,68 @@ function detectDisplayMode() {
 function startDisplayPolling() {
     if (!displayMode || displayPollInterval) return;
     
+    // Track the last round number we displayed (for overlay triggering)
+    let lastDisplayedRound = null;
+    
     console.log('Starting display mode polling...');
     displayPollInterval = setInterval(async () => {
+        // Skip polling while transition overlay is showing
+        if (roundTransitionInProgress) return;
+        
         try {
             const state = await fetchCanonicalState();
             if (state) {
-                renderFromState(state);
+                const currentRound = state.round?.number || null;
+                
+                // Check if round changed (and we have a previous round to compare)
+                const roundChanged = lastDisplayedRound !== null && 
+                                     currentRound !== null && 
+                                     currentRound !== lastDisplayedRound;
+                
+                if (roundChanged) {
+                    // Full transition sequence:
+                    // 1. Hide sections immediately (invisible during overlay)
+                    // 2. Show overlay
+                    // 3. Render state (skip queue animation, keep old order for animation)
+                    // 4. Staggered fade-in of sections
+                    // 5. Trigger queue animation (from old order to new order)
+                    // 6. Clear transition flag when complete
+                    
+                    // Hide sections before overlay so they're invisible during it
+                    hideSectionsForTransition();
+                    
+                    showRoundTransitionOverlay(currentRound, () => {
+                        // Skip queue animation during initial render - we'll trigger it after stagger
+                        skipQueueAnimationOnNextRender = true;
+                        renderFromState(state);
+                        skipQueueAnimationOnNextRender = false;
+                        lastDisplayedRound = currentRound;
+                        
+                        // Re-hide sections after render (render may have reset DOM)
+                        hideSectionsForTransition();
+                        
+                        // Perform staggered fade-in, then trigger queue animation
+                        performStaggeredFadeIn(() => {
+                            // Check if queue animation will run before triggering
+                            const willAnimateQueue = pendingQueueAnimationData && 
+                                (pendingQueueAnimationData.leadLosers.length > 0 || 
+                                 pendingQueueAnimationData.followLosers.length > 0);
+                            
+                            triggerPendingQueueAnimation();
+                            
+                            // Wait for queue animation to complete before allowing next poll
+                            // Queue animation takes EXIT_DURATION + ENTRY_DURATION + CLEANUP_BUFFER = ~2.4s
+                            const QUEUE_ANIMATION_TOTAL = 2500;
+                            setTimeout(() => {
+                                roundTransitionInProgress = false;
+                            }, willAnimateQueue ? QUEUE_ANIMATION_TOTAL : 0);
+                        });
+                    });
+                } else {
+                    // No round change, just update normally
+                    renderFromState(state);
+                    lastDisplayedRound = currentRound;
+                }
                 
                 // Check if game is finished and redirect to results
                 if (state.flags && state.flags.finished) {
@@ -534,6 +593,109 @@ function stopDisplayPolling() {
         displayPollInterval = null;
         console.log('Display mode polling stopped');
     }
+}
+
+// Round transition overlay for display mode
+const ROUND_OVERLAY_FADE_IN = 400;   // ms - fade in duration
+const ROUND_OVERLAY_HOLD = 1500;     // ms - hold duration
+const ROUND_OVERLAY_FADE_OUT = 400;  // ms - fade out duration
+
+function showRoundTransitionOverlay(roundNumber, callback) {
+    const overlay = document.getElementById('round-transition-overlay');
+    const roundNumberEl = document.getElementById('overlay-round-number');
+    
+    if (!overlay || !roundNumberEl) {
+        // Overlay elements not found, just run callback
+        if (callback) callback();
+        return;
+    }
+    
+    roundTransitionInProgress = true;
+    
+    // Set the round number
+    roundNumberEl.textContent = roundNumber;
+    
+    // Show overlay (remove hidden, add active after a frame for transition)
+    overlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        overlay.classList.add('active');
+    });
+    
+    // Hold, then fade out
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        
+        // After fade out, hide completely and run callback
+        // NOTE: Keep roundTransitionInProgress = true until entire sequence completes
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            // Don't set roundTransitionInProgress to false here - let the full sequence control it
+            if (callback) callback();
+        }, ROUND_OVERLAY_FADE_OUT);
+    }, ROUND_OVERLAY_FADE_IN + ROUND_OVERLAY_HOLD);
+}
+
+// Staggered fade-in animation timing
+const STAGGER_DELAY_MS = 150; // Delay between each section
+const STAGGER_ANIMATION_MS = 400; // Duration of each fade-in
+
+// Hide sections before overlay (so they're invisible during overlay)
+function hideSectionsForTransition() {
+    const roundContent = document.querySelector('.round-content');
+    if (!roundContent) return;
+    
+    roundContent.classList.add('sections-transitioning');
+}
+
+function performStaggeredFadeIn(callback) {
+    const roundContent = document.querySelector('.round-content');
+    if (!roundContent) {
+        if (callback) callback();
+        return;
+    }
+    
+    // Sections to animate in order (excluding battle graphic and participant order)
+    const sections = [
+        roundContent.querySelector('.round-info'),
+        roundContent.querySelector('.matchups'),
+        roundContent.querySelector('.judges')
+    ].filter(Boolean);
+    
+    // Sections should already be hidden via sections-transitioning class
+    // Apply staggered fade-in classes (animation starts at opacity:0 due to 'both' fill mode)
+    sections.forEach((section, index) => {
+        section.classList.add('section-fade-in', `stagger-${index + 1}`);
+    });
+    
+    // Use double requestAnimationFrame to ensure animation classes have been painted
+    // before removing the transitioning class (prevents flicker)
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            roundContent.classList.remove('sections-transitioning');
+        });
+    });
+    
+    // Calculate total animation time and run callback after completion
+    const totalAnimationTime = (sections.length - 1) * STAGGER_DELAY_MS + STAGGER_ANIMATION_MS + 50;
+    setTimeout(() => {
+        // Clean up animation classes
+        sections.forEach((section, index) => {
+            section.classList.remove('section-fade-in', `stagger-${index + 1}`);
+        });
+        if (callback) callback();
+    }, totalAnimationTime);
+}
+
+function triggerPendingQueueAnimation() {
+    if (!pendingQueueAnimationData) return;
+    
+    const { leadContainer, followContainer, leadOrder, followOrder, leadLosers, followLosers } = pendingQueueAnimationData;
+    
+    if ((leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
+        animateQueueTransition(leadContainer, followContainer, leadOrder, followOrder, leadLosers, followLosers);
+    }
+    
+    pendingQueueAnimationData = null;
 }
 
 function applyDisplayModeUI() {
@@ -900,9 +1062,24 @@ function updateContestantOrder(state) {
     const leadLosers = roundChanged ? findLosers(previousLeadOrder, leadOrder) : [];
     const followLosers = roundChanged ? findLosers(previousFollowOrder, followOrder) : [];
     
-    // If we have losers and are in display mode, animate the transition
+    // If we have losers and are in display mode, animate the transition (unless skipped for stagger sequence)
     if (displayMode && roundChanged && (leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
-        animateQueueTransition(leadOrderList, followOrderList, leadOrder, followOrder, leadLosers, followLosers);
+        if (skipQueueAnimationOnNextRender) {
+            // Store animation data for later - will be triggered after stagger fade-in
+            // KEEP the old order in DOM - don't render new order yet
+            // The animation will transition from old (current DOM) to new order
+            pendingQueueAnimationData = {
+                leadContainer: leadOrderList,
+                followContainer: followOrderList,
+                leadOrder: [...leadOrder],       // NEW order to animate TO
+                followOrder: [...followOrder],   // NEW order to animate TO
+                leadLosers: [...leadLosers],
+                followLosers: [...followLosers]
+            };
+            // Don't render - keep old order visible for animation start
+        } else {
+            animateQueueTransition(leadOrderList, followOrderList, leadOrder, followOrder, leadLosers, followLosers);
+        }
     } else {
         // No animation needed, just render normally
         renderOrderListImmediate(leadOrder, leadOrderList, 'lead', []);
