@@ -1896,6 +1896,93 @@ td span.crown {
 }
 
 /* ========================= */
+/* Queue Order Animation (Display Mode) */
+/* ========================= */
+
+/* Keyframes for loser exiting (sliding out and fading) */
+@keyframes loserSlideOut {
+    0% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        background-color: rgba(239, 68, 68, 0.15);
+        border-left-color: rgba(239, 68, 68, 0.6);
+    }
+    30% {
+        opacity: 0.9;
+        transform: translateX(-10px) scale(0.98);
+        background-color: rgba(239, 68, 68, 0.3);
+    }
+    60% {
+        opacity: 0.5;
+        transform: translateX(-30px) scale(0.95);
+        background-color: rgba(239, 68, 68, 0.4);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-60px) scale(0.9);
+        background-color: rgba(239, 68, 68, 0.5);
+    }
+}
+
+/* Keyframes for loser arriving at back of queue */
+@keyframes loserSlideIn {
+    0% {
+        opacity: 0;
+        transform: translateX(60px) scale(0.9);
+        background-color: rgba(239, 68, 68, 0.5);
+        border-left-color: rgba(239, 68, 68, 0.6);
+    }
+    30% {
+        opacity: 0.5;
+        transform: translateX(30px) scale(0.95);
+        background-color: rgba(239, 68, 68, 0.35);
+    }
+    60% {
+        opacity: 0.85;
+        transform: translateX(10px) scale(0.98);
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        background-color: var(--muted-bg);
+        border-left-color: transparent;
+    }
+}
+
+/* Animation class for loser exiting */
+.order-item.animating-out {
+    animation: loserSlideOut 1s ease-in-out forwards;
+    border-left-color: rgba(239, 68, 68, 0.6);
+}
+
+/* Animation class for loser entering at new position */
+.order-item.animating-in {
+    animation: loserSlideIn 1.2s ease-out forwards;
+}
+
+/* Highlight the loser when they arrive at the back */
+.order-item.loser-arrived {
+    border-left-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Dark mode support for queue animations */
+[data-theme="dark"] .order-item.animating-out {
+    border-left-color: rgba(248, 113, 113, 0.6);
+}
+
+[data-theme="dark"] .order-item.loser-arrived {
+    border-left-color: rgba(248, 113, 113, 0.5);
+}
+
+/* Display mode specific animation enhancements */
+body.display-mode .order-item.animating-out,
+body.display-mode .order-item.animating-in {
+    /* Slightly larger animations for display mode visibility */
+    font-weight: 600;
+}
+
+/* ========================= */
 /* Display URL Styles (Admin view) */
 /* ========================= */
 .display-url-info {

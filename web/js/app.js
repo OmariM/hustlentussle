@@ -16,6 +16,12 @@ let displayMode = false;
 let displayPollInterval = null;
 const DISPLAY_POLL_INTERVAL_MS = 3000; // Poll every 3 seconds in display mode
 
+// Queue order animation state (for display mode)
+let previousLeadOrder = [];
+let previousFollowOrder = [];
+let previousRoundNumber = null;
+let animationInProgress = false;
+
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
@@ -867,39 +873,137 @@ function updateContestantOrder(state) {
     
     if (!leadOrderList || !followOrderList) return;
     
-    // Clear existing lists
-    leadOrderList.innerHTML = '';
-    followOrderList.innerHTML = '';
-    
     // Get queue order from state
     const leadOrder = state.queue_order?.leads || [];
     const followOrder = state.queue_order?.follows || [];
+    const currentRoundNumber = state.round?.number || null;
     
-    // Helper to render an ordered list
-    const renderOrderList = (order, container, role) => {
-        order.forEach((name, idx) => {
-            const li = document.createElement('li');
-            li.className = 'order-item';
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'order-name';
-            nameSpan.textContent = name;
-            
-            if (idx < 2) {
-                // Current round participants - bold
-                li.classList.add('current-participant');
-            } else if (idx === 2) {
-                // Next new participant - semi-bold
-                li.classList.add('next-participant');
+    // Detect if this is a round change in display mode and identify losers
+    const roundChanged = displayMode && previousRoundNumber !== null && currentRoundNumber !== previousRoundNumber;
+    
+    // Find losers: contestants who were in top 2 but are now at the back
+    // Returns an array to handle both normal (1 loser) and no-contest (2 losers) cases
+    const findLosers = (prevOrder, newOrder) => {
+        if (prevOrder.length < 2 || newOrder.length < 2) return [];
+        const prevTop2 = prevOrder.slice(0, 2);
+        const newTop2 = newOrder.slice(0, 2);
+        const losers = [];
+        // Find all contestants who were in prevTop2 but are not in newTop2 (moved to back)
+        for (const name of prevTop2) {
+            if (!newTop2.includes(name) && newOrder.includes(name)) {
+                losers.push(name);
             }
-            
-            li.appendChild(nameSpan);
-            container.appendChild(li);
+        }
+        return losers;
+    };
+    
+    const leadLosers = roundChanged ? findLosers(previousLeadOrder, leadOrder) : [];
+    const followLosers = roundChanged ? findLosers(previousFollowOrder, followOrder) : [];
+    
+    // If we have losers and are in display mode, animate the transition
+    if (displayMode && roundChanged && (leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
+        animateQueueTransition(leadOrderList, followOrderList, leadOrder, followOrder, leadLosers, followLosers);
+    } else {
+        // No animation needed, just render normally
+        renderOrderListImmediate(leadOrder, leadOrderList, 'lead', []);
+        renderOrderListImmediate(followOrder, followOrderList, 'follow', []);
+    }
+    
+    // Store current order for next comparison
+    previousLeadOrder = [...leadOrder];
+    previousFollowOrder = [...followOrder];
+    previousRoundNumber = currentRoundNumber;
+}
+
+function renderOrderListImmediate(order, container, role, loserNames) {
+    // Clear existing list
+    container.innerHTML = '';
+    // Ensure loserNames is an array
+    const losers = Array.isArray(loserNames) ? loserNames : (loserNames ? [loserNames] : []);
+    
+    order.forEach((name, idx) => {
+        const li = document.createElement('li');
+        li.className = 'order-item';
+        li.dataset.name = name;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'order-name';
+        nameSpan.textContent = name;
+        
+        if (idx < 2) {
+            // Current round participants - bold
+            li.classList.add('current-participant');
+        } else if (idx === 2) {
+            // Next new participant - semi-bold
+            li.classList.add('next-participant');
+        }
+        
+        // Mark losers for potential animation styling
+        if (losers.includes(name)) {
+            li.classList.add('loser-arrived');
+        }
+        
+        li.appendChild(nameSpan);
+        container.appendChild(li);
+    });
+}
+
+function animateQueueTransition(leadContainer, followContainer, newLeadOrder, newFollowOrder, leadLosers, followLosers) {
+    animationInProgress = true;
+    
+    // Animation timing constants (longer for spectator visibility)
+    const EXIT_DURATION = 1000;  // 1 second for exit animation
+    const ENTRY_DURATION = 1200; // 1.2 seconds for entry animation
+    const CLEANUP_BUFFER = 200;  // Buffer before allowing next animation
+    
+    // Ensure losers are arrays
+    const leadLosersArr = Array.isArray(leadLosers) ? leadLosers : (leadLosers ? [leadLosers] : []);
+    const followLosersArr = Array.isArray(followLosers) ? followLosers : (followLosers ? [followLosers] : []);
+    
+    // Phase 1: Mark losers in the old list with exit animation
+    const animateColumnExit = (container, loserNames) => {
+        if (loserNames.length === 0) return;
+        const items = container.querySelectorAll('.order-item');
+        items.forEach(item => {
+            if (loserNames.includes(item.dataset.name)) {
+                item.classList.add('animating-out');
+            }
         });
     };
     
-    renderOrderList(leadOrder, leadOrderList, 'lead');
-    renderOrderList(followOrder, followOrderList, 'follow');
+    animateColumnExit(leadContainer, leadLosersArr);
+    animateColumnExit(followContainer, followLosersArr);
+    
+    // Phase 2: After exit animation, render new list with entry animation for losers
+    setTimeout(() => {
+        renderOrderListImmediate(newLeadOrder, leadContainer, 'lead', leadLosersArr);
+        renderOrderListImmediate(newFollowOrder, followContainer, 'follow', followLosersArr);
+        
+        // Apply entry animation to losers at their new position
+        requestAnimationFrame(() => {
+            const applyEntryAnimation = (container, loserNames) => {
+                if (loserNames.length === 0) return;
+                const items = container.querySelectorAll('.order-item');
+                items.forEach(item => {
+                    if (loserNames.includes(item.dataset.name)) {
+                        item.classList.add('animating-in');
+                        // Remove animation class after animation completes
+                        setTimeout(() => {
+                            item.classList.remove('animating-in', 'loser-arrived');
+                        }, ENTRY_DURATION);
+                    }
+                });
+            };
+            
+            applyEntryAnimation(leadContainer, leadLosersArr);
+            applyEntryAnimation(followContainer, followLosersArr);
+        });
+        
+        // Reset animation flag after all animations complete
+        setTimeout(() => {
+            animationInProgress = false;
+        }, ENTRY_DURATION + CLEANUP_BUFFER);
+    }, EXIT_DURATION); // Wait for exit animation to complete
 }
 
 async function refreshCanonicalState() {
