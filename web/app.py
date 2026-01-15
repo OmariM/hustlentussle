@@ -806,7 +806,9 @@ def end_game():
         'session_id': session_id,
         'leads': lead_results,
         'follows': follow_results,
-        'rounds': rounds_data
+        'rounds': rounds_data,
+        'initial_leads': [c.name for c in game.initial_leads],
+        'initial_follows': [c.name for c in game.initial_follows]
     })
 
 @app.route('/api/export_battle_data', methods=['GET', 'POST'])

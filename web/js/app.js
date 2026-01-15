@@ -766,6 +766,10 @@ async function fetchCanonicalState() {
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
+    // Store initial order for results display (important for display mode)
+    if (Array.isArray(state.initial_order?.leads)) initialLeads = state.initial_order.leads;
+    if (Array.isArray(state.initial_order?.follows)) initialFollows = state.initial_order.follows;
+
     // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
     if (localStorage.getItem('spotify.enabled') === 'true' && !playlistModeEnabled && pendingPlaylistUrl) {
         maybeEnablePlaylistMode(pendingPlaylistUrl).catch(e => console.warn('Failed to enable playlist mode on render:', e));
