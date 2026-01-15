@@ -697,6 +697,38 @@ def next_round():
         'contestant_judges': state['contestant_judges']
     })
 
+@app.route('/api/undo_round', methods=['POST'])
+def undo_round():
+    """Undo the last completed round and restore the game to that state."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    session_id = data.get('session_id')
+    
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Attempt to undo the last round
+    success = game.undo_round()
+    
+    if not success:
+        return jsonify({'error': 'No rounds to undo'}), 400
+    
+    # Persist game state changes
+    repo.save(session_id, game)
+    
+    # Return the updated state
+    return jsonify({
+        'success': True,
+        'message': f'Reverted to round {game.round_num}',
+        'state': serialize_state(game)
+    })
+
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
     data = request.get_json()

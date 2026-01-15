@@ -849,3 +849,127 @@ class Game:
         # Record initial pairings
         self.previous_pairs[(self.pair_1[0].name, self.pair_1[1].name)] = True
         self.previous_pairs[(self.pair_2[0].name, self.pair_2[1].name)] = True
+
+    def undo_round(self):
+        """Undo the last completed round and restore the game to that state.
+        
+        Returns:
+            bool: True if undo was successful, False if there's nothing to undo
+        """
+        # Check if there's a round to undo
+        if not self.rounds:
+            return False
+        
+        # Pop the last completed round
+        undone_round = self.rounds.pop()
+        
+        # Subtract points from the round winners
+        if undone_round.lead_winner:
+            # Find the lead contestant and subtract a point
+            for lead in self.initial_leads:
+                if lead.name == undone_round.lead_winner:
+                    lead.points = max(0, lead.points - 1)
+                    break
+        
+        if undone_round.follow_winner:
+            # Find the follow contestant and subtract a point
+            for follow in self.initial_follows:
+                if follow.name == undone_round.follow_winner:
+                    follow.points = max(0, follow.points - 1)
+                    break
+        
+        # Restore round number
+        self.round_num = undone_round.round_num
+        
+        # Restore pairs from the undone round
+        if undone_round.pairs:
+            pair_1_data = undone_round.pairs.get('pair_1', {})
+            pair_2_data = undone_round.pairs.get('pair_2', {})
+            
+            # Find contestant objects by name
+            lead1 = lead2 = follow1 = follow2 = None
+            for lead in self.initial_leads:
+                if lead.name == pair_1_data.get('lead'):
+                    lead1 = lead
+                if lead.name == pair_2_data.get('lead'):
+                    lead2 = lead
+            for follow in self.initial_follows:
+                if follow.name == pair_1_data.get('follow'):
+                    follow1 = follow
+                if follow.name == pair_2_data.get('follow'):
+                    follow2 = follow
+            
+            if lead1 and lead2 and follow1 and follow2:
+                self.pair_1 = (lead1, follow1)
+                self.pair_2 = (lead2, follow2)
+        
+        # Clear the votes in the undone round so admin can re-vote
+        undone_round.lead_votes = {}
+        undone_round.follow_votes = {}
+        undone_round.lead_winner = None
+        undone_round.follow_winner = None
+        undone_round.win_messages = None
+        
+        # Restore current_round to the undone round
+        self.current_round = undone_round
+        
+        # Recalculate winner state flags based on current points
+        self._recalculate_winner_flags()
+        
+        # Clear game finished state if it was set
+        if self.state == 1:
+            self.state = 0
+        
+        # Clear carryover winners since we're going back
+        self.carryover_lead_winner = None
+        self.carryover_follow_winner = None
+        
+        # Clear last round winners since we're re-doing this round
+        self.last_lead_winner = None
+        self.last_follow_winner = None
+        
+        # Clear tie state
+        self.tie_lead_pair = None
+        self.tie_follow_pair = None
+        
+        # Reselect contestant judges for this round
+        self.contestant_judges = self.get_contestant_judges()
+        self.current_round.contestant_judges = [j.name for j in self.contestant_judges]
+        
+        return True
+
+    def _recalculate_winner_flags(self):
+        """Recalculate has_winning_lead and has_winning_follow based on current points."""
+        # Check if any lead has reached the win threshold
+        max_lead_points = 0
+        lead_with_max = None
+        for lead in self.initial_leads:
+            if lead.points > max_lead_points:
+                max_lead_points = lead.points
+                lead_with_max = lead
+        
+        if max_lead_points >= self.win_threshold:
+            self.has_winning_lead = True
+            self.winning_lead = lead_with_max
+        else:
+            self.has_winning_lead = False
+            # Only clear winning_lead if they're below threshold
+            if self.winning_lead and self.winning_lead.points < self.win_threshold:
+                self.winning_lead = None
+        
+        # Check if any follow has reached the win threshold
+        max_follow_points = 0
+        follow_with_max = None
+        for follow in self.initial_follows:
+            if follow.points > max_follow_points:
+                max_follow_points = follow.points
+                follow_with_max = follow
+        
+        if max_follow_points >= self.win_threshold:
+            self.has_winning_follow = True
+            self.winning_follow = follow_with_max
+        else:
+            self.has_winning_follow = False
+            # Only clear winning_follow if they're below threshold
+            if self.winning_follow and self.winning_follow.points < self.win_threshold:
+                self.winning_follow = None

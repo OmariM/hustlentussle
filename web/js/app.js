@@ -73,6 +73,8 @@ let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, vo
 let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
 // End battle early modal elements
 let endEarlyBtn, endEarlyModal, endEarlyCloseBtn, endEarlyCancelBtn, endEarlyConfirmBtn;
+// Undo round button
+let undoRoundBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -234,6 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
     endEarlyCancelBtn = document.getElementById('end-early-cancel');
     endEarlyConfirmBtn = document.getElementById('end-early-confirm');
 
+    // Undo round button
+    undoRoundBtn = document.getElementById('undo-round');
+
 // Results elements
     roundResultsSection = document.getElementById('round-results');
     winMessages = document.getElementById('win-messages');
@@ -341,6 +346,11 @@ document.addEventListener('DOMContentLoaded', () => {
             closeEndEarlyModal();
             endCompetition();
         });
+    }
+
+    // Undo round button
+    if (undoRoundBtn) {
+        undoRoundBtn.addEventListener('click', undoLastRound);
     }
 
     // Ensure modal is never shown by default on load
@@ -845,6 +855,12 @@ function renderFromState(state) {
     followWinnerPreview.classList.add('hidden');
     leadVotes = {}; followVotes = {}; votingLocked = { lead: false, follow: false };
     submitVotesBtn.disabled = false;
+
+    // Update undo button state - enabled if there are completed rounds to undo
+    if (undoRoundBtn) {
+        const hasRoundsToUndo = Array.isArray(state.rounds) && state.rounds.length > 0;
+        undoRoundBtn.disabled = !hasRoundsToUndo || displayMode;
+    }
 
     // Rebuild voting cards based on current state
     setupVotingUI();
@@ -2135,6 +2151,44 @@ async function goToNextRound() {
     } catch (error) {
         console.error('Error starting next round:', error);
         alert('Failed to start the next round. Please try again.');
+    }
+}
+
+async function undoLastRound() {
+    if (!sessionId) {
+        alert('No active session to undo.');
+        return;
+    }
+
+    // Disable button while processing to prevent double-clicks
+    if (undoRoundBtn) undoRoundBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/undo_round', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error || 'Failed to undo round.');
+            return;
+        }
+
+        console.log('Undo successful:', data.message);
+
+        // Render from canonical state to update UI
+        await refreshCanonicalState();
+
+        // Scroll to top so current contestants are visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+        console.error('Error undoing round:', error);
+        alert('Failed to undo round. Please try again.');
+    } finally {
+        // Re-enable button will happen via renderFromState after refreshCanonicalState
     }
 }
 
