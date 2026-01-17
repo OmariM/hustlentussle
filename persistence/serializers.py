@@ -56,6 +56,7 @@ class GameSerializer:
             'session_id': round_obj.session_id,
             'contestant_judging_enabled': getattr(round_obj, 'contestant_judging_enabled', True),
             'simple_contestant_judges': getattr(round_obj, 'simple_contestant_judges', False),
+            'queue_snapshot': getattr(round_obj, 'queue_snapshot', None),
         }
     
     @staticmethod
@@ -76,6 +77,7 @@ class GameSerializer:
         round_obj.lead_winner = data.get('lead_winner')
         round_obj.follow_winner = data.get('follow_winner')
         round_obj.song_info = data.get('song_info')
+        round_obj.queue_snapshot = data.get('queue_snapshot')
         return round_obj
     
     @classmethod

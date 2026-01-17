@@ -24,6 +24,7 @@ let animationInProgress = false;
 let roundTransitionInProgress = false; // Track if round transition overlay is showing
 let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
 let pendingQueueAnimationData = null; // Store data for queue animation after stagger
+let isUndoInProgress = false; // Skip animations during undo operations
 
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
@@ -534,12 +535,12 @@ function startDisplayPolling() {
             if (state) {
                 const currentRound = state.round?.number || null;
                 
-                // Check if round changed (and we have a previous round to compare)
-                const roundChanged = lastDisplayedRound !== null && 
-                                     currentRound !== null && 
-                                     currentRound !== lastDisplayedRound;
+                // Check if round went forward (not backwards like in an undo)
+                const roundWentForward = lastDisplayedRound !== null && 
+                                         currentRound !== null && 
+                                         currentRound > lastDisplayedRound;
                 
-                if (roundChanged) {
+                if (roundWentForward) {
                     // Full transition sequence:
                     // 1. Hide sections immediately (invisible during overlay)
                     // 2. Show overlay
@@ -1061,7 +1062,9 @@ function updateContestantOrder(state) {
     const currentRoundNumber = state.round?.number || null;
     
     // Detect if this is a round change in display mode and identify losers
-    const roundChanged = displayMode && previousRoundNumber !== null && currentRoundNumber !== previousRoundNumber;
+    // Skip animation if round went backwards (undo) or if undo is in progress
+    const roundWentForward = previousRoundNumber !== null && currentRoundNumber > previousRoundNumber;
+    const roundChanged = displayMode && roundWentForward && !isUndoInProgress;
     
     // Find losers: contestants who were in top 2 but are now at the back
     // Returns an array to handle both normal (1 loser) and no-contest (2 losers) cases
@@ -2179,14 +2182,26 @@ async function undoLastRound() {
 
         console.log('Undo successful:', data.message);
 
+        // Set flag to skip animations during undo
+        isUndoInProgress = true;
+        
+        // Reset previous order tracking so we don't detect a "round change" and animate
+        previousRoundNumber = null;
+        previousLeadOrder = [];
+        previousFollowOrder = [];
+
         // Render from canonical state to update UI
         await refreshCanonicalState();
+
+        // Clear the undo flag
+        isUndoInProgress = false;
 
         // Scroll to top so current contestants are visible
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
         console.error('Error undoing round:', error);
         alert('Failed to undo round. Please try again.');
+        isUndoInProgress = false;
     } finally {
         // Re-enable button will happen via renderFromState after refreshCanonicalState
     }
