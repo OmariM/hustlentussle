@@ -1651,13 +1651,15 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     });
     
     // Mixed option (proxy contestant judges only)
-    // Only enabled when at least one guest judge votes tie or no contest
+    // Only enabled when at least one guest judge votes tie or no contest,
+    // AND at least one guest judge voted for a specific contestant (1 or 2).
+    // If all guest votes are only tie/no contest, mixed is disabled since there's no winner to base the split on.
     let mixedBtn = null;
     if (isProxyContestantJudges) {
         mixedBtn = document.createElement('button');
         mixedBtn.className = 'vote-btn vote-option-mixed';
         mixedBtn.textContent = 'Mixed';
-        mixedBtn.disabled = true; // Initially disabled until a guest judge votes tie/no contest
+        mixedBtn.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
         mixedBtn.addEventListener('click', () => {
             if (votingLocked[voteType]) return;
             if (mixedBtn.disabled) return;
@@ -1762,6 +1764,19 @@ function hasGuestTieOrNoContest(voteType) {
     });
 }
 
+// Check if ALL guest judges who have voted have ONLY voted tie or no contest (no votes for contestant 1 or 2)
+// Returns true if all guest votes are tie/no contest, meaning there's no clear winner to base the mixed vote on
+function allGuestsOnlyTieOrNoContest(voteType) {
+    const votes = voteType === 'lead' ? leadVotes : followVotes;
+    const guestVotes = (guestJudges || []).map(judge => votes[judge]).filter(v => v !== undefined);
+    
+    // If no guest votes yet, return false (don't disable mixed prematurely)
+    if (guestVotes.length === 0) return false;
+    
+    // Check if all guest votes are only tie (3) or no contest (4)
+    return guestVotes.every(vote => vote === 3 || vote === 4);
+}
+
 // Update the mixed button's enabled/disabled state for the given vote type
 function updateMixedButtonState(voteType) {
     if (!simpleContestantJudgesEnabled) return;
@@ -1773,7 +1788,11 @@ function updateMixedButtonState(voteType) {
     const mixedBtn = proxyCard.querySelector('.vote-option-mixed');
     if (!mixedBtn) return;
     
-    const shouldEnable = hasGuestTieOrNoContest(voteType);
+    // Enable mixed only if there's a tie/no contest vote AND at least one guest voted for a contestant
+    // If ALL guest votes are only tie/no contest, there's no winner to base the mixed split on
+    const hasTieOrNoContest = hasGuestTieOrNoContest(voteType);
+    const allOnlyTieOrNoContest = allGuestsOnlyTieOrNoContest(voteType);
+    const shouldEnable = hasTieOrNoContest && !allOnlyTieOrNoContest;
     mixedBtn.disabled = !shouldEnable;
     
     // If mixed was selected but is now disabled, clear the selection
