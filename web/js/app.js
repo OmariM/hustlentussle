@@ -11,6 +11,21 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Display mode state (for viewer-only mode without voting controls)
+let displayMode = false;
+let displayPollInterval = null;
+const DISPLAY_POLL_INTERVAL_MS = 3000; // Poll every 3 seconds in display mode
+
+// Queue order animation state (for display mode)
+let previousLeadOrder = [];
+let previousFollowOrder = [];
+let previousRoundNumber = null;
+let animationInProgress = false;
+let roundTransitionInProgress = false; // Track if round transition overlay is showing
+let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
+let pendingQueueAnimationData = null; // Store data for queue animation after stagger
+let isUndoInProgress = false; // Skip animations during undo operations
+
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
@@ -57,10 +72,17 @@ let backToHomeFromResultsBtn, downloadBattleDataBtn;
 let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
 let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
 let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
+// End battle early modal elements
+let endEarlyBtn, endEarlyModal, endEarlyCloseBtn, endEarlyCancelBtn, endEarlyConfirmBtn;
+// Undo round button
+let undoRoundBtn;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded');
+    
+    // Detect display mode early (before DOM element setup)
+    detectDisplayMode();
     
     // Initialize DOM elements
     homeScreen = document.getElementById('home-screen');
@@ -208,6 +230,16 @@ document.addEventListener('DOMContentLoaded', () => {
     voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner');
     voteConfirmError = document.getElementById('vote-confirm-error');
 
+    // End battle early modal
+    endEarlyBtn = document.getElementById('end-battle-early');
+    endEarlyModal = document.getElementById('end-early-modal');
+    endEarlyCloseBtn = document.getElementById('end-early-close');
+    endEarlyCancelBtn = document.getElementById('end-early-cancel');
+    endEarlyConfirmBtn = document.getElementById('end-early-confirm');
+
+    // Undo round button
+    undoRoundBtn = document.getElementById('undo-round');
+
 // Results elements
     roundResultsSection = document.getElementById('round-results');
     winMessages = document.getElementById('win-messages');
@@ -296,10 +328,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape' && voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             closeVoteConfirmModal();
         }
+        if (e.key === 'Escape' && endEarlyModal && !endEarlyModal.classList.contains('hidden')) {
+            closeEndEarlyModal();
+        }
     });
+
+    // End battle early modal controls
+    if (endEarlyBtn) endEarlyBtn.addEventListener('click', openEndEarlyModal);
+    if (endEarlyCloseBtn) endEarlyCloseBtn.addEventListener('click', closeEndEarlyModal);
+    if (endEarlyCancelBtn) endEarlyCancelBtn.addEventListener('click', closeEndEarlyModal);
+    if (endEarlyModal) {
+        endEarlyModal.addEventListener('click', (e) => {
+            if (e.target === endEarlyModal) closeEndEarlyModal();
+        });
+    }
+    if (endEarlyConfirmBtn) {
+        endEarlyConfirmBtn.addEventListener('click', () => {
+            closeEndEarlyModal();
+            endCompetition();
+        });
+    }
+
+    // Undo round button
+    if (undoRoundBtn) {
+        undoRoundBtn.addEventListener('click', undoLastRound);
+    }
 
     // Ensure modal is never shown by default on load
     closeVoteConfirmModal();
+    closeEndEarlyModal();
     
     // Results screen
     console.log('Adding click handler to backToHomeFromResultsBtn');
@@ -394,6 +451,11 @@ document.addEventListener('DOMContentLoaded', () => {
 				applySpotifyEnabledUI();
 			});
 		}
+
+    // Initialize display mode if detected (this goes directly to battle screen)
+    if (displayMode) {
+        initDisplayMode();
+    }
 });
 
 // Functions
@@ -420,6 +482,288 @@ function showScreen(screen) {
         if (sig) sig.style.display = spotifyOn ? (playlistModeEnabled ? 'none' : '') : 'none';
         if (pes) pes.style.display = spotifyOn && playlistModeEnabled ? '' : 'none';
     } catch (_) {}
+
+    // Apply display mode UI changes when switching screens
+    if (displayMode) {
+        applyDisplayModeUI();
+        // Start/stop polling based on which screen is active
+        if (screen === roundScreen) {
+            startDisplayPolling();
+        } else {
+            stopDisplayPolling();
+        }
+    }
+}
+
+// Display mode functions
+function detectDisplayMode() {
+    try {
+        const url = new URL(window.location.href);
+        const mode = url.searchParams.get('mode');
+        const urlSessionId = url.searchParams.get('session_id');
+        
+        if (mode === 'display') {
+            displayMode = true;
+            document.body.classList.add('display-mode');
+            console.log('Display mode enabled');
+            
+            // If session_id is provided in URL, use it
+            if (urlSessionId) {
+                sessionId = urlSessionId;
+                localStorage.setItem('sessionId', sessionId);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to detect display mode:', e);
+    }
+    return displayMode;
+}
+
+function startDisplayPolling() {
+    if (!displayMode || displayPollInterval) return;
+    
+    // Track the last round number we displayed (for overlay triggering)
+    let lastDisplayedRound = null;
+    
+    console.log('Starting display mode polling...');
+    displayPollInterval = setInterval(async () => {
+        // Skip polling while transition overlay is showing
+        if (roundTransitionInProgress) return;
+        
+        try {
+            const state = await fetchCanonicalState();
+            if (state) {
+                const currentRound = state.round?.number || null;
+                
+                // Check if round went forward (not backwards like in an undo)
+                const roundWentForward = lastDisplayedRound !== null && 
+                                         currentRound !== null && 
+                                         currentRound > lastDisplayedRound;
+                
+                if (roundWentForward) {
+                    // Full transition sequence:
+                    // 1. Hide sections immediately (invisible during overlay)
+                    // 2. Show overlay
+                    // 3. Render state (skip queue animation, keep old order for animation)
+                    // 4. Staggered fade-in of sections
+                    // 5. Trigger queue animation (from old order to new order)
+                    // 6. Clear transition flag when complete
+                    
+                    // Hide sections before overlay so they're invisible during it
+                    hideSectionsForTransition();
+                    
+                    showRoundTransitionOverlay(currentRound, () => {
+                        // Skip queue animation during initial render - we'll trigger it after stagger
+                        skipQueueAnimationOnNextRender = true;
+                        renderFromState(state);
+                        skipQueueAnimationOnNextRender = false;
+                        lastDisplayedRound = currentRound;
+                        
+                        // Re-hide sections after render (render may have reset DOM)
+                        hideSectionsForTransition();
+                        
+                        // Perform staggered fade-in, then trigger queue animation
+                        performStaggeredFadeIn(() => {
+                            // Check if queue animation will run before triggering
+                            const willAnimateQueue = pendingQueueAnimationData && 
+                                (pendingQueueAnimationData.leadLosers.length > 0 || 
+                                 pendingQueueAnimationData.followLosers.length > 0);
+                            
+                            triggerPendingQueueAnimation();
+                            
+                            // Wait for queue animation to complete before allowing next poll
+                            // Queue animation takes EXIT_DURATION + ENTRY_DURATION + CLEANUP_BUFFER = ~2.4s
+                            const QUEUE_ANIMATION_TOTAL = 2500;
+                            setTimeout(() => {
+                                roundTransitionInProgress = false;
+                            }, willAnimateQueue ? QUEUE_ANIMATION_TOTAL : 0);
+                        });
+                    });
+                } else {
+                    // No round change, just update normally
+                    renderFromState(state);
+                    lastDisplayedRound = currentRound;
+                }
+                
+                // Check if game is finished and redirect to results
+                if (state.flags && state.flags.finished) {
+                    stopDisplayPolling();
+                    // Trigger end game to show results
+                    endCompetition();
+                }
+            }
+        } catch (e) {
+            console.warn('Display polling error:', e);
+        }
+    }, DISPLAY_POLL_INTERVAL_MS);
+}
+
+function stopDisplayPolling() {
+    if (displayPollInterval) {
+        clearInterval(displayPollInterval);
+        displayPollInterval = null;
+        console.log('Display mode polling stopped');
+    }
+}
+
+// Round transition overlay for display mode
+const ROUND_OVERLAY_FADE_IN = 400;   // ms - fade in duration
+const ROUND_OVERLAY_HOLD = 1500;     // ms - hold duration
+const ROUND_OVERLAY_FADE_OUT = 400;  // ms - fade out duration
+
+function showRoundTransitionOverlay(roundNumber, callback) {
+    const overlay = document.getElementById('round-transition-overlay');
+    const roundNumberEl = document.getElementById('overlay-round-number');
+    
+    if (!overlay || !roundNumberEl) {
+        // Overlay elements not found, just run callback
+        if (callback) callback();
+        return;
+    }
+    
+    roundTransitionInProgress = true;
+    
+    // Set the round number
+    roundNumberEl.textContent = roundNumber;
+    
+    // Show overlay (remove hidden, add active after a frame for transition)
+    overlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        overlay.classList.add('active');
+    });
+    
+    // Hold, then fade out
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        
+        // After fade out, hide completely and run callback
+        // NOTE: Keep roundTransitionInProgress = true until entire sequence completes
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            // Don't set roundTransitionInProgress to false here - let the full sequence control it
+            if (callback) callback();
+        }, ROUND_OVERLAY_FADE_OUT);
+    }, ROUND_OVERLAY_FADE_IN + ROUND_OVERLAY_HOLD);
+}
+
+// Staggered fade-in animation timing
+const STAGGER_DELAY_MS = 150; // Delay between each section
+const STAGGER_ANIMATION_MS = 400; // Duration of each fade-in
+
+// Hide sections before overlay (so they're invisible during overlay)
+function hideSectionsForTransition() {
+    const roundContent = document.querySelector('.round-content');
+    if (!roundContent) return;
+    
+    roundContent.classList.add('sections-transitioning');
+}
+
+function performStaggeredFadeIn(callback) {
+    const roundContent = document.querySelector('.round-content');
+    if (!roundContent) {
+        if (callback) callback();
+        return;
+    }
+    
+    // Sections to animate in order (excluding battle graphic and participant order)
+    const sections = [
+        roundContent.querySelector('.round-info'),
+        roundContent.querySelector('.matchups'),
+        roundContent.querySelector('.judges')
+    ].filter(Boolean);
+    
+    // Sections should already be hidden via sections-transitioning class
+    // Apply staggered fade-in classes (animation starts at opacity:0 due to 'both' fill mode)
+    sections.forEach((section, index) => {
+        section.classList.add('section-fade-in', `stagger-${index + 1}`);
+    });
+    
+    // Use double requestAnimationFrame to ensure animation classes have been painted
+    // before removing the transitioning class (prevents flicker)
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            roundContent.classList.remove('sections-transitioning');
+        });
+    });
+    
+    // Calculate total animation time and run callback after completion
+    const totalAnimationTime = (sections.length - 1) * STAGGER_DELAY_MS + STAGGER_ANIMATION_MS + 50;
+    setTimeout(() => {
+        // Clean up animation classes
+        sections.forEach((section, index) => {
+            section.classList.remove('section-fade-in', `stagger-${index + 1}`);
+        });
+        if (callback) callback();
+    }, totalAnimationTime);
+}
+
+function triggerPendingQueueAnimation() {
+    if (!pendingQueueAnimationData) return;
+    
+    const { leadContainer, followContainer, leadOrder, followOrder, leadLosers, followLosers } = pendingQueueAnimationData;
+    
+    if ((leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
+        animateQueueTransition(leadContainer, followContainer, leadOrder, followOrder, leadLosers, followLosers);
+    }
+    
+    pendingQueueAnimationData = null;
+}
+
+function applyDisplayModeUI() {
+    if (!displayMode) return;
+    
+    // Hide voting sections
+    const combinedVoting = document.getElementById('combined-voting');
+    if (combinedVoting) combinedVoting.style.display = 'none';
+    
+    // Hide round results section (Next Round / End Battle buttons)
+    const roundResults = document.getElementById('round-results');
+    if (roundResults) roundResults.style.display = 'none';
+    
+    // Hide theme and spotify toggles for cleaner display
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) themeToggle.parentElement.style.display = 'none';
+    
+    const spotifyToggle = document.getElementById('spotify-toggle');
+    if (spotifyToggle) spotifyToggle.parentElement.style.display = 'none';
+}
+
+async function initDisplayMode() {
+    if (!displayMode) return;
+    
+    if (!sessionId) {
+        // No session ID - show error on home screen
+        alert('Display mode requires a session_id parameter. Example: ?mode=display&session_id=YOUR_SESSION_ID');
+        return;
+    }
+    
+    // Apply display mode UI changes
+    applyDisplayModeUI();
+    
+    // Fetch initial state and go directly to battle screen
+    try {
+        const state = await fetchCanonicalState();
+        if (state) {
+            // Update session ID display
+            const sessionIdDisplay = document.getElementById('session-id-display');
+            if (sessionIdDisplay) {
+                sessionIdDisplay.textContent = `Session: ${sessionId}`;
+                sessionIdDisplay.style.display = 'block';
+            }
+            
+            // Go directly to battle screen
+            showScreen(roundScreen);
+            renderFromState(state);
+            
+            // Start polling for updates
+            startDisplayPolling();
+        } else {
+            alert('Failed to load game state. Session may not exist.');
+        }
+    } catch (e) {
+        console.error('Failed to initialize display mode:', e);
+        alert('Failed to connect to game session.');
+    }
 }
 
 // Canonical state helpers
@@ -432,6 +776,10 @@ async function fetchCanonicalState() {
 
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
+
+    // Store initial order for results display (important for display mode)
+    if (Array.isArray(state.initial_order?.leads)) initialLeads = state.initial_order.leads;
+    if (Array.isArray(state.initial_order?.follows)) initialFollows = state.initial_order.follows;
 
     // If we haven't initialized playlist mode yet but have a pending URL (from start), enable it
     if (localStorage.getItem('spotify.enabled') === 'true' && !playlistModeEnabled && pendingPlaylistUrl) {
@@ -496,6 +844,9 @@ function renderFromState(state) {
     // Scoreboard
     updateLiveGraphicFromState(state);
 
+    // Update contestant order visualization
+    updateContestantOrder(state);
+
     // Reset voting UI for the current round
     closeVoteConfirmModal();
     votingResults.classList.add('hidden');
@@ -505,6 +856,12 @@ function renderFromState(state) {
     followWinnerPreview.classList.add('hidden');
     leadVotes = {}; followVotes = {}; votingLocked = { lead: false, follow: false };
     submitVotesBtn.disabled = false;
+
+    // Update undo button state - enabled if there are completed rounds to undo
+    if (undoRoundBtn) {
+        const hasRoundsToUndo = Array.isArray(state.rounds) && state.rounds.length > 0;
+        undoRoundBtn.disabled = !hasRoundsToUndo || displayMode;
+    }
 
     // Rebuild voting cards based on current state
     setupVotingUI();
@@ -692,6 +1049,163 @@ function updateLiveGraphicFromState(state) {
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
 }
 
+function updateContestantOrder(state) {
+    // Update the contestant order visualization showing who's competing now and who's next
+    const leadOrderList = document.getElementById('lead-order-list');
+    const followOrderList = document.getElementById('follow-order-list');
+    
+    if (!leadOrderList || !followOrderList) return;
+    
+    // Get queue order from state
+    const leadOrder = state.queue_order?.leads || [];
+    const followOrder = state.queue_order?.follows || [];
+    const currentRoundNumber = state.round?.number || null;
+    
+    // Detect if this is a round change in display mode and identify losers
+    // Skip animation if round went backwards (undo) or if undo is in progress
+    const roundWentForward = previousRoundNumber !== null && currentRoundNumber > previousRoundNumber;
+    const roundChanged = displayMode && roundWentForward && !isUndoInProgress;
+    
+    // Find losers: contestants who were in top 2 but are now at the back
+    // Returns an array to handle both normal (1 loser) and no-contest (2 losers) cases
+    const findLosers = (prevOrder, newOrder) => {
+        if (prevOrder.length < 2 || newOrder.length < 2) return [];
+        const prevTop2 = prevOrder.slice(0, 2);
+        const newTop2 = newOrder.slice(0, 2);
+        const losers = [];
+        // Find all contestants who were in prevTop2 but are not in newTop2 (moved to back)
+        for (const name of prevTop2) {
+            if (!newTop2.includes(name) && newOrder.includes(name)) {
+                losers.push(name);
+            }
+        }
+        return losers;
+    };
+    
+    const leadLosers = roundChanged ? findLosers(previousLeadOrder, leadOrder) : [];
+    const followLosers = roundChanged ? findLosers(previousFollowOrder, followOrder) : [];
+    
+    // If we have losers and are in display mode, animate the transition (unless skipped for stagger sequence)
+    if (displayMode && roundChanged && (leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
+        if (skipQueueAnimationOnNextRender) {
+            // Store animation data for later - will be triggered after stagger fade-in
+            // KEEP the old order in DOM - don't render new order yet
+            // The animation will transition from old (current DOM) to new order
+            pendingQueueAnimationData = {
+                leadContainer: leadOrderList,
+                followContainer: followOrderList,
+                leadOrder: [...leadOrder],       // NEW order to animate TO
+                followOrder: [...followOrder],   // NEW order to animate TO
+                leadLosers: [...leadLosers],
+                followLosers: [...followLosers]
+            };
+            // Don't render - keep old order visible for animation start
+        } else {
+            animateQueueTransition(leadOrderList, followOrderList, leadOrder, followOrder, leadLosers, followLosers);
+        }
+    } else {
+        // No animation needed, just render normally
+        renderOrderListImmediate(leadOrder, leadOrderList, 'lead', []);
+        renderOrderListImmediate(followOrder, followOrderList, 'follow', []);
+    }
+    
+    // Store current order for next comparison
+    previousLeadOrder = [...leadOrder];
+    previousFollowOrder = [...followOrder];
+    previousRoundNumber = currentRoundNumber;
+}
+
+function renderOrderListImmediate(order, container, role, loserNames) {
+    // Clear existing list
+    container.innerHTML = '';
+    // Ensure loserNames is an array
+    const losers = Array.isArray(loserNames) ? loserNames : (loserNames ? [loserNames] : []);
+    
+    order.forEach((name, idx) => {
+        const li = document.createElement('li');
+        li.className = 'order-item';
+        li.dataset.name = name;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'order-name';
+        nameSpan.textContent = name;
+        
+        if (idx < 2) {
+            // Current round participants - bold
+            li.classList.add('current-participant');
+        } else if (idx === 2) {
+            // Next new participant - semi-bold
+            li.classList.add('next-participant');
+        }
+        
+        // Mark losers for potential animation styling
+        if (losers.includes(name)) {
+            li.classList.add('loser-arrived');
+        }
+        
+        li.appendChild(nameSpan);
+        container.appendChild(li);
+    });
+}
+
+function animateQueueTransition(leadContainer, followContainer, newLeadOrder, newFollowOrder, leadLosers, followLosers) {
+    animationInProgress = true;
+    
+    // Animation timing constants (longer for spectator visibility)
+    const EXIT_DURATION = 1000;  // 1 second for exit animation
+    const ENTRY_DURATION = 1200; // 1.2 seconds for entry animation
+    const CLEANUP_BUFFER = 200;  // Buffer before allowing next animation
+    
+    // Ensure losers are arrays
+    const leadLosersArr = Array.isArray(leadLosers) ? leadLosers : (leadLosers ? [leadLosers] : []);
+    const followLosersArr = Array.isArray(followLosers) ? followLosers : (followLosers ? [followLosers] : []);
+    
+    // Phase 1: Mark losers in the old list with exit animation
+    const animateColumnExit = (container, loserNames) => {
+        if (loserNames.length === 0) return;
+        const items = container.querySelectorAll('.order-item');
+        items.forEach(item => {
+            if (loserNames.includes(item.dataset.name)) {
+                item.classList.add('animating-out');
+            }
+        });
+    };
+    
+    animateColumnExit(leadContainer, leadLosersArr);
+    animateColumnExit(followContainer, followLosersArr);
+    
+    // Phase 2: After exit animation, render new list with entry animation for losers
+    setTimeout(() => {
+        renderOrderListImmediate(newLeadOrder, leadContainer, 'lead', leadLosersArr);
+        renderOrderListImmediate(newFollowOrder, followContainer, 'follow', followLosersArr);
+        
+        // Apply entry animation to losers at their new position
+        requestAnimationFrame(() => {
+            const applyEntryAnimation = (container, loserNames) => {
+                if (loserNames.length === 0) return;
+                const items = container.querySelectorAll('.order-item');
+                items.forEach(item => {
+                    if (loserNames.includes(item.dataset.name)) {
+                        item.classList.add('animating-in');
+                        // Remove animation class after animation completes
+                        setTimeout(() => {
+                            item.classList.remove('animating-in', 'loser-arrived');
+                        }, ENTRY_DURATION);
+                    }
+                });
+            };
+            
+            applyEntryAnimation(leadContainer, leadLosersArr);
+            applyEntryAnimation(followContainer, followLosersArr);
+        });
+        
+        // Reset animation flag after all animations complete
+        setTimeout(() => {
+            animationInProgress = false;
+        }, ENTRY_DURATION + CLEANUP_BUFFER);
+    }, EXIT_DURATION); // Wait for exit animation to complete
+}
+
 async function refreshCanonicalState() {
     try {
         const state = await fetchCanonicalState();
@@ -814,7 +1328,24 @@ function showUploadError(message) {
 function updateSessionIdDisplay() {
     const sessionIdDisplay = document.getElementById('session-id-display');
     if (sessionIdDisplay) {
-        sessionIdDisplay.textContent = sessionId ? `Session: ${sessionId}` : '';
+        if (sessionId && !displayMode) {
+            // In admin mode, show session ID and shareable display URL
+            const baseUrl = window.location.origin + window.location.pathname;
+            const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
+            sessionIdDisplay.innerHTML = `
+                <div>Session: ${sessionId}</div>
+                <div class="display-url-info">
+                    <span>Display URL (for viewers):</span>
+                    <input type="text" readonly value="${displayUrl}" onclick="this.select()" class="display-url-input" />
+                    <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText('${displayUrl}').then(() => this.textContent = 'Copied!').catch(() => {})">Copy</button>
+                </div>
+            `;
+        } else if (sessionId) {
+            // In display mode, just show session ID
+            sessionIdDisplay.textContent = `Session: ${sessionId}`;
+        } else {
+            sessionIdDisplay.textContent = '';
+        }
     }
 }
 
@@ -1120,13 +1651,15 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     });
     
     // Mixed option (proxy contestant judges only)
-    // Only enabled when at least one guest judge votes tie or no contest
+    // Only enabled when at least one guest judge votes tie or no contest,
+    // AND at least one guest judge voted for a specific contestant (1 or 2).
+    // If all guest votes are only tie/no contest, mixed is disabled since there's no winner to base the split on.
     let mixedBtn = null;
     if (isProxyContestantJudges) {
         mixedBtn = document.createElement('button');
         mixedBtn.className = 'vote-btn vote-option-mixed';
         mixedBtn.textContent = 'Mixed';
-        mixedBtn.disabled = true; // Initially disabled until a guest judge votes tie/no contest
+        mixedBtn.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
         mixedBtn.addEventListener('click', () => {
             if (votingLocked[voteType]) return;
             if (mixedBtn.disabled) return;
@@ -1231,6 +1764,19 @@ function hasGuestTieOrNoContest(voteType) {
     });
 }
 
+// Check if ALL guest judges who have voted have ONLY voted tie or no contest (no votes for contestant 1 or 2)
+// Returns true if all guest votes are tie/no contest, meaning there's no clear winner to base the mixed vote on
+function allGuestsOnlyTieOrNoContest(voteType) {
+    const votes = voteType === 'lead' ? leadVotes : followVotes;
+    const guestVotes = (guestJudges || []).map(judge => votes[judge]).filter(v => v !== undefined);
+    
+    // If no guest votes yet, return false (don't disable mixed prematurely)
+    if (guestVotes.length === 0) return false;
+    
+    // Check if all guest votes are only tie (3) or no contest (4)
+    return guestVotes.every(vote => vote === 3 || vote === 4);
+}
+
 // Update the mixed button's enabled/disabled state for the given vote type
 function updateMixedButtonState(voteType) {
     if (!simpleContestantJudgesEnabled) return;
@@ -1242,7 +1788,11 @@ function updateMixedButtonState(voteType) {
     const mixedBtn = proxyCard.querySelector('.vote-option-mixed');
     if (!mixedBtn) return;
     
-    const shouldEnable = hasGuestTieOrNoContest(voteType);
+    // Enable mixed only if there's a tie/no contest vote AND at least one guest voted for a contestant
+    // If ALL guest votes are only tie/no contest, there's no winner to base the mixed split on
+    const hasTieOrNoContest = hasGuestTieOrNoContest(voteType);
+    const allOnlyTieOrNoContest = allGuestsOnlyTieOrNoContest(voteType);
+    const shouldEnable = hasTieOrNoContest && !allOnlyTieOrNoContest;
     mixedBtn.disabled = !shouldEnable;
     
     // If mixed was selected but is now disabled, clear the selection
@@ -1354,6 +1904,19 @@ function closeVoteConfirmModal() {
     try {
         if (submitVotesBtn) submitVotesBtn.focus();
     } catch (_) {}
+}
+
+function openEndEarlyModal() {
+    if (!endEarlyModal) return;
+    endEarlyModal.classList.remove('hidden');
+    try {
+        if (endEarlyConfirmBtn) endEarlyConfirmBtn.focus();
+    } catch (_) {}
+}
+
+function closeEndEarlyModal() {
+    if (!endEarlyModal) return;
+    endEarlyModal.classList.add('hidden');
 }
 
 function calculateWinner(voteType) {
@@ -1613,7 +2176,59 @@ async function goToNextRound() {
     }
 }
 
+async function undoLastRound() {
+    if (!sessionId) {
+        alert('No active session to undo.');
+        return;
+    }
+
+    // Disable button while processing to prevent double-clicks
+    if (undoRoundBtn) undoRoundBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/undo_round', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error || 'Failed to undo round.');
+            return;
+        }
+
+        console.log('Undo successful:', data.message);
+
+        // Set flag to skip animations during undo
+        isUndoInProgress = true;
+        
+        // Reset previous order tracking so we don't detect a "round change" and animate
+        previousRoundNumber = null;
+        previousLeadOrder = [];
+        previousFollowOrder = [];
+
+        // Render from canonical state to update UI
+        await refreshCanonicalState();
+
+        // Clear the undo flag
+        isUndoInProgress = false;
+
+        // Scroll to top so current contestants are visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+        console.error('Error undoing round:', error);
+        alert('Failed to undo round. Please try again.');
+        isUndoInProgress = false;
+    } finally {
+        // Re-enable button will happen via renderFromState after refreshCanonicalState
+    }
+}
+
 async function endCompetition() {
+    // Stop any display mode polling before ending the game
+    stopDisplayPolling();
     // Call our updated endGame function that works with the new UI components
     endGame();
 }
@@ -1726,6 +2341,9 @@ function updateScoreTable(leads, follows) {
 
 async function displayResults(data) {
     console.log('Displaying results with data:', data);
+    
+    // Ensure display mode polling is stopped when showing results
+    stopDisplayPolling();
     
     // Use the showScreen function with the correct screen element
     showScreen(resultsScreen);

@@ -354,6 +354,15 @@ def serialize_state(game: Game) -> dict:
             'leads': [c.name for c in getattr(game, 'initial_leads', [])],
             'follows': [c.name for c in getattr(game, 'initial_follows', [])],
         },
+        'queue_order': {
+            # Current competitors (positions 1-2) then queue (positions 3+)
+            'leads': (
+                [game.pair_1[0].name, game.pair_2[0].name] if game.pair_1 and game.pair_2 else []
+            ) + [c.name for c in game.leads],
+            'follows': (
+                [game.pair_1[1].name, game.pair_2[1].name] if game.pair_1 and game.pair_2 else []
+            ) + [c.name for c in game.follows],
+        },
     }
     return state
 
@@ -688,6 +697,38 @@ def next_round():
         'contestant_judges': state['contestant_judges']
     })
 
+@app.route('/api/undo_round', methods=['POST'])
+def undo_round():
+    """Undo the last completed round and restore the game to that state."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    session_id = data.get('session_id')
+    
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Attempt to undo the last round
+    success = game.undo_round()
+    
+    if not success:
+        return jsonify({'error': 'No rounds to undo'}), 400
+    
+    # Persist game state changes
+    repo.save(session_id, game)
+    
+    # Return the updated state
+    return jsonify({
+        'success': True,
+        'message': f'Reverted to round {game.round_num}',
+        'state': serialize_state(game)
+    })
+
 @app.route('/api/end_game', methods=['POST'])
 def end_game():
     data = request.get_json()
@@ -702,6 +743,11 @@ def end_game():
     game = repo.get(session_id)
     if not game:
         return jsonify({'error': 'Invalid session ID'}), 400
+    
+    # Mark the game as finished so display mode polling detects it
+    game.state = 1
+    repo.save(session_id, game)
+    
     leads, follows = game.finalize_results()
     
     # Format the results - include all leads
@@ -792,7 +838,9 @@ def end_game():
         'session_id': session_id,
         'leads': lead_results,
         'follows': follow_results,
-        'rounds': rounds_data
+        'rounds': rounds_data,
+        'initial_leads': [c.name for c in game.initial_leads],
+        'initial_follows': [c.name for c in game.initial_follows]
     })
 
 @app.route('/api/export_battle_data', methods=['GET', 'POST'])

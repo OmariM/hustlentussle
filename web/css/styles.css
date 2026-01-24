@@ -36,12 +36,17 @@ body {
     position: fixed;
     top: 10px;
     right: 10px;
-    background-color: rgba(0, 0, 0, 0.75);
+    background-color: rgba(0, 0, 0, 0.85);
     color: #ffffff;
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 10px 14px;
+    border-radius: 8px;
     font-size: 14px;
     z-index: 1000;
+    max-width: 500px;
+}
+
+.session-id-display:empty {
+    display: none;
 }
 
 [data-theme="dark"] .session-id-display {
@@ -148,6 +153,17 @@ h3 {
 
 .secondary:hover {
     background-color: var(--muted-bg);
+}
+
+.warning {
+    background-color: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.warning:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
 }
 
 /* Screen Management */
@@ -550,8 +566,12 @@ textarea {
 }
 
 .vote-submission {
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
     margin: 20px 0;
+    flex-wrap: wrap;
 }
 
 .modal-overlay {
@@ -1750,4 +1770,485 @@ td span.crown {
 #playlist-embed-section .spotify-embed {
 	margin-top: 8px;
 	border: none;
+}
+
+/* Contestant Order Section */
+.contestant-order-section {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.contestant-order-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.contestant-order-container {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+}
+
+.order-column {
+    flex: 1;
+    max-width: 250px;
+}
+
+.order-column h4 {
+    color: var(--text-color);
+    margin-bottom: 12px;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.order-column:first-child h4 {
+    color: var(--lead-color);
+}
+
+.order-column:last-child h4 {
+    color: var(--follow-color);
+}
+
+.order-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: order-counter;
+}
+
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    background-color: var(--muted-bg);
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+    counter-increment: order-counter;
+}
+
+.order-item::before {
+    content: counter(order-counter) ".";
+    margin-right: 10px;
+    color: var(--light-text);
+    font-weight: 500;
+    min-width: 24px;
+}
+
+.order-item.current-participant {
+    background-color: rgba(67, 97, 238, 0.12);
+    border-left-color: var(--primary-color);
+}
+
+.order-item.current-participant .order-name {
+    font-weight: 700;
+}
+
+.order-item.next-participant {
+    background-color: rgba(67, 97, 238, 0.06);
+    border-left-color: rgba(67, 97, 238, 0.4);
+}
+
+.order-item.next-participant .order-name {
+    font-weight: 600;
+}
+
+.order-name {
+    flex: 1;
+    font-size: 0.95rem;
+}
+
+/* Dark mode support for contestant order */
+[data-theme="dark"] .contestant-order-section {
+    background-color: var(--panel-bg);
+}
+
+[data-theme="dark"] .order-item {
+    background-color: var(--muted-bg);
+}
+
+[data-theme="dark"] .order-item.current-participant {
+    background-color: rgba(122, 162, 255, 0.15);
+    border-left-color: var(--primary-color);
+}
+
+[data-theme="dark"] .order-item.next-participant {
+    background-color: rgba(122, 162, 255, 0.08);
+    border-left-color: rgba(122, 162, 255, 0.4);
+}
+
+/* Responsive design for contestant order */
+@media (max-width: 768px) {
+    .contestant-order-container {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .order-column {
+        max-width: 100%;
+    }
+}
+
+/* ========================= */
+/* Queue Order Animation (Display Mode) */
+/* ========================= */
+
+/* Keyframes for loser exiting (sliding out and fading) */
+@keyframes loserSlideOut {
+    0% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        background-color: rgba(239, 68, 68, 0.15);
+        border-left-color: rgba(239, 68, 68, 0.6);
+    }
+    30% {
+        opacity: 0.9;
+        transform: translateX(-10px) scale(0.98);
+        background-color: rgba(239, 68, 68, 0.3);
+    }
+    60% {
+        opacity: 0.5;
+        transform: translateX(-30px) scale(0.95);
+        background-color: rgba(239, 68, 68, 0.4);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-60px) scale(0.9);
+        background-color: rgba(239, 68, 68, 0.5);
+    }
+}
+
+/* Keyframes for loser arriving at back of queue */
+@keyframes loserSlideIn {
+    0% {
+        opacity: 0;
+        transform: translateX(60px) scale(0.9);
+        background-color: rgba(239, 68, 68, 0.5);
+        border-left-color: rgba(239, 68, 68, 0.6);
+    }
+    30% {
+        opacity: 0.5;
+        transform: translateX(30px) scale(0.95);
+        background-color: rgba(239, 68, 68, 0.35);
+    }
+    60% {
+        opacity: 0.85;
+        transform: translateX(10px) scale(0.98);
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        background-color: var(--muted-bg);
+        border-left-color: transparent;
+    }
+}
+
+/* Animation class for loser exiting */
+.order-item.animating-out {
+    animation: loserSlideOut 1s ease-in-out forwards;
+    border-left-color: rgba(239, 68, 68, 0.6);
+}
+
+/* Animation class for loser entering at new position */
+.order-item.animating-in {
+    animation: loserSlideIn 1.2s ease-out forwards;
+}
+
+/* Highlight the loser when they arrive at the back */
+.order-item.loser-arrived {
+    border-left-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Dark mode support for queue animations */
+[data-theme="dark"] .order-item.animating-out {
+    border-left-color: rgba(248, 113, 113, 0.6);
+}
+
+[data-theme="dark"] .order-item.loser-arrived {
+    border-left-color: rgba(248, 113, 113, 0.5);
+}
+
+/* Display mode specific animation enhancements */
+body.display-mode .order-item.animating-out,
+body.display-mode .order-item.animating-in {
+    /* Slightly larger animations for display mode visibility */
+    font-weight: 600;
+}
+
+/* ========================= */
+/* Display URL Styles (Admin view) */
+/* ========================= */
+.display-url-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.display-url-info span {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.display-url-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+    padding: 4px 8px;
+    font-size: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+}
+
+.display-url-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.btn-copy {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-copy:hover {
+    background: var(--secondary-color);
+}
+
+/* ========================= */
+/* Display Mode Styles */
+/* ========================= */
+body.display-mode .session-id-display {
+    font-size: 16px;
+    padding: 10px 16px;
+}
+
+/* Make battle graphic and participant order more prominent in display mode */
+body.display-mode .round-info-container {
+    max-width: 100%;
+}
+
+body.display-mode .scores-display {
+    min-width: 350px;
+}
+
+body.display-mode .battle-graphic {
+    font-size: 1.1em;
+}
+
+body.display-mode .graphic-item {
+    padding: 12px 16px;
+    font-size: 1.1em;
+}
+
+body.display-mode .contestant-order-section {
+    margin-top: 30px;
+}
+
+body.display-mode .order-item {
+    padding: 10px 12px;
+    font-size: 1em;
+}
+
+/* Hide header subtitle in display mode for cleaner look */
+body.display-mode header h2 {
+    display: none;
+}
+
+/* Center and emphasize matchup display */
+body.display-mode .matchups {
+    font-size: 1.15em;
+}
+
+body.display-mode .vs {
+    font-size: 2em;
+}
+
+/* Make round number more prominent */
+body.display-mode .round-info h2 {
+    font-size: 2em;
+}
+
+/* Improve judge display visibility */
+body.display-mode .judges {
+    margin-top: 24px;
+}
+
+body.display-mode .judge-item {
+    font-size: 1.1em;
+    padding: 10px 14px;
+}
+
+/* Responsive adjustments for display mode */
+@media (max-width: 1024px) {
+    body.display-mode .scores-display {
+        min-width: auto;
+    }
+}
+
+@media (min-width: 1400px) {
+    body.display-mode .container {
+        max-width: 1400px;
+    }
+    
+    body.display-mode .scores-display {
+        min-width: 400px;
+    }
+}
+
+/* ========================= */
+/* Round Transition Overlay (Display Mode) */
+/* ========================= */
+
+.round-transition-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease-out, visibility 0.4s ease-out;
+}
+
+.round-transition-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.round-transition-overlay.hidden {
+    display: none;
+}
+
+.round-announcement {
+    text-align: center;
+    transform: scale(0.8);
+    opacity: 0;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease-out;
+}
+
+.round-transition-overlay.active .round-announcement {
+    transform: scale(1);
+    opacity: 1;
+}
+
+.round-label {
+    font-size: 3rem;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 0.5em;
+    margin-bottom: 0.5rem;
+}
+
+.round-number-large {
+    font-size: 12rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1;
+    text-shadow: 0 0 60px var(--primary-color), 0 0 120px var(--primary-color);
+    animation: roundNumberGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes roundNumberGlow {
+    0% {
+        text-shadow: 0 0 40px var(--primary-color), 0 0 80px var(--primary-color);
+    }
+    100% {
+        text-shadow: 0 0 80px var(--primary-color), 0 0 160px var(--primary-color), 0 0 200px rgba(67, 97, 238, 0.5);
+    }
+}
+
+/* Dark mode support for overlay */
+[data-theme="dark"] .round-transition-overlay {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+[data-theme="dark"] .round-number-large {
+    text-shadow: 0 0 60px var(--primary-color), 0 0 120px var(--primary-color);
+}
+
+/* Responsive sizing for projector displays */
+@media (min-width: 1400px) {
+    .round-label {
+        font-size: 4rem;
+    }
+    
+    .round-number-large {
+        font-size: 16rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .round-label {
+        font-size: 2rem;
+    }
+    
+    .round-number-large {
+        font-size: 8rem;
+    }
+}
+
+/* ========================= */
+/* Section Staggered Fade-In (Display Mode) */
+/* ========================= */
+
+/* Base state for sections during transition - hidden */
+body.display-mode .round-content.sections-transitioning .round-info,
+body.display-mode .round-content.sections-transitioning .matchups,
+body.display-mode .round-content.sections-transitioning .judges {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+/* Fade-in animation */
+@keyframes sectionFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Staggered fade-in classes */
+body.display-mode .section-fade-in {
+    animation: sectionFadeIn 0.4s ease-out both;
+    /* 'both' fill mode ensures opacity:0 applies immediately when class is added */
+}
+
+body.display-mode .section-fade-in.stagger-1 {
+    animation-delay: 0ms;
+}
+
+body.display-mode .section-fade-in.stagger-2 {
+    animation-delay: 150ms;
+}
+
+body.display-mode .section-fade-in.stagger-3 {
+    animation-delay: 300ms;
+}
+
+body.display-mode .section-fade-in.stagger-4 {
+    animation-delay: 450ms;
 }

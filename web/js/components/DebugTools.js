@@ -790,8 +790,15 @@ class DebugTools {
                         // In simple contestant judges mode, the proxy "Contestant Judges" has 3 options (1, Mixed, 2)
                         const isGuest = card.querySelector('.judge-name').textContent.includes('(Guest)');
                         const isProxyContestantJudges = !isGuest && judgeName.trim() === 'Contestant Judges';
-                        const validButtons = isGuest ? buttons : (isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2));
+                        let validButtons = isGuest ? buttons : (isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2));
+                        // Filter out disabled buttons - only pick from enabled options
+                        validButtons = validButtons.filter(btn => !btn.disabled && !btn.classList.contains('disabled'));
                         console.log(`Valid buttons for ${judgeName}: ${validButtons.length} (isGuest: ${isGuest})`);
+                        
+                        if (validButtons.length === 0) {
+                            console.warn(`No enabled buttons available for judge ${judgeName}, skipping`);
+                            continue;
+                        }
                         
                         // Get a random button from the valid options
                         const randomButton = validButtons[Math.floor(Math.random() * validButtons.length)];

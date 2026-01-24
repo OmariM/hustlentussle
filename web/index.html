@@ -190,6 +190,24 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div class="contestant-order-section">
+                            <h3>Participant Order</h3>
+                            <div class="contestant-order-container">
+                                <div class="order-column">
+                                    <h4>Leads</h4>
+                                    <ol id="lead-order-list" class="order-list">
+                                        <!-- Lead order will be populated here -->
+                                    </ol>
+                                </div>
+                                <div class="order-column">
+                                    <h4>Follows</h4>
+                                    <ol id="follow-order-list" class="order-list">
+                                        <!-- Follow order will be populated here -->
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="scores-display">
@@ -232,6 +250,26 @@
                 
                 <div class="vote-submission">
                     <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                    <button id="undo-round" class="btn secondary" disabled>Undo Round</button>
+                    <button id="end-battle-early" class="btn warning">End Battle Early</button>
+                </div>
+
+                <!-- End battle early confirmation modal -->
+                <div id="end-early-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-early-title">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h3 id="end-early-title">End Battle Early?</h3>
+                            <button id="end-early-close" class="modal-close" aria-label="Close">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Are you sure you want to end the battle now?</p>
+                            <p class="modal-note">Winners will be determined by current standings (most rounds won).</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="end-early-cancel" class="btn secondary">Cancel</button>
+                            <button id="end-early-confirm" class="btn warning">End Battle</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Vote confirmation modal -->
@@ -363,6 +401,14 @@
                 <button id="back-to-home-from-results" class="btn primary">Back to Home</button>
                 <button id="download-battle-data" class="btn secondary">Download Battle Data</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Round Transition Overlay (Display Mode) -->
+    <div id="round-transition-overlay" class="round-transition-overlay hidden">
+        <div class="round-announcement">
+            <div class="round-label">Round</div>
+            <div class="round-number-large" id="overlay-round-number"></div>
         </div>
     </div>
 
