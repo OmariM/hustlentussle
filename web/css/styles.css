@@ -49,10 +49,76 @@ body {
     display: none;
 }
 
+.session-id-display-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.session-id-display-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.session-id-display-toggle {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    color: inherit;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.session-id-display-toggle:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.session-id-display-body {
+    margin-top: 10px;
+}
+
+.session-id-display.session-id-display--minimized .session-id-display-body {
+    display: none;
+}
+
+.session-id-display.session-id-display--minimized .session-id-display-header {
+    margin-bottom: 0;
+}
+
+/* Minimized: stick to top of viewport, hide session ID, compact bar */
+.session-id-display.session-id-display--minimized {
+    top: 0;
+    right: 0;
+    left: auto;
+    padding: 6px 10px;
+    border-radius: 0 0 8px 8px;
+}
+
+.session-id-display.session-id-display--minimized .session-id-display-label {
+    display: none;
+}
+
 [data-theme="dark"] .session-id-display {
     background-color: rgba(255, 255, 255, 0.08);
     color: var(--text-color);
     border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .session-id-display-toggle {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .session-id-display-toggle:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .round-session-id {
@@ -2029,6 +2095,20 @@ body.display-mode .order-item.animating-in {
 
 .btn-copy:hover {
     background: var(--secondary-color);
+}
+
+.display-url-qr {
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.display-url-qr-img {
+    display: block;
+    width: 120px;
+    height: 120px;
 }
 
 /* ========================= */

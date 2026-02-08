@@ -1327,24 +1327,61 @@ function showUploadError(message) {
 // Function to update session ID display
 function updateSessionIdDisplay() {
     const sessionIdDisplay = document.getElementById('session-id-display');
-    if (sessionIdDisplay) {
-        if (sessionId && !displayMode) {
-            // In admin mode, show session ID and shareable display URL
-            const baseUrl = window.location.origin + window.location.pathname;
-            const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
-            sessionIdDisplay.innerHTML = `
-                <div>Session: ${sessionId}</div>
+    if (!sessionIdDisplay) return;
+    if (!sessionId) {
+        sessionIdDisplay.textContent = '';
+        sessionIdDisplay.className = 'session-id-display';
+        return;
+    }
+    const isMinimized = localStorage.getItem('session-info-minimized') === 'true';
+    if (sessionId && !displayMode) {
+        const baseUrl = window.location.origin + window.location.pathname;
+        const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
+        sessionIdDisplay.innerHTML = `
+            <div class="session-id-display-header">
+                <span class="session-id-display-label">Session: ${sessionId}</span>
+                <button type="button" class="session-id-display-toggle" title="${isMinimized ? 'Expand' : 'Minimize'}" aria-label="${isMinimized ? 'Expand' : 'Minimize'}">${isMinimized ? '▶' : '−'}</button>
+            </div>
+            <div class="session-id-display-body">
                 <div class="display-url-info">
                     <span>Display URL (for viewers):</span>
                     <input type="text" readonly value="${displayUrl}" onclick="this.select()" class="display-url-input" />
                     <button type="button" class="btn-copy" onclick="navigator.clipboard.writeText('${displayUrl}').then(() => this.textContent = 'Copied!').catch(() => {})">Copy</button>
                 </div>
-            `;
-        } else if (sessionId) {
-            // In display mode, just show session ID
-            sessionIdDisplay.textContent = `Session: ${sessionId}`;
-        } else {
-            sessionIdDisplay.textContent = '';
+                <div class="display-url-qr">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(displayUrl)}" alt="QR code for display URL" class="display-url-qr-img" />
+                </div>
+            </div>
+        `;
+        sessionIdDisplay.classList.toggle('session-id-display--minimized', isMinimized);
+        const toggleBtn = sessionIdDisplay.querySelector('.session-id-display-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const minimized = sessionIdDisplay.classList.toggle('session-id-display--minimized');
+                localStorage.setItem('session-info-minimized', minimized ? 'true' : 'false');
+                toggleBtn.textContent = minimized ? '▶' : '−';
+                toggleBtn.title = minimized ? 'Expand' : 'Minimize';
+                toggleBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
+            });
+        }
+    } else if (sessionId) {
+        sessionIdDisplay.innerHTML = `
+            <div class="session-id-display-header">
+                <span class="session-id-display-label">Session: ${sessionId}</span>
+                <button type="button" class="session-id-display-toggle" title="${isMinimized ? 'Expand' : 'Minimize'}" aria-label="${isMinimized ? 'Expand' : 'Minimize'}">${isMinimized ? '▶' : '−'}</button>
+            </div>
+            <div class="session-id-display-body">Session: ${sessionId}</div>
+        `;
+        sessionIdDisplay.classList.toggle('session-id-display--minimized', isMinimized);
+        const toggleBtn = sessionIdDisplay.querySelector('.session-id-display-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const minimized = sessionIdDisplay.classList.toggle('session-id-display--minimized');
+                localStorage.setItem('session-info-minimized', minimized ? 'true' : 'false');
+                toggleBtn.textContent = minimized ? '▶' : '−';
+                toggleBtn.title = minimized ? 'Expand' : 'Minimize';
+                toggleBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
+            });
         }
     }
 }
