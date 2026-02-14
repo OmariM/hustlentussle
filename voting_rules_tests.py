@@ -12,7 +12,7 @@ class VotingRulesTestSuite(unittest.TestCase):
         self.judge_names = ["Judge1", "Judge2"]
     
     def create_game(self):
-        return Game(self.lead_names, self.follow_names, self.judge_names)
+        return Game(self.lead_names, self.follow_names, self.judge_names, points_to_win=7)
     
     def test_guest_judge_vote_weights(self):
         """Test that guest judge votes have correct weight (2 points vs 1 for contestants)"""
@@ -229,7 +229,7 @@ class VotingRulesTestSuite(unittest.TestCase):
         
         for leads, follows, judges in configs:
             with self.subTest(total_contestants=len(leads) + len(follows)):
-                game = Game(leads, follows, judges)
+                game = Game(leads, follows, judges, points_to_win=7)
                 
                 # Verify judge count is appropriate
                 available_for_judging = len(leads) + len(follows) - 4  # 4 are competing

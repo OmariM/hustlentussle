@@ -150,7 +150,7 @@ class TestSuiteRunner:
         
         for config_name, leads, follows in configs:
             try:
-                game = Game(leads, follows, ["Judge1", "Judge2"])
+                game = Game(leads, follows, ["Judge1", "Judge2"], points_to_win=7)
                 validator = BattleRulesValidator(game)
                 state = validator.capture_state()
                 violations = validator.validate_all_rules(state)
@@ -173,18 +173,18 @@ class TestSuiteRunner:
         
         # Test 1: Judge selection consistency
         try:
-            game = Game(["L1", "L2", "L3", "L4"], ["F1", "F2", "F3", "F4"], ["J1", "J2"])
+            game = Game(["L1", "L2", "L3", "L4"], ["F1", "F2", "F3", "F4"], ["J1", "J2"], points_to_win=7)
             competing = {game.pair_1[0].name, game.pair_1[1].name, game.pair_2[0].name, game.pair_2[1].name}
             judging = {judge.name for judge in game.contestant_judges}
-            
+
             if competing.intersection(judging):
                 issues.append("Judge selection allows competing contestants as judges")
         except Exception as e:
             issues.append(f"Judge selection test failed: {e}")
-        
+
         # Test 2: Queue state after no contest
         try:
-            game = Game(["L1", "L2", "L3", "L4"], ["F1", "F2", "F3", "F4"], ["J1", "J2"])
+            game = Game(["L1", "L2", "L3", "L4"], ["F1", "F2", "F3", "F4"], ["J1", "J2"], points_to_win=7)
             initial_queue_size = len(game.leads)
             
             # Simulate no contest
@@ -196,18 +196,21 @@ class TestSuiteRunner:
         except Exception as e:
             issues.append(f"No contest test failed: {e}")
         
-        # Test 3: Win threshold calculation
+        # Test 3: Auto win threshold calculation (auto_win_threshold is always computed)
         try:
             configs_to_test = [
                 (["L1", "L2"], ["F1", "F2", "F3", "F4"], 3),  # max(2,4) - 1 = 3
-                (["L1", "L2", "L3", "L4"], ["F1", "F2"], 3),  # max(4,2) - 1 = 3  
+                (["L1", "L2", "L3", "L4"], ["F1", "F2"], 3),  # max(4,2) - 1 = 3
                 (["L1", "L2", "L3"], ["F1", "F2", "F3"], 2),  # max(3,3) - 1 = 2
             ]
-            
+
             for leads, follows, expected_threshold in configs_to_test:
                 game = Game(leads, follows, ["J1", "J2"])
-                if game.win_threshold != expected_threshold:
-                    issues.append(f"Win threshold calculation error: expected {expected_threshold}, got {game.win_threshold}")
+                if game.auto_win_threshold != expected_threshold:
+                    issues.append(f"Auto win threshold calculation error: expected {expected_threshold}, got {game.auto_win_threshold}")
+                # Default win_threshold should be 7 when no points_to_win provided
+                if game.win_threshold != 7:
+                    issues.append(f"Default win threshold error: expected 7, got {game.win_threshold}")
         except Exception as e:
             issues.append(f"Win threshold test failed: {e}")
         

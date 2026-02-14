@@ -182,6 +182,9 @@ class Game:
         # Calculate auto win threshold (for reference)
         self.auto_win_threshold = max(self.total_num_leads, self.total_num_follows) - 1
 
+        # Track whether threshold was explicitly provided
+        self.custom_threshold = (points_to_win is not None)
+
         # Set win threshold: use provided value, or default to 7
         if points_to_win is not None:
             self.win_threshold = points_to_win

@@ -205,10 +205,12 @@ class BattleRulesValidator:
         """Validate winning conditions and thresholds"""
         violations = []
         
-        # Rule: Win threshold should be calculated correctly
-        expected_threshold = max(len(self.all_leads), len(self.all_follows)) - 1
-        if state.win_threshold != expected_threshold:
-            violations.append(f"Incorrect win threshold: {state.win_threshold} != {expected_threshold}")
+        # Rule: Win threshold should be valid
+        # Only check auto-calculation if game is using auto-calc (not default 7 and not explicitly set)
+        if not getattr(self.game, 'custom_threshold', False) and state.win_threshold != 7:
+            expected_threshold = max(len(self.all_leads), len(self.all_follows)) - 1
+            if state.win_threshold != expected_threshold:
+                violations.append(f"Incorrect win threshold: {state.win_threshold} != {expected_threshold}")
             
         # Rule: Game should be finished only when both roles have winners
         if state.is_finished and not (state.has_winning_lead and state.has_winning_follow):
@@ -298,8 +300,8 @@ class BattleRulesTestSuite(unittest.TestCase):
         leads = leads or self.lead_names
         follows = follows or self.follow_names
         judges = judges or self.judge_names
-        return Game(leads, follows, judges)
-    
+        return Game(leads, follows, judges, points_to_win=7)
+
     def validate_game_state(self, game: Game) -> List[str]:
         """Validate current game state against all rules"""
         validator = BattleRulesValidator(game)
@@ -450,7 +452,7 @@ class BattleRulesTestSuite(unittest.TestCase):
     
     def test_win_threshold_enforcement(self):
         """Test that win thresholds are properly enforced"""
-        game = self.create_game()
+        game = Game(self.lead_names, self.follow_names, self.judge_names)
         
         # Manually set a contestant close to winning
         target_lead = game.pair_1[0]
@@ -592,9 +594,9 @@ class StressTestSuite(unittest.TestCase):
         follows = [f"Follow{i}" for i in range(1, 21)]  # 20 follows
         judges = ["Judge1", "Judge2"]
         
-        game = Game(leads, follows, judges)
+        game = Game(leads, follows, judges, points_to_win=7)
         validator = BattleRulesValidator(game)
-        
+
         # Test initial state
         violations = validator.validate_all_rules(validator.capture_state())
         self.assertEqual(violations, [], f"Large pool initial violations: {violations}")
@@ -619,7 +621,7 @@ class StressTestSuite(unittest.TestCase):
     def test_minimal_contestant_pools(self):
         """Test with minimal numbers of contestants"""
         # Test minimum viable configuration (2 leads, 2 follows)
-        game = Game(["Lead1", "Lead2"], ["Follow1", "Follow2"], ["Judge1", "Judge2"])
+        game = Game(["Lead1", "Lead2"], ["Follow1", "Follow2"], ["Judge1", "Judge2"], points_to_win=7)
         validator = BattleRulesValidator(game)
         
         violations = validator.validate_all_rules(validator.capture_state())
@@ -645,9 +647,9 @@ class StressTestSuite(unittest.TestCase):
             random.shuffle(leads)
             random.shuffle(follows)
             
-            game = Game(leads, follows, ["Judge1", "Judge2"])
+            game = Game(leads, follows, ["Judge1", "Judge2"], points_to_win=7)
             validator = BattleRulesValidator(game)
-            
+
             round_count = 0
             while not game.is_finished() and round_count < 30:
                 # Random voting

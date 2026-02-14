@@ -35,7 +35,7 @@ class TestGameLogic(unittest.TestCase):
         self.judge_names = ["Judge1", "Judge2"]
         
         # Create a test game
-        self.game = Game(self.lead_names, self.follow_names, self.judge_names)
+        self.game = Game(self.lead_names, self.follow_names, self.judge_names, points_to_win=7)
     
     def tearDown(self):
         """Clean up after each test."""
@@ -165,7 +165,8 @@ class TestGameLogic(unittest.TestCase):
         game = Game(
             ["Lead1", "Lead2", "Lead3"],
             ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
-            ["Judge1", "Judge2"]
+            ["Judge1", "Judge2"],
+            points_to_win=4
         )
         
         # Verify win threshold is based on maximum number of contestants
@@ -246,40 +247,53 @@ class TestGameLogic(unittest.TestCase):
         self.assertEqual(data['pair_2'][1], self.follow_names[1])
 
     def test_win_threshold_calculation(self):
-        """Test that win threshold is correctly calculated for different numbers of contestants."""
+        """Test that auto win threshold is correctly calculated for different numbers of contestants."""
         # Test case 1: More leads than follows
         game1 = Game(
             ["Lead1", "Lead2", "Lead3", "Lead4", "Lead5"],
             ["Follow1", "Follow2", "Follow3"],
             ["Judge1", "Judge2"]
         )
-        self.assertEqual(game1.win_threshold, 4,  # max(5,3) - 1
-                        "Win threshold should be 4 for 5 leads and 3 follows")
-        
+        self.assertEqual(game1.auto_win_threshold, 4,  # max(5,3) - 1
+                        "Auto win threshold should be 4 for 5 leads and 3 follows")
+        self.assertEqual(game1.win_threshold, 7, "Default win threshold should be 7")
+
         # Test case 2: More follows than leads
         game2 = Game(
             ["Lead1", "Lead2"],
             ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5", "Follow6"],
             ["Judge1", "Judge2"]
         )
-        self.assertEqual(game2.win_threshold, 5,  # max(2,6) - 1
-                        "Win threshold should be 5 for 2 leads and 6 follows")
-        
+        self.assertEqual(game2.auto_win_threshold, 5,  # max(2,6) - 1
+                        "Auto win threshold should be 5 for 2 leads and 6 follows")
+        self.assertEqual(game2.win_threshold, 7, "Default win threshold should be 7")
+
         # Test case 3: Equal numbers
         game3 = Game(
             ["Lead1", "Lead2", "Lead3"],
             ["Follow1", "Follow2", "Follow3"],
             ["Judge1", "Judge2"]
         )
-        self.assertEqual(game3.win_threshold, 2,  # max(3,3) - 1
-                        "Win threshold should be 2 for 3 leads and 3 follows")
+        self.assertEqual(game3.auto_win_threshold, 2,  # max(3,3) - 1
+                        "Auto win threshold should be 2 for 3 leads and 3 follows")
+        self.assertEqual(game3.win_threshold, 7, "Default win threshold should be 7")
+
+        # Test case 4: Explicit points_to_win overrides default
+        game4 = Game(
+            ["Lead1", "Lead2", "Lead3"],
+            ["Follow1", "Follow2", "Follow3"],
+            ["Judge1", "Judge2"],
+            points_to_win=5
+        )
+        self.assertEqual(game4.win_threshold, 5, "Explicit points_to_win should override default")
 
     def test_lead_win_condition(self):
         """Test that lead win condition is correctly handled with unequal numbers."""
         game = Game(
             ["Lead1", "Lead2", "Lead3"],
             ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
-            ["Judge1", "Judge2"]
+            ["Judge1", "Judge2"],
+            points_to_win=4
         )
         
         initial_lead_1 = game.pair_1[0]
@@ -324,7 +338,8 @@ class TestGameLogic(unittest.TestCase):
         game = Game(
             ["Lead1", "Lead2", "Lead3"],
             ["Follow1", "Follow2", "Follow3", "Follow4", "Follow5"],
-            ["Judge1", "Judge2"]
+            ["Judge1", "Judge2"],
+            points_to_win=4
         )
         
         initial_follow_1 = game.pair_1[1]

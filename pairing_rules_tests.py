@@ -15,7 +15,7 @@ class PairingRulesTestSuite(unittest.TestCase):
         leads = leads or self.lead_names
         follows = follows or self.follow_names
         judges = judges or self.judge_names
-        return Game(leads, follows, judges)
+        return Game(leads, follows, judges, points_to_win=7)
     
     def test_initial_pairing_validity(self):
         """Test that initial pairs are formed correctly"""
