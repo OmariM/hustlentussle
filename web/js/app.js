@@ -866,6 +866,9 @@ function renderFromState(state) {
     // Scoreboard
     updateLiveGraphicFromState(state);
 
+    // Update mini leaderboard
+    updateMiniLeaderboard();
+
     // Update contestant order visualization
     updateContestantOrder(state);
 
@@ -1069,6 +1072,33 @@ function updateLiveGraphicFromState(state) {
         : (follows || []).map(f => f.name);
     renderColumn(orderedLeads, leadMap, winnerLeadName, liveLeadGraphic, canShowLeadCrown);
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
+}
+
+function updateMiniLeaderboard() {
+    const leadContainer = document.getElementById('mini-lead-standings');
+    const followContainer = document.getElementById('mini-follow-standings');
+    if (!leadContainer || !followContainer) return;
+
+    function renderStandings(contestants, container) {
+        container.innerHTML = '';
+        if (!contestants || contestants.length === 0) return;
+        const sorted = [...contestants].sort((a, b) => (b.points || 0) - (a.points || 0));
+        sorted.forEach((c, i) => {
+            const row = document.createElement('div');
+            row.className = 'standings-row';
+            const name = c.name || c;
+            const points = c.points || 0;
+            row.innerHTML =
+                '<span class="rank">' + (i + 1) + '</span>' +
+                '<span class="name">' + name + '</span>' +
+                '<div class="bar-track"><div class="fill" style="width: ' + Math.min((points / 7) * 100, 100) + '%"></div></div>' +
+                '<span class="pts">' + points + '</span>';
+            container.appendChild(row);
+        });
+    }
+
+    renderStandings(currentLeads, leadContainer);
+    renderStandings(currentFollows, followContainer);
 }
 
 function updateContestantOrder(state) {
@@ -2190,7 +2220,10 @@ async function submitCombinedVotes(options = {}) {
         // Update live graphic immediately with the latest canonical state
         try {
             const state = await fetchCanonicalState();
-            if (state) updateLiveGraphicFromState(state);
+            if (state) {
+                updateLiveGraphicFromState(state);
+                updateMiniLeaderboard();
+            }
         } catch (_) {}
 
         // Auto-advance to the next round (unless game finished)
