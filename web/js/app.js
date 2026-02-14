@@ -2631,6 +2631,8 @@ async function displayResults(data) {
     } else {
         console.warn('No round history data available');
     }
+
+    showToast('Battle complete!', 'success');
 }
 
 // Update the displayRoundHistory function
@@ -2654,15 +2656,15 @@ function displayRoundHistory(rounds) {
         // Add click handler for accordion functionality
         header.addEventListener('click', () => {
             const content = header.nextElementSibling;
-            const isActive = header.classList.contains('active');
-            
-            // Toggle active state
+            const isOpen = content.classList.contains('open');
+
+            // Toggle open state
             header.classList.toggle('active');
-            content.classList.toggle('active');
-            
+            content.classList.toggle('open');
+
             // Update the plus/minus symbol
             const symbol = header.querySelector('span:last-child');
-            symbol.textContent = isActive ? '+' : '-';
+            symbol.textContent = isOpen ? '+' : '-';
         });
         
         // Create the content

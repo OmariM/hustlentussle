@@ -1167,7 +1167,7 @@ input[type="checkbox"] {
 }
 
 .accordion-content.open {
-    max-height: 500px;
+    max-height: 2000px;
 }
 
 .round-details {
