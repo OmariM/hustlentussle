@@ -139,14 +139,15 @@
         </div>
 
         <div id="battle-screen" class="screen">
-            <h1 id="battle-title">Battle</h1>
-            
+            <div class="round-header-new">
+                <div class="round-badge" id="round-badge">Round <span id="round-number">1</span></div>
+                <h2 id="battle-title">Voting</h2>
+                <p class="vote-progress" id="vote-progress"></p>
+            </div>
+
             <div class="round-header">
                 <div class="round-info-container">
                     <div class="round-content">
-                        <div id="current-round" class="round-info">
-                            <h2>Round <span id="round-number">1</span></h2>
-                        </div>
 
                         <div id="song-input-section" class="song-input-container">
                             <h3>Song Information</h3>
@@ -159,7 +160,7 @@
                             <div id="playlist-embed"></div>
                         </div>
 
-                        <div id="current-matchup" class="matchups">
+                        <div id="current-matchup" class="matchups matchup-card">
                             <div class="matchup">
                                 <h3>Pair 1</h3>
                                 <div class="pair">
@@ -252,10 +253,26 @@
                     </div>
                 </div>
                 
-                <div class="vote-submission">
-                    <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                <div class="submit-area">
+                    <button id="submit-votes" class="btn primary large">Confirm Votes</button>
+                </div>
+                <div class="battle-actions">
                     <button id="undo-round" class="btn secondary" disabled>Undo Round</button>
                     <button id="end-battle-early" class="btn warning">End Battle Early</button>
+                </div>
+
+                <div class="standings-card" id="mini-leaderboard">
+                    <h3>Standings</h3>
+                    <div class="standings-columns">
+                        <div class="standings-col">
+                            <h4>Leads</h4>
+                            <div id="mini-lead-standings"></div>
+                        </div>
+                        <div class="standings-col">
+                            <h4>Follows</h4>
+                            <div id="mini-follow-standings"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- End battle early confirmation modal -->
