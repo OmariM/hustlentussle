@@ -49,6 +49,29 @@ try {
     }
 } catch (_) {}
 
+// Auto-detect theme based on display mode
+function applyTheme() {
+    if (displayMode) {
+        document.documentElement.setAttribute('data-theme', 'display');
+    } else {
+        document.documentElement.setAttribute('data-theme', 'admin');
+    }
+}
+
+// Toast notification system
+function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
+}
+
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
 let goToBattleBtn, goToUploadBtn;
@@ -83,7 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Detect display mode early (before DOM element setup)
     detectDisplayMode();
-    
+    applyTheme();
+
     // Initialize DOM elements
     homeScreen = document.getElementById('home-screen');
     uploadScreen = document.getElementById('upload-screen');
@@ -374,27 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
-		// Theme toggle
-    const themeToggle = document.getElementById('theme-toggle');
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-    }
-    if (themeToggle) {
-        themeToggle.addEventListener('click', () => {
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            const next = isDark ? 'light' : 'dark';
-            if (next === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            } else {
-                document.documentElement.removeAttribute('data-theme');
-            }
-            localStorage.setItem('theme', next);
-        });
-    }
-
-		// Spotify integration toggle and UI gating
-		const spotifyToggle = document.getElementById('spotify-toggle');
+		// Spotify integration UI gating
 		const playlistUrlGroup = document.getElementById('playlist-url-group');
 		if (localStorage.getItem('spotify.enabled') === null) {
 			localStorage.setItem('spotify.enabled', 'false');
@@ -404,7 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
 			if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
 			if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
-			if (spotifyToggle) spotifyToggle.textContent = isOn ? 'Disable Spotify Integration' : 'Enable Spotify Integration';
 			// Dynamically add/remove home auth button
 			try {
 				const home = document.getElementById('home-screen');
@@ -429,28 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			} catch (_) {}
 		}
 		applySpotifyEnabledUI();
-		if (spotifyToggle) {
-			spotifyToggle.addEventListener('click', () => {
-				const current = localStorage.getItem('spotify.enabled') === 'true';
-				const next = !current;
-				localStorage.setItem('spotify.enabled', next ? 'true' : 'false');
-				if (!next) {
-					// Turning off disables any active playlist mode and clears embeds
-					disablePlaylistMode('Spotify integration disabled');
-				} else {
-					// Turning on: if we have a playlist URL (in input or stored for session), try enabling playlist mode
-					const inputUrl = playlistUrlInput ? (playlistUrlInput.value || '').trim() : '';
-					let toEnable = inputUrl;
-					if (!toEnable && sessionId) {
-						try { toEnable = localStorage.getItem(`playlist:url:${sessionId}`) || ''; } catch (_) {}
-					}
-					if (toEnable) {
-						try { maybeEnablePlaylistMode(toEnable).catch(()=>{}); } catch (_) {}
-					}
-				}
-				applySpotifyEnabledUI();
-			});
-		}
 
     // Initialize display mode if detected (this goes directly to battle screen)
     if (displayMode) {
@@ -720,12 +701,9 @@ function applyDisplayModeUI() {
     const roundResults = document.getElementById('round-results');
     if (roundResults) roundResults.style.display = 'none';
     
-    // Hide theme and spotify toggles for cleaner display
-    const themeToggle = document.getElementById('theme-toggle');
-    if (themeToggle) themeToggle.parentElement.style.display = 'none';
-    
-    const spotifyToggle = document.getElementById('spotify-toggle');
-    if (spotifyToggle) spotifyToggle.parentElement.style.display = 'none';
+    // Hide spotify-related controls for cleaner display
+    const spotifyToggleEl = document.getElementById('spotify-toggle');
+    if (spotifyToggleEl) spotifyToggleEl.parentElement.style.display = 'none';
 }
 
 async function initDisplayMode() {
@@ -1419,7 +1397,7 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
 
     if (!leads || !follows || !judges) {
-        alert('Please enter names for leads, follows, and judges.');
+        showToast('Please enter names for leads, follows, and judges.', 'error');
         return;
     }
 
@@ -1486,7 +1464,7 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         showScreen(roundScreen);
     } catch (error) {
         console.error('Error starting game:', error);
-        alert('Failed to start the competition. Please try again.');
+        showToast('Failed to start game: ' + (error.message || 'Unknown error'), 'error');
     }
 }
 
@@ -2063,11 +2041,11 @@ async function submitCombinedVotes(options = {}) {
         if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             showVoteConfirmError(msg);
         } else {
-            alert(msg);
+            showToast(msg, 'error');
         }
         return;
     }
-    
+
     // Convert votes to arrays for API, expanding the proxy judge when simple contestant judges is enabled.
     const leadVotesArray = buildEffectiveVotesArray('lead');
     const followVotesArray = buildEffectiveVotesArray('follow');
@@ -2183,7 +2161,7 @@ async function submitCombinedVotes(options = {}) {
         if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             showVoteConfirmError(msg);
         } else {
-            alert(msg);
+            showToast('Error submitting votes', 'error');
         }
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
@@ -2209,13 +2187,13 @@ async function goToNextRound() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
         console.error('Error starting next round:', error);
-        alert('Failed to start the next round. Please try again.');
+        showToast('Failed to advance round', 'error');
     }
 }
 
 async function undoLastRound() {
     if (!sessionId) {
-        alert('No active session to undo.');
+        showToast('No active session to undo.', 'error');
         return;
     }
 
@@ -2232,7 +2210,7 @@ async function undoLastRound() {
         const data = await response.json();
 
         if (!response.ok) {
-            alert(data.error || 'Failed to undo round.');
+            showToast(data.error || 'Failed to undo round.', 'error');
             return;
         }
 
@@ -2256,7 +2234,7 @@ async function undoLastRound() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
         console.error('Error undoing round:', error);
-        alert('Failed to undo round. Please try again.');
+        showToast('Failed to undo round', 'error');
         isUndoInProgress = false;
     } finally {
         // Re-enable button will happen via renderFromState after refreshCanonicalState
@@ -2890,7 +2868,7 @@ async function preparePlaylistSongForRound(roundNum) {
             currentRoundTrack = null;
             disablePlaylistMode('No more unused tracks available.');
             if (localStorage.getItem('spotify.enabled') === 'true') {
-                try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+                try { showToast('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.', 'error', 5000); } catch (_) {}
             }
             return;
         }
@@ -3009,7 +2987,7 @@ async function downloadBattleData() {
         
     } catch (error) {
         console.error('Error downloading battle data:', error);
-        alert('Failed to download battle data. Please try again.');
+        showToast('Failed to download battle data', 'error');
     }
 }
 
@@ -3048,7 +3026,7 @@ function endGame() {
     })
     .catch(error => {
         console.error('Error ending game:', error);
-        alert('Failed to end the competition. Please try again.');
+        showToast('Failed to end the competition', 'error');
     });
 } 
 
@@ -3096,7 +3074,7 @@ async function maybeEnablePlaylistMode(url) {
     } catch (e) {
         console.warn('Failed to enable playlist mode:', e);
         disablePlaylistMode('Could not fetch playlist tracks. Falling back to manual song input.');
-        try { alert('Could not load Spotify playlist. Falling back to manual song input.'); } catch (_) {}
+        try { showToast('Could not load Spotify playlist. Falling back to manual song input.', 'error'); } catch (_) {}
     }
 }
 
@@ -3211,7 +3189,7 @@ async function playCurrentRoundTrackViaSpotify() {
             } else {
                 const err = await resp.json().catch(() => ({}));
                 console.warn('Failed to start playback:', err);
-                alert('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.');
+                showToast('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.', 'error', 5000);
             }
         }
     } catch (e) {
