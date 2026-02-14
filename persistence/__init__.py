@@ -21,15 +21,14 @@ from persistence.factory import (
 )
 
 __all__ = [
-    'GameRepositoryInterface',
-    'RepositoryError',
-    'GameNotFoundError',
-    'PersistenceError',
-    'MemoryGameRepository', 
-    'PostgresGameRepository',
-    'GameSerializer',
-    'RepositoryFactory',
-    'FallbackRepository',
-    'CleanupScheduler',
+    "GameRepositoryInterface",
+    "RepositoryError",
+    "GameNotFoundError",
+    "PersistenceError",
+    "MemoryGameRepository",
+    "PostgresGameRepository",
+    "GameSerializer",
+    "RepositoryFactory",
+    "FallbackRepository",
+    "CleanupScheduler",
 ]
-
