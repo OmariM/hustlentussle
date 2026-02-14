@@ -25,6 +25,7 @@ let roundTransitionInProgress = false; // Track if round transition overlay is s
 let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
 let pendingQueueAnimationData = null; // Store data for queue animation after stagger
 let isUndoInProgress = false; // Skip animations during undo operations
+let isSubmitting = false; // Prevent double-submission
 
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
@@ -70,6 +71,22 @@ function showToast(message, type = 'info', duration = 3000) {
         toast.classList.add('fade-out');
         toast.addEventListener('animationend', () => toast.remove());
     }, duration);
+}
+
+// Loading state utility
+function setButtonLoading(button, loading) {
+    if (!button) return;
+    if (loading) {
+        button.dataset.originalText = button.textContent;
+        button.classList.add('loading');
+        button.disabled = true;
+    } else {
+        button.classList.remove('loading');
+        button.disabled = false;
+        if (button.dataset.originalText) {
+            button.textContent = button.dataset.originalText;
+        }
+    }
 }
 
 // DOM Elements (initialized in the DOMContentLoaded event)
@@ -1401,6 +1418,7 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         return;
     }
 
+    setButtonLoading(startCompetitionBtn, true);
     try {
         const response = await fetch('/api/start_game', {
             method: 'POST',
@@ -1465,6 +1483,8 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     } catch (error) {
         console.error('Error starting game:', error);
         showToast('Failed to start game: ' + (error.message || 'Unknown error'), 'error');
+    } finally {
+        setButtonLoading(startCompetitionBtn, false);
     }
 }
 
@@ -2028,6 +2048,8 @@ function lockVoting(voteType) {
 }
 
 async function submitCombinedVotes(options = {}) {
+    if (isSubmitting) return;
+    isSubmitting = true;
     const allJudges = buildJudgeRoster();
     
     // Check if all judges have voted for both lead and follow
@@ -2043,6 +2065,7 @@ async function submitCombinedVotes(options = {}) {
         } else {
             showToast(msg, 'error');
         }
+        isSubmitting = false;
         return;
     }
 
@@ -2074,9 +2097,9 @@ async function submitCombinedVotes(options = {}) {
     // Lock voting and disable the button to prevent further changes
     lockVoting('lead');
     lockVoting('follow');
-    submitVotesBtn.disabled = true;
+    setButtonLoading(submitVotesBtn, true);
     if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
-    
+
     try {
         const response = await fetch('/api/judge_combined', {
             method: 'POST',
@@ -2151,7 +2174,7 @@ async function submitCombinedVotes(options = {}) {
                 // If next round fails, allow the user to try again
                 votingLocked.lead = false;
                 votingLocked.follow = false;
-                submitVotesBtn.disabled = false;
+                setButtonLoading(submitVotesBtn, false);
                 if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
             }
         }
@@ -2165,8 +2188,10 @@ async function submitCombinedVotes(options = {}) {
         }
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
-        submitVotesBtn.disabled = false;
+        setButtonLoading(submitVotesBtn, false);
         if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+    } finally {
+        isSubmitting = false;
     }
 }
 
