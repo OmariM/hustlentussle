@@ -51,11 +51,12 @@ python web/app.py
 Then open your browser to http://localhost:5000
 
 - Home: Start a new battle or upload a previously saved results file
-- Setup: Enter lead names, follow names, and guest judge names; optionally set a points-to-win override
-- Voting: Cast votes for Leads and Follows (combined view) and Submit All Votes; live battle graphic updates
-- Song: Optionally paste a Spotify track URL; metadata will be fetched if Spotify credentials are configured
+- Setup: Enter lead names, follow names, and guest judge names; optionally set a points-to-win override (default 7, auto-calculate, or custom). Advanced options include randomizing order, toggling contestant judging, and setting contestant judge count
+- Voting: Cast votes for Leads and Follows (combined view) and Submit All Votes; live battle graphic updates. Use Undo Round to revert the last round if needed
+- Song: Optionally paste a Spotify track URL or connect a Spotify playlist for automatic track selection each round
 - Results: View leaderboards, round history, and Download Battle Data (Excel or JSON)
 - Upload: Upload a previously downloaded .xlsx results file to visualize battle summaries and leaderboards
+- Display Mode: Share a spectator-only view via `?mode=display&session_id=SESSION_ID` with live polling and animated queue transitions. A QR code is generated in the header for easy sharing
 - UI: Toggle Theme (light/dark) from the header
 - Debug (optional): Enable debug tools via env, query `?debug=1`, or hotkey Alt+Shift+D
 
@@ -137,16 +138,20 @@ For more details, see the [Render documentation](https://render.com/docs).
 
 - Random Pairing: Each round pairs one Lead with one Follow
 - Guest & Contestant Judges: Guests can choose Tie or No Contest; contestants must pick a winner
-- Tie Handling: Both tied dancers gain +1 point and continue to the next round with fresh opponents
+- Tie Handling: No points awarded; tied dancers face each other again in the next round
 - No Contest: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected
+- Undo Round: Revert the last round and restore the previous queue state
 - Winner Recognition: Crown emoji (👑) highlights the first contestant to reach the winning threshold
-- Scoring & Leaderboards: Points tracked individually and sorted for Leads and Follows
+- Scoring & Leaderboards: Points tracked individually and sorted for Leads and Follows; default win threshold is 7 points (configurable via auto-calculate or custom value)
 - Multiple Interfaces: Choose between CLI or Web interface
+- Display Mode: Spectator-only view with live polling, animated queue transitions, and QR code sharing
 - Download Battle Data: Export to multi-sheet Excel or JSON, including round history and votes
 - Upload Results Viewer: Upload a previous .xlsx export to visualize summary, leaderboards, and rounds
-- Spotify Track Metadata (optional): Paste a track URL; artist/title auto-fetched when credentials are configured
+- Spotify Integration (optional): Paste a track URL for metadata, or connect a playlist for automatic track selection each round with full playback controls
+- Advanced Game Config: Randomize contestant order, toggle contestant judging, set contestant judge count, choose points-to-win mode (default/auto/custom)
 - Theme Toggle: Light/dark theming from the header
 - Debug Tools (dev): Optional utilities for simulation and auto-advance
+- Persistence: PostgreSQL for production with automatic in-memory fallback; games auto-expire after 6 hours
 
 ---
 
@@ -173,6 +178,12 @@ hustle-n-tussle/
 │   ├── css/                      # Stylesheets
 │   ├── js/                       # JavaScript and components
 │   └── README.md                 # Web interface documentation
+├── persistence/                  # Database abstraction layer
+│   ├── interfaces.py             # Repository interface
+│   ├── memory_repository.py      # In-memory storage (dev/fallback)
+│   ├── postgres_repository.py    # PostgreSQL persistence
+│   ├── factory.py                # Factory, fallback, and cleanup scheduler
+│   └── serializers.py            # Game state serialization
 ├── docs/
 │   ├── render-deployment.md      # Detailed Render guide
 │   └── screenshots/              # UI screenshots and guidance
