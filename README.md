@@ -1,213 +1,204 @@
-# Hustle n' Tussle - Dance Competition Application
+# Hustle n' Tussle
 
-A comprehensive application to manage a partner dance competition between **Leads** and **Follows**. The game randomly pairs dancers, uses **Guest Judges** and **Contestant Judges** to vote each round, supports **Ties** and **No Contest**, tracks individual points, and displays final leaderboards.
+A web app for running partner dance competitions. Two pairs of dancers battle each round, judges vote on winners, and points accumulate until a lead champion and follow champion are crowned.
 
-Now available with both a CLI and Web interface!
+![Voting Screen](docs/screenshots/voting-active.png)
 
-## 📸 Interface Screenshots
+## How It Works
+
+### The Basics
+
+A Hustle n' Tussle competition has **Leads**, **Follows**, and **Judges**. Each round, two lead-follow pairs face off on the dance floor. Judges vote on which lead danced better and which follow danced better. Winners earn a point and stay on the floor to face a new challenger from the queue. Losers go to the back of the line.
+
+The first lead to reach the point threshold becomes the **Lead Champion**. The first follow to reach it becomes the **Follow Champion**. The battle ends when both roles have a champion.
+
+### Round-by-Round Flow
+
+1. Two leads and two follows are pulled from the front of the queue to form two competing pairs
+2. Judges vote on the **lead matchup** (which lead danced better)
+3. Judges vote on the **follow matchup** (which follow danced better)
+4. Winners get a point and stay on the floor; losers go to the back of the queue
+5. New challengers are pulled from the queue for the next round
+6. Repeat until both a lead and follow champion are crowned
+
+### Voting Rules
+
+There are two types of judges, each with different voting powers:
+
+**Guest Judges** (the MCs / hosts):
+- Vote for Contestant 1, Contestant 2, **Tie**, or **No Contest**
+- Each vote is worth **2 points**
+
+**Contestant Judges** (other dancers not currently competing):
+- Must pick a winner (no Tie or No Contest option)
+- Each vote is worth **1 point**
+- Randomly selected from non-competing dancers each round
+
+The contestant with more total points wins the round. If scores are exactly tied, the first contestant wins.
+
+### Special Outcomes
+
+| Outcome | What Happens |
+|---|---|
+| **Tie** (both guest judges vote Tie) | No points awarded. The same two dancers face off again next round. |
+| **No Contest** (both guest judges vote No Contest) | No points awarded. Both dancers go to the back of the queue and two fresh opponents are selected. |
+
+### Win Threshold
+
+The point threshold can be configured three ways during setup:
+
+| Mode | Threshold | Best For |
+|---|---|---|
+| **Default** | 7 points | Standard competitions |
+| **Auto-calculate** | `max(leads, follows) - 1` | Scaling to group size |
+| **Custom** | Any number you choose | Shorter or longer battles |
+
+## Screenshots
+
+### Home Screen
+![Home Screen](docs/screenshots/home-screen.png)
 
 ### Setup Screen
 ![Setup Screen](docs/screenshots/setup-screen.png)
-*Competition setup with fields for lead, follow, and judge names*
 
-### Voting Screen
-![Voting Screen](docs/screenshots/voting-screen.gif)
-*Voting interface showing matchups, current scores with crown emojis, and judge voting*
+### Battle Screen
+![Battle Screen](docs/screenshots/voting-screen.png)
+
+### Voting with Selections
+![Voting Active](docs/screenshots/voting-active.png)
+
+### Vote Confirmation
+![Vote Confirmation](docs/screenshots/vote-confirmation.png)
 
 ### Results Screen
 ![Results Screen](docs/screenshots/results-screen.png)
-*Final results showing leaderboards with medals and crown emojis for winners*
 
----
+## Getting Started
 
-## 🔧 Installation
+### Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/hustle-n-tussle.git
-   cd hustle-n-tussle
-   ```
-2. (Optional) Create a virtual environment and activate it:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate   # Mac/Linux
-   venv\Scripts\activate    # Windows
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+git clone https://github.com/OmariM/hustlentussle.git
+cd hustlentussle
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
----
-
-## 🚀 Usage
-
-### Run the Web Interface (Recommended)
+### Run the Web App
 
 ```bash
 python web/app.py
 ```
 
-Then open your browser to http://localhost:5000
+Open http://localhost:5000 in your browser.
 
-- Home: Start a new battle or upload a previously saved results file
-- Setup: Enter lead names, follow names, and guest judge names; optionally set a points-to-win override (default 7, auto-calculate, or custom). Advanced options include randomizing order, toggling contestant judging, and setting contestant judge count
-- Voting: Cast votes for Leads and Follows (combined view) and Submit All Votes; live battle graphic updates. Use Undo Round to revert the last round if needed
-- Song: Optionally paste a Spotify track URL or connect a Spotify playlist for automatic track selection each round
-- Results: View leaderboards, round history, and Download Battle Data (Excel or JSON)
-- Upload: Upload a previously downloaded .xlsx results file to visualize battle summaries and leaderboards
-- Display Mode: Share a spectator-only view via `?mode=display&session_id=SESSION_ID` with live polling and animated queue transitions. A QR code is generated in the header for easy sharing
-- UI: Toggle Theme (light/dark) from the header
-- Debug (optional): Enable debug tools via env, query `?debug=1`, or hotkey Alt+Shift+D
-
-### Run the Interactive CLI
+### Run the CLI
 
 ```bash
 python main.py
 ```
 
-- Enter lead names, follow names, and guest judge names (comma-separated).
-- Vote each round for Leads (with Tie/No Contest options for guests) and for Follows.
-- Results and points update automatically until winners are determined, or you end the battle early.
+Enter contestant and judge names when prompted. Vote each round until champions are determined.
 
-### Run Automated Tests
+## Features
 
-```bash
-python run_complete_test_suite.py
+### Core Competition
+- **Queue-based pairing**: Dancers rotate through a FIFO queue so everyone gets floor time
+- **Dual judging system**: Guest judges (2x weight, can call Ties/No Contests) + contestant judges (1x weight, must pick a winner)
+- **Undo round**: Revert the last round if a mistake was made (restores queue state and points)
+- **End battle early**: Stop at any time and determine winners by current standings
+- **Live scoreboard**: Real-time points display with crown for the current leader
+
+### Setup Options
+- **Randomize order**: Shuffle the starting lineup or keep the entered order
+- **Contestant judging toggle**: Turn contestant judges on or off (guest judges only mode)
+- **Simple contestant judge mode**: Replaces individual contestant judge buttons with a single group vote for a cleaner UI
+- **Custom judge count**: Override the default number of contestant judges
+
+### Display Mode
+Share a spectator-only view of the battle on a projector or second screen:
 ```
+http://localhost:5000?mode=display&session_id=YOUR_SESSION_ID
+```
+- Auto-refreshes every 3 seconds to show live results
+- QR code in the header for easy sharing with audience members
 
-- Runs core battle rules, voting rules, pairing rules, stress tests, and integration simulations.
-- Outputs a concise PASS/FAIL summary and a breakdown report.
+### Spotify Integration
+Optionally connect Spotify to add music metadata to your battle:
+- **Playlist mode**: Link a Spotify playlist and the app randomly selects an unused track each round
+- **Manual mode**: Paste a Spotify track URL per round
+- Song title, artist, and link are saved in the battle export
 
-### Run Simple Simulation
+Requires `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` environment variables.
+
+### Export & Upload
+- **Download battle data**: Multi-sheet Excel file with battle summary, leaderboards, full round history, and vote-by-vote breakdown
+- **Upload past results**: Re-import a previous `.xlsx` export to review historical battles
+
+### Other
+- **Light/dark theme**: Toggle from the header
+- **Session persistence**: PostgreSQL in production, in-memory for development (auto-fallback). Sessions expire after 6 hours.
+- **Debug tools**: Enable via `ENABLE_DEBUG_TOOLS=true`, `?debug=1` query param, or `Alt+Shift+D`
+
+## Deployment
+
+Hustle n' Tussle deploys to [Render](https://render.com) with the included `render.yaml`:
+
+1. Push your code to GitHub
+2. Create a new Web Service on Render and connect your repo
+3. Set build command: `pip install -r requirements.prod.txt`
+4. Set start command: `gunicorn wsgi:application`
+5. Add environment variables:
+   - `FLASK_ENV`: `production`
+   - `SECRET_KEY`: a secure random string
+   - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (optional)
+
+See [docs/render-deployment.md](docs/render-deployment.md) for a detailed guide.
+
+## Running Tests
 
 ```bash
+# Full test suite (32 tests: battle rules, voting, pairing, stress tests)
+python run_complete_test_suite.py
+
+# Unit and API tests
+python unit_tests.py
+
+# Individual test files
+python battle_rules_test_suite.py
+python voting_rules_tests.py
+python pairing_rules_tests.py
+
+# Simulation demo
 python simulate_test.py
 ```
 
-- Walks through several rounds of simulated winners to demonstrate pairing logic.
-
----
-
-## 🌐 Deployment
-
-### Deploying to Render
-
-Hustle n' Tussle can be easily deployed to [Render](https://render.com) using the included configuration files:
-
-1. **Push your code to GitHub**:
-   Make sure your code is in a GitHub repository.
-
-2. **Create a Render account**:
-   Sign up at [render.com](https://render.com).
-
-3. **Create a new Web Service**:
-   - Click "New" and select "Web Service"
-   - Connect your GitHub repository
-   - Select the repository with Hustle n' Tussle
-
-4. **Configure the service**:
-   - Render will automatically detect the Python application
-   - Set the following:
-     - Name: hustlentussle (or your preferred name)
-     - Build Command: `pip install -r requirements.prod.txt`
-     - Start Command: `gunicorn wsgi:application`
-
-5. **Environment variables**:
-   - `FLASK_ENV`: `production`
-   - `SECRET_KEY`: Generate a secure random string
-   - Optional (for Spotify metadata on results and round history):
-     - `SPOTIFY_CLIENT_ID`: your client ID
-     - `SPOTIFY_CLIENT_SECRET`: your client secret
-
-6. **Deploy the service**:
-   - Click "Create Web Service"
-   - Wait for the build and deployment to complete
-
-7. **Connect your custom domain**:
-   - In your service dashboard, go to "Settings"
-   - Scroll to "Custom Domains"
-   - Click "Add Custom Domain"
-   - Follow the instructions to configure your domain
-
-For more details, see the [Render documentation](https://render.com/docs).
-
----
-
-## ⚙️ Features
-
-- Random Pairing: Each round pairs one Lead with one Follow
-- Guest & Contestant Judges: Guests can choose Tie or No Contest; contestants must pick a winner
-- Tie Handling: No points awarded; tied dancers face each other again in the next round
-- No Contest: No points awarded; previous dancers return to the end of the queue and fresh opponents are selected
-- Undo Round: Revert the last round and restore the previous queue state
-- Winner Recognition: Crown emoji (👑) highlights the first contestant to reach the winning threshold
-- Scoring & Leaderboards: Points tracked individually and sorted for Leads and Follows; default win threshold is 7 points (configurable via auto-calculate or custom value)
-- Multiple Interfaces: Choose between CLI or Web interface
-- Display Mode: Spectator-only view with live polling, animated queue transitions, and QR code sharing
-- Download Battle Data: Export to multi-sheet Excel or JSON, including round history and votes
-- Upload Results Viewer: Upload a previous .xlsx export to visualize summary, leaderboards, and rounds
-- Spotify Integration (optional): Paste a track URL for metadata, or connect a playlist for automatic track selection each round with full playback controls
-- Advanced Game Config: Randomize contestant order, toggle contestant judging, set contestant judge count, choose points-to-win mode (default/auto/custom)
-- Theme Toggle: Light/dark theming from the header
-- Debug Tools (dev): Optional utilities for simulation and auto-advance
-- Persistence: PostgreSQL for production with automatic in-memory fallback; games auto-expire after 6 hours
-
----
-
-## 📂 Project Structure
+## Project Structure
 
 ```
-hustle-n-tussle/
-├── game_logic.py                 # Core game engine
-├── main.py                       # CLI frontend
-├── simulate_test.py              # Simple round simulation script
-├── run_complete_test_suite.py    # Runs all rule and integration tests
-├── unit_tests.py                 # Extensive unit and API tests
-├── battle_rules_test_suite.py    # Core battle rules tests
-├── pairing_rules_tests.py        # Pairing and queue tests
-├── voting_rules_tests.py         # Voting rules tests
-├── requirements.txt              # Dev dependencies
-├── requirements.prod.txt         # Production dependencies
-├── wsgi.py                       # WSGI entrypoint for prod
-├── render.yaml                   # Render deployment config
-├── web/                          # Web interface files
-│   ├── app.py                    # Flask backend + API
-│   ├── index.html                # Web UI
-│   ├── config.py                 # Env-aware configuration
-│   ├── css/                      # Stylesheets
-│   ├── js/                       # JavaScript and components
-│   └── README.md                 # Web interface documentation
-├── persistence/                  # Database abstraction layer
-│   ├── interfaces.py             # Repository interface
-│   ├── memory_repository.py      # In-memory storage (dev/fallback)
-│   ├── postgres_repository.py    # PostgreSQL persistence
-│   ├── factory.py                # Factory, fallback, and cleanup scheduler
-│   └── serializers.py            # Game state serialization
-├── docs/
-│   ├── render-deployment.md      # Detailed Render guide
-│   └── screenshots/              # UI screenshots and guidance
-├── .gitignore
-└── README.md                     # Project documentation
+hustlentussle/
+├── game_logic.py                # Core game engine
+├── main.py                      # CLI interface
+├── web/
+│   ├── app.py                   # Flask backend + REST API
+│   ├── index.html               # Single-page web UI
+│   ├── config.py                # Environment-aware config
+│   ├── css/                     # Stylesheets
+│   └── js/                      # Frontend JavaScript
+├── persistence/
+│   ├── interfaces.py            # Repository interface
+│   ├── memory_repository.py     # In-memory storage (dev)
+│   ├── postgres_repository.py   # PostgreSQL storage (prod)
+│   ├── factory.py               # Factory + fallback + cleanup
+│   └── serializers.py           # Game state serialization
+├── *_test*.py                   # Test suites
+├── requirements.txt             # Dev dependencies
+├── requirements.prod.txt        # Production dependencies
+├── wsgi.py                      # WSGI entrypoint
+└── render.yaml                  # Render deployment config
 ```
 
----
+## Contributing
 
-## 🤝 Contributing
-
-Feel free to submit pull requests or open issues on GitHub. All enhancements and bug fixes are welcome!
-
----
-
-## 📝 Future Enhancements
-
-1. Quality of life features:
-   - Implement save and load states
-   - Allow results to be exported to CSV/PDF
-   - Battle history page on website
-   - Authentication for judges
-   - Mobile application
-
----
-
-*Enjoy running your dance competition!*
+Pull requests and issues are welcome on GitHub.

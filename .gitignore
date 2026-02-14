@@ -49,6 +49,12 @@ Thumbs.db
 # Application specific
 docs/screenshots/*
 !docs/screenshots/README.md
+!docs/screenshots/home-screen.png
+!docs/screenshots/setup-screen.png
+!docs/screenshots/voting-screen.png
+!docs/screenshots/voting-active.png
+!docs/screenshots/vote-confirmation.png
+!docs/screenshots/results-screen.png
 
 # Render specific
 .render-buildlogs/
