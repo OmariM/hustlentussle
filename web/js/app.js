@@ -1709,127 +1709,87 @@ function setupVotingUI() {
 }
 
 function createJudgeVotingCard(judgeName, isGuest, voteType) {
-    const judgeCard = document.createElement('div');
-    judgeCard.className = 'judge-card';
-    judgeCard.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
-    
-    const judgeNameEl = document.createElement('div');
+    const row = document.createElement('div');
+    row.className = 'judge-row';
+    row.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
+
+    // Avatar with initials
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    const initials = judgeName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    avatar.textContent = initials;
+
+    // Judge name
+    const judgeNameEl = document.createElement('span');
     judgeNameEl.className = 'judge-name';
     judgeNameEl.textContent = judgeName + (isGuest ? ' (Guest)' : '');
-    
-    const voteOptions = document.createElement('div');
-    voteOptions.className = 'vote-options';
-    
+
+    // Vote chips container
+    const voteChips = document.createElement('div');
+    voteChips.className = 'vote-chips';
+
     const option1Name = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
     const option2Name = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
     const isProxyContestantJudges = simpleContestantJudgesEnabled && judgeName === PROXY_CONTESTANT_JUDGES_NAME;
-    
-    // Option 1 button
-    const option1Btn = document.createElement('button');
-    option1Btn.className = 'vote-btn vote-option-1';
-    option1Btn.textContent = option1Name;
-    option1Btn.addEventListener('click', () => {
-        // If voting is locked, don't allow changes
+
+    // Helper to handle chip click
+    function onChipClick(chip, voteValue) {
         if (votingLocked[voteType]) return;
-        
-        // Remove selected class from all buttons in this judge card
-        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // Add selected class to this button
-        option1Btn.classList.add('selected');
-        recordVote(judgeName, 1, voteType);
-        judgeCard.classList.add('voted');
-    });
-    
-    // Mixed option (proxy contestant judges only)
-    // Only enabled when at least one guest judge votes tie or no contest,
-    // AND at least one guest judge voted for a specific contestant (1 or 2).
-    // If all guest votes are only tie/no contest, mixed is disabled since there's no winner to base the split on.
-    let mixedBtn = null;
-    if (isProxyContestantJudges) {
-        mixedBtn = document.createElement('button');
-        mixedBtn.className = 'vote-btn vote-option-mixed';
-        mixedBtn.textContent = 'Mixed';
-        mixedBtn.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
-        mixedBtn.addEventListener('click', () => {
-            if (votingLocked[voteType]) return;
-            if (mixedBtn.disabled) return;
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            mixedBtn.classList.add('selected');
-            recordVote(judgeName, VOTE_MIXED, voteType);
-            judgeCard.classList.add('voted');
-        });
+        if (chip.disabled) return;
+        voteChips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+        row.classList.add('voted');
+        avatar.classList.add('voted');
+        recordVote(judgeName, voteValue, voteType);
     }
 
-    // Option 2 button
-    const option2Btn = document.createElement('button');
-    option2Btn.className = 'vote-btn vote-option-2';
-    option2Btn.textContent = option2Name;
-    option2Btn.addEventListener('click', () => {
-        // If voting is locked, don't allow changes
-        if (votingLocked[voteType]) return;
-        
-        // Remove selected class from all buttons in this judge card
-        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // Add selected class to this button
-        option2Btn.classList.add('selected');
-        recordVote(judgeName, 2, voteType);
-        judgeCard.classList.add('voted');
-    });
-    
-    voteOptions.appendChild(option1Btn);
-    if (mixedBtn) voteOptions.appendChild(mixedBtn);
-    voteOptions.appendChild(option2Btn);
-    
-    // Tie and No Contest options for guest judges
-    if (isGuest) {
-        const tieBtn = document.createElement('button');
-        tieBtn.className = 'vote-btn vote-option-tie';
-        tieBtn.textContent = 'Tie';
-        tieBtn.addEventListener('click', () => {
-            // If voting is locked, don't allow changes
-            if (votingLocked[voteType]) return;
-            
-            // Remove selected class from all buttons in this judge card
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            // Add selected class to this button
-            tieBtn.classList.add('selected');
-            recordVote(judgeName, 3, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
-        const noContestBtn = document.createElement('button');
-        noContestBtn.className = 'vote-btn vote-option-nocontest';
-        noContestBtn.textContent = 'No Contest';
-        noContestBtn.addEventListener('click', () => {
-            // If voting is locked, don't allow changes
-            if (votingLocked[voteType]) return;
-            
-            // Remove selected class from all buttons in this judge card
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            // Add selected class to this button
-            noContestBtn.classList.add('selected');
-            recordVote(judgeName, 4, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
-        voteOptions.appendChild(tieBtn);
-        voteOptions.appendChild(noContestBtn);
+    // Option 1 chip
+    const option1Chip = document.createElement('button');
+    option1Chip.className = 'vote-chip';
+    option1Chip.textContent = option1Name;
+    option1Chip.addEventListener('click', () => onChipClick(option1Chip, 1));
+
+    // Mixed chip (proxy contestant judges only)
+    let mixedChip = null;
+    if (isProxyContestantJudges) {
+        mixedChip = document.createElement('button');
+        mixedChip.className = 'vote-chip vote-option-mixed';
+        mixedChip.textContent = 'Mixed';
+        mixedChip.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
+        mixedChip.addEventListener('click', () => onChipClick(mixedChip, VOTE_MIXED));
     }
-    
-    judgeCard.appendChild(judgeNameEl);
-    judgeCard.appendChild(voteOptions);
-    
-    return judgeCard;
+
+    // Option 2 chip
+    const option2Chip = document.createElement('button');
+    option2Chip.className = 'vote-chip';
+    option2Chip.textContent = option2Name;
+    option2Chip.addEventListener('click', () => onChipClick(option2Chip, 2));
+
+    voteChips.appendChild(option1Chip);
+    if (mixedChip) voteChips.appendChild(mixedChip);
+    voteChips.appendChild(option2Chip);
+
+    // Tie and No Contest chips for guest judges
+    if (isGuest) {
+        const tieChip = document.createElement('button');
+        tieChip.className = 'vote-chip tie-chip';
+        tieChip.textContent = 'Tie';
+        tieChip.addEventListener('click', () => onChipClick(tieChip, 3));
+
+        const ncChip = document.createElement('button');
+        ncChip.className = 'vote-chip nc-chip';
+        ncChip.textContent = 'NC';
+        ncChip.addEventListener('click', () => onChipClick(ncChip, 4));
+
+        voteChips.appendChild(tieChip);
+        voteChips.appendChild(ncChip);
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(judgeNameEl);
+    row.appendChild(voteChips);
+
+    return row;
 }
 
 function recordVote(judgeName, voteOption, voteType) {
@@ -1897,6 +1857,8 @@ function updateMixedButtonState(voteType) {
             delete followVotes[PROXY_CONTESTANT_JUDGES_NAME];
         }
         proxyCard.classList.remove('voted');
+        const avatar = proxyCard.querySelector('.avatar');
+        if (avatar) avatar.classList.remove('voted');
     }
 }
 
@@ -2091,15 +2053,15 @@ function hideWinnerPreview(voteType) {
 function lockVoting(voteType) {
     votingLocked[voteType] = true;
     
-    // Get all judge cards for this vote type
+    // Get all judge rows for this vote type
     const container = voteType === 'lead' ? leadJudgesContainer : followJudgesContainer;
-    const judgeCards = container.querySelectorAll('.judge-card');
-    
-    // Add a 'locked' class to all judge cards and vote buttons
-    judgeCards.forEach(card => {
-        card.classList.add('locked');
-        card.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.add('locked');
+    const judgeRows = container.querySelectorAll('.judge-row');
+
+    // Add a 'locked' class to all judge rows and vote chips
+    judgeRows.forEach(row => {
+        row.classList.add('locked');
+        row.querySelectorAll('.vote-chip').forEach(chip => {
+            chip.classList.add('locked');
         });
     });
 }
