@@ -459,6 +459,12 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 		applySpotifyEnabledUI();
 
+    // Hide nav bar on home screen initially (showScreen isn't called on first load)
+    const navBar = document.getElementById('nav-bar');
+    if (navBar && !displayMode) {
+        navBar.style.display = 'none';
+    }
+
     // Initialize display mode if detected (this goes directly to battle screen)
     if (displayMode) {
         initDisplayMode();

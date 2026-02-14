@@ -159,11 +159,11 @@ body {
     right: 10px;
     background-color: rgba(0,0,0,0.85);
     color: #fff;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: 12px;
     z-index: 1000;
-    max-width: 500px;
+    max-width: 260px;
 }
 
 .session-id-display:empty {
@@ -468,6 +468,39 @@ input[type="checkbox"] {
     letter-spacing: 1px;
 }
 
+/* Style the existing matchup structure (old HTML with .matchup children) */
+.matchups.matchup-card .matchup {
+    flex: 1;
+    text-align: center;
+    padding: var(--space-lg) 20px;
+}
+
+.matchups.matchup-card .matchup h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.matchups.matchup-card .pair {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.matchups.matchup-card .vs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    background: var(--bg);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
 .dancer-name {
     font-size: 20px;
     font-weight: 700;
@@ -491,7 +524,8 @@ input[type="checkbox"] {
     border-image: linear-gradient(135deg, var(--accent), var(--accent-hot)) 1;
 }
 
-[data-theme="display"] .matchup-divider {
+[data-theme="display"] .matchup-divider,
+[data-theme="display"] .matchups.matchup-card .vs {
     font-size: 32px;
     font-weight: 900;
     background: linear-gradient(135deg, var(--accent-hot), var(--accent));
@@ -1240,8 +1274,20 @@ input[type="checkbox"] {
 /* Hide controls in display mode */
 .display-mode .vote-submission,
 .display-mode .battle-actions,
+.display-mode .submit-area,
 .display-mode #end-battle-early,
 .display-mode #undo-round {
+    display: none;
+}
+
+/* Hide duplicate "Voting" heading inside combined-voting-section
+   (the round-header-new already shows the title) */
+.combined-voting-section > h2 {
+    display: none;
+}
+
+/* Hide old informational judge name lists — redundant with judge vote rows */
+.judges-section {
     display: none;
 }
 
@@ -1250,6 +1296,10 @@ input[type="checkbox"] {
    ============================================================ */
 .contestant-order-section {
     margin-top: var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
 }
 
 .contestant-order-container {
@@ -1280,7 +1330,7 @@ input[type="checkbox"] {
    ============================================================ */
 .round-info-container {
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     align-items: flex-start;
 }
 
