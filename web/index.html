@@ -10,24 +10,25 @@
     <link rel="stylesheet" href="css/styles.css?v={{ config.ASSET_VERSION }}">
 </head>
 <body>
+    <div id="toast-container" class="toast-container"></div>
     <div id="session-id-display" class="session-id-display"></div>
-    <div class="container">
-        <header>
-            <h1>Hustle n' Tussle</h1>
-            <h2>Battle Manager</h2>
-        </header>
-
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-            <button id="theme-toggle" class="btn secondary" style="min-width:auto;">Toggle Theme</button>
+    <nav class="nav-bar" id="nav-bar">
+        <div class="brand">
+            <span class="dot"></span>
+            Hustle n' Tussle
         </div>
-		<div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
-			<button id="spotify-toggle" class="btn secondary" style="min-width:auto;">Toggle Spotify Integration</button>
-		</div>
+        <div class="nav-pills">
+            <button class="nav-pill" data-screen="setup-screen">Setup</button>
+            <button class="nav-pill" data-screen="battle-screen">Battle</button>
+            <button class="nav-pill" data-screen="results-screen">Results</button>
+        </div>
+    </nav>
+    <div class="container">
 
         <div id="home-screen" class="screen active">
-            <div class="welcome-section">
-                <h2>Welcome to Hustle n' Tussle</h2>
-                <p>The ultimate dance battle management system</p>
+            <div class="home-hero">
+                <h1 class="home-title">Hustle n' Tussle</h1>
+                <p class="home-subtitle">Dance Battle Manager</p>
             </div>
             <div class="home-actions">
                 <button id="go-to-battle" class="btn primary large">Start Battle</button>
@@ -90,21 +91,21 @@
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
             <div class="form-group">
-                <label for="randomize-order-toggle" style="display:flex;align-items:center;gap:8px;">
+                <label for="randomize-order-toggle">
                     <input type="checkbox" id="randomize-order-toggle" checked />
                     Randomize starting order
                 </label>
                 <p class="form-helper-text">Uncheck to keep contestants in the order entered.</p>
             </div>
             <div class="form-group">
-                <label for="contestant-judging-toggle" style="display:flex;align-items:center;gap:8px;">
+                <label for="contestant-judging-toggle">
                     <input type="checkbox" id="contestant-judging-toggle" checked />
                     Enable contestant judging
                 </label>
                 <p class="form-helper-text">Turn off to use guest judges only.</p>
             </div>
             <div class="form-group">
-                <label for="simple-contestant-judges" style="display:flex;align-items:center;gap:8px;">
+                <label for="simple-contestant-judges">
                     <input type="checkbox" id="simple-contestant-judges" />
                     Enable simple contestant judges (use a single proxy judge)
                 </label>
@@ -127,7 +128,7 @@
                 </div>
                 <p class="form-helper-text" id="points-to-win-helper">First contestant to reach 7 points wins.</p>
             </div>
-			<div class="form-group" id="playlist-url-group">
+            <div class="form-group" id="playlist-url-group">
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
                 <input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/..." />
             </div>
