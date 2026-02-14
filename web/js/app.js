@@ -2220,6 +2220,7 @@ async function submitCombinedVotes(options = {}) {
         if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
     } finally {
         isSubmitting = false;
+        setButtonLoading(submitVotesBtn, false);
     }
 }
 

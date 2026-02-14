@@ -155,19 +155,119 @@ body {
    ---------------------------------------------------------- */
 .session-id-display {
     position: fixed;
-    top: 10px;
-    right: 10px;
-    background-color: rgba(0,0,0,0.85);
-    color: #fff;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
+    bottom: 16px;
+    right: 16px;
+    top: auto;
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
     font-size: 12px;
     z-index: 1000;
-    max-width: 260px;
+    max-width: 300px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    transition: all 0.3s ease;
 }
 
 .session-id-display:empty {
     display: none;
+}
+
+.session-id-display-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.session-id-display-label {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-id-display-toggle {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.session-id-display-toggle:hover {
+    background: var(--accent);
+    color: white;
+}
+
+.session-id-display-body {
+    margin-top: 10px;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    overflow: hidden;
+}
+
+.session-id-display--minimized .session-id-display-body {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
+
+.display-url-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    margin-top: 4px;
+}
+
+.display-url-info {
+    margin-bottom: 8px;
+}
+
+.display-url-info span {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.display-url-info button {
+    margin-top: 4px;
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.display-url-info button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.session-id-display canvas,
+.session-id-display img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    margin-top: 8px;
 }
 
 /* ============================================================
