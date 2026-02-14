@@ -415,6 +415,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
+    // Nav pill click handlers
+    document.querySelectorAll('.nav-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            const screenId = pill.dataset.screen;
+            const screen = document.getElementById(screenId);
+            if (screen) showScreen(screen);
+        });
+    });
+
 		// Spotify integration UI gating
 		const playlistUrlGroup = document.getElementById('playlist-url-group');
 		if (localStorage.getItem('spotify.enabled') === null) {
@@ -457,15 +466,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Functions
+function updateNavPills(activeScreen) {
+    document.querySelectorAll('.nav-pill').forEach(pill => {
+        pill.classList.remove('active');
+        if (activeScreen && pill.dataset.screen === activeScreen.id) {
+            pill.classList.add('active');
+        }
+    });
+}
+
 function showScreen(screen) {
     homeScreen.classList.remove('active');
     uploadScreen.classList.remove('active');
     setupScreen.classList.remove('active');
     roundScreen.classList.remove('active');
     resultsScreen.classList.remove('active');
-    
+
     screen.classList.add('active');
-    
+
+    // Update nav pills to reflect current screen
+    updateNavPills(screen);
+
+    // Hide nav on home screen and in display mode
+    const navBar = document.getElementById('nav-bar');
+    if (navBar) {
+        navBar.style.display = (screen === homeScreen || displayMode) ? 'none' : '';
+    }
+
     // Reset error messages when switching screens
     uploadError.textContent = '';
     uploadError.classList.remove('visible');
