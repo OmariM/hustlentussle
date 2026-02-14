@@ -827,3 +827,579 @@ input[type="checkbox"] {
     background: var(--danger-bg);
     border-radius: var(--radius-sm);
 }
+
+/* ============================================================
+   14. Screen Layout
+   ============================================================ */
+.screen {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.screen.active {
+    display: block;
+    opacity: 1;
+}
+
+/* ============================================================
+   15. Home Screen
+   ============================================================ */
+.home-hero,
+.welcome-section {
+    text-align: center;
+    padding: var(--space-2xl) 0 var(--space-lg);
+}
+
+.home-title {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.home-subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.home-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 320px;
+    margin: 0 auto;
+}
+
+.home-actions .btn {
+    width: 100%;
+}
+
+/* ============================================================
+   16. Setup Screen
+   ============================================================ */
+.setup-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: var(--space-lg);
+}
+
+.format-guide {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.format-guide h3 {
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.format-guide ul {
+    padding-left: 20px;
+    margin: 8px 0;
+}
+
+.format-guide li {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.format-guide .note {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ============================================================
+   17. Battle Screen
+   ============================================================ */
+.round-header-new {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+.round-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 20px;
+    border-radius: var(--radius-full);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: white;
+    margin-bottom: 12px;
+}
+
+/* Display theme: round badge */
+[data-theme="display"] .round-badge {
+    background: linear-gradient(135deg, var(--accent), var(--accent-hot));
+    box-shadow: var(--glow-accent);
+}
+
+.vote-progress {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.combined-voting-section {
+    margin-bottom: var(--space-lg);
+}
+
+.submit-area {
+    text-align: center;
+    padding: var(--space-lg) 0;
+}
+
+.battle-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.vote-submission {
+    text-align: center;
+    padding: var(--space-md) 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+}
+
+/* ============================================================
+   18. Results Screen
+   ============================================================ */
+.leaderboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.results-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+}
+
+.results-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+}
+
+.results-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: var(--space-lg);
+}
+
+.battle-graphic-section {
+    margin-bottom: var(--space-lg);
+}
+
+.battle-graphic {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.graphic-column h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.graphic-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 14px;
+}
+
+.graphic-rank {
+    min-width: 28px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.graphic-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.crown-icon {
+    margin-left: 4px;
+}
+
+.round-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.badge.win {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ============================================================
+   19. Toast Notifications
+   ============================================================ */
+.toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.toast {
+    padding: 12px 20px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border-left: 4px solid var(--accent);
+    pointer-events: auto;
+    animation: toastIn 0.3s ease-out;
+}
+
+.toast.success {
+    border-left-color: var(--success);
+}
+
+.toast.error {
+    border-left-color: var(--danger-color);
+}
+
+.toast.info {
+    border-left-color: var(--accent);
+}
+
+.toast.fade-out {
+    animation: toastOut 0.3s ease-in forwards;
+}
+
+@keyframes toastIn {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes toastOut {
+    from { opacity: 1; }
+    to { opacity: 0; transform: translateY(20px); }
+}
+
+/* ============================================================
+   20. Accordion (Round History)
+   ============================================================ */
+.accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.accordion-item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    cursor: pointer;
+    background: var(--bg-card);
+    font-weight: 600;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.accordion-header:hover {
+    background: var(--bg-card-hover);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.accordion-content.open {
+    max-height: 500px;
+}
+
+.round-details {
+    padding: 16px;
+}
+
+.round-song {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.match-pair {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+/* ============================================================
+   21. Display Mode Specific
+   ============================================================ */
+[data-theme="display"] .container {
+    font-size: 1.15em;
+}
+
+/* Round transition overlay */
+.round-transition-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.round-transition-overlay.hidden {
+    display: none;
+}
+
+.round-announcement {
+    text-align: center;
+}
+
+.round-label {
+    font-family: var(--font-display);
+    font-size: 24px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.round-number-large {
+    font-family: var(--font-display);
+    font-size: 12rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-primary);
+    text-shadow: 0 0 40px rgba(124, 58, 237, 0.5);
+}
+
+@keyframes glow {
+    from { text-shadow: 0 0 40px rgba(124, 58, 237, 0.5); }
+    to { text-shadow: 0 0 80px rgba(124, 58, 237, 0.8), 0 0 120px rgba(244, 63, 94, 0.4); }
+}
+
+[data-theme="display"] .round-number-large {
+    animation: glow 2s infinite alternate;
+}
+
+/* Hide controls in display mode */
+.display-mode .vote-submission,
+.display-mode .battle-actions,
+.display-mode #end-battle-early,
+.display-mode #undo-round {
+    display: none;
+}
+
+/* ============================================================
+   22. Contestant Order Section
+   ============================================================ */
+.contestant-order-section {
+    margin-top: var(--space-lg);
+}
+
+.contestant-order-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.order-column h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.order-list {
+    list-style-position: inside;
+    padding: 0;
+}
+
+.order-list li {
+    padding: 6px 0;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ============================================================
+   23. Scores Display / Live Graphic
+   ============================================================ */
+.round-info-container {
+    display: flex;
+    gap: var(--space-lg);
+    align-items: flex-start;
+}
+
+.round-content {
+    flex: 1;
+}
+
+.scores-display {
+    flex: 0 0 320px;
+}
+
+.scores-display h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* ============================================================
+   24. Winner Preview
+   ============================================================ */
+.winner-preview {
+    padding: 12px 16px;
+    background: var(--accent-light);
+    border-radius: var(--radius-sm);
+    margin-top: 12px;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.winner-preview h4 {
+    font-size: 14px;
+}
+
+.preview-note {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   25. Song Input
+   ============================================================ */
+.song-input-container {
+    margin-bottom: var(--space-md);
+}
+
+.song-input-container h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* ============================================================
+   26. Upload Screen
+   ============================================================ */
+.upload-form {
+    max-width: 600px;
+}
+
+.upload-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: var(--space-md);
+}
+
+.file-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+/* ============================================================
+   27. Typography & Links
+   ============================================================ */
+h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+h2 {
+    font-size: 22px;
+    margin-bottom: var(--space-md);
+}
+
+h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+/* ============================================================
+   28. Responsive
+   ============================================================ */
+@media (max-width: 640px) {
+    .matchup-card { flex-direction: column; }
+    .matchup-divider { width: 100%; height: 40px; }
+    .judge-row { flex-wrap: wrap; }
+    .judge-row .vote-chips { width: 100%; justify-content: flex-start; }
+    .vote-chip { flex: 1; text-align: center; min-width: calc(50% - 3px); }
+    .nav-pills { display: none; }
+    .leaderboard { grid-template-columns: 1fr; }
+    .battle-graphic { grid-template-columns: 1fr; }
+    .standings-columns { grid-template-columns: 1fr; }
+    .modal-summary { grid-template-columns: 1fr; }
+    .home-title { font-size: 28px; }
+    .submit-area { position: sticky; bottom: 0; padding: 16px; background: var(--bg); z-index: 10; }
+    .round-info-container { flex-direction: column; }
+    .scores-display { flex: 0 0 auto; width: 100%; }
+}
+
+@media (min-width: 1400px) {
+    [data-theme="display"] .container { max-width: 1400px; }
+    [data-theme="display"] .round-number-large { font-size: 16rem; }
+}
