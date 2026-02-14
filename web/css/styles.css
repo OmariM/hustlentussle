@@ -434,3 +434,396 @@ input[type="checkbox"] {
     background: var(--bg-surface);
     border-color: var(--border);
 }
+
+/* ============================================================
+   10. Matchup Card
+   ============================================================ */
+.matchup-card {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    margin-bottom: var(--space-lg);
+}
+
+.matchup-side {
+    flex: 1;
+    padding: var(--space-lg) 20px;
+    text-align: center;
+}
+
+.matchup-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    background: var(--bg);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+.dancer-name {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-display);
+    margin-bottom: 6px;
+}
+
+.dancer-score {
+    display: inline-flex;
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+/* Display theme: matchup card */
+[data-theme="display"] .matchup-card {
+    border-top: 3px solid;
+    border-image: linear-gradient(135deg, var(--accent), var(--accent-hot)) 1;
+}
+
+[data-theme="display"] .matchup-divider {
+    font-size: 32px;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--accent-hot), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ============================================================
+   11. Judge Rows
+   ============================================================ */
+.judge-section {
+    margin-bottom: var(--space-lg);
+}
+
+.judge-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.judge-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.judge-section-count {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.judge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.judge-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s;
+}
+
+.judge-row.voted {
+    border-color: var(--accent);
+    border-left: 3px solid var(--accent);
+    background: var(--bg-card-hover);
+}
+
+.avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.judge-row.voted .avatar,
+.avatar.voted {
+    background: var(--accent);
+    color: white;
+}
+
+.judge-name {
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 90px;
+}
+
+.vote-chips {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.vote-chip {
+    padding: 7px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    min-height: 36px;
+}
+
+.vote-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+}
+
+.vote-chip.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 600;
+    transform: scale(1.02);
+}
+
+.vote-chip.tie-chip {
+    border-style: dashed;
+}
+
+.vote-chip.nc-chip {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Display theme: judge rows */
+[data-theme="display"] .vote-chip.selected {
+    box-shadow: var(--glow-accent);
+}
+
+/* ============================================================
+   12. Standings / Mini-Leaderboard
+   ============================================================ */
+.standings-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    margin-top: var(--space-lg);
+}
+
+.standings-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.standings-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.standings-col h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.standings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--bg);
+}
+
+.standings-row:last-child {
+    border-bottom: none;
+}
+
+.standings-row .rank {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    min-width: 24px;
+}
+
+.standings-row:first-child .rank {
+    color: var(--accent);
+}
+
+.standings-row .name {
+    flex: 1;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.standings-row .pts {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--accent);
+    min-width: 32px;
+    text-align: right;
+}
+
+.bar-track {
+    width: 80px;
+    height: 4px;
+    background: var(--bg);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.bar-track .fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+}
+
+/* ============================================================
+   13. Modals
+   ============================================================ */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-overlay.hidden {
+    display: none;
+}
+
+.modal {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-width: 720px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px 8px;
+}
+
+.modal-body {
+    padding: 20px 24px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+}
+
+.modal-subtitle {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.modal-note {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 12px;
+}
+
+.modal-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+}
+
+.modal-summary-section h4 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.modal-pair {
+    font-size: 14px;
+}
+
+.modal-winner {
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.modal-error {
+    color: var(--danger-color);
+    font-size: 13px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--danger-bg);
+    border-radius: var(--radius-sm);
+}
