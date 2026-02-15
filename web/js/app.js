@@ -50,23 +50,21 @@ try {
     }
 } catch (_) {}
 
-// Apply theme based on display mode and user preference
+// Apply mode (layout) and color (light/dark) independently
 function applyTheme() {
-    const saved = localStorage.getItem('theme-preference');
-    if (saved) {
-        document.documentElement.setAttribute('data-theme', saved);
-    } else if (displayMode) {
-        document.documentElement.setAttribute('data-theme', 'display');
-    } else {
-        document.documentElement.setAttribute('data-theme', 'admin');
-    }
+    const mode = displayMode ? 'display' : 'admin';
+    document.documentElement.setAttribute('data-mode', mode);
+
+    const savedColor = localStorage.getItem('color-preference');
+    const color = savedColor || (displayMode ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-color', color);
 }
 
 function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme');
-    const next = (current === 'admin') ? 'display' : 'admin';
-    localStorage.setItem('theme-preference', next);
-    document.documentElement.setAttribute('data-theme', next);
+    const current = document.documentElement.getAttribute('data-color');
+    const next = (current === 'light') ? 'dark' : 'light';
+    localStorage.setItem('color-preference', next);
+    document.documentElement.setAttribute('data-color', next);
 }
 
 // Toast notification system

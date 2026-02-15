@@ -59,9 +59,9 @@
 }
 
 /* ----------------------------------------------------------
-   2. Design Tokens — Display (Neon Arena) overrides
+   2. Design Tokens — Dark color scheme
    ---------------------------------------------------------- */
-[data-theme="display"] {
+[data-color="dark"] {
     --bg: #0a0a12;
     --bg-surface: #12121f;
     --bg-card: #1a1a2e;
@@ -120,7 +120,7 @@ body {
 /* ----------------------------------------------------------
    4. Display Mode Background Effect
    ---------------------------------------------------------- */
-[data-theme="display"] body::before {
+[data-color="dark"] body::before {
     content: '';
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -146,7 +146,7 @@ body {
     padding: var(--space-lg) 20px;
 }
 
-[data-theme="display"] .container {
+[data-mode="display"] .container {
     max-width: 1200px;
 }
 
@@ -176,8 +176,7 @@ body {
     line-height: 1;
 }
 
-[data-theme="display"] .theme-toggle-icon::before,
-.dark-mode .theme-toggle-icon::before {
+[data-color="dark"] .theme-toggle-icon::before {
     content: '\2600'; /* sun */
 }
 
@@ -370,8 +369,8 @@ body {
     background: var(--bg);
 }
 
-/* Display theme: dark nav */
-[data-theme="display"] .nav-bar {
+/* Dark theme: remove nav box-shadow */
+[data-color="dark"] .nav-bar {
     box-shadow: none;
 }
 
@@ -455,8 +454,8 @@ body {
     color: transparent;
 }
 
-/* Display theme: gradient primary button */
-[data-theme="display"] .btn.primary {
+/* Dark theme: gradient primary button */
+[data-color="dark"] .btn.primary {
     background: linear-gradient(135deg, var(--accent), var(--accent-hot));
     box-shadow: var(--glow-accent);
 }
@@ -564,12 +563,12 @@ input[type="checkbox"] {
     accent-color: var(--accent);
 }
 
-/* Display theme: dark inputs */
-[data-theme="display"] textarea,
-[data-theme="display"] input[type="text"],
-[data-theme="display"] input[type="url"],
-[data-theme="display"] input[type="number"],
-[data-theme="display"] select {
+/* Dark theme: dark inputs */
+[data-color="dark"] textarea,
+[data-color="dark"] input[type="text"],
+[data-color="dark"] input[type="url"],
+[data-color="dark"] input[type="number"],
+[data-color="dark"] select {
     background: var(--bg-surface);
     border-color: var(--border);
 }
@@ -657,14 +656,14 @@ input[type="checkbox"] {
     color: var(--accent);
 }
 
-/* Display theme: matchup card */
-[data-theme="display"] .matchup-card {
+/* Dark theme: matchup card */
+[data-color="dark"] .matchup-card {
     border-top: 3px solid;
     border-image: linear-gradient(135deg, var(--accent), var(--accent-hot)) 1;
 }
 
-[data-theme="display"] .matchup-divider,
-[data-theme="display"] .matchups.matchup-card .vs {
+[data-color="dark"] .matchup-divider,
+[data-color="dark"] .matchups.matchup-card .vs {
     font-size: 32px;
     font-weight: 900;
     background: linear-gradient(135deg, var(--accent-hot), var(--accent));
@@ -798,8 +797,8 @@ input[type="checkbox"] {
     font-size: 12px;
 }
 
-/* Display theme: judge rows */
-[data-theme="display"] .vote-chip.selected {
+/* Dark theme: judge rows */
+[data-color="dark"] .vote-chip.selected {
     box-shadow: var(--glow-accent);
 }
 
@@ -1111,8 +1110,8 @@ input[type="checkbox"] {
     margin-bottom: 12px;
 }
 
-/* Display theme: round badge */
-[data-theme="display"] .round-badge {
+/* Dark theme: round badge */
+[data-color="dark"] .round-badge {
     background: linear-gradient(135deg, var(--accent), var(--accent-hot));
     box-shadow: var(--glow-accent);
 }
@@ -1361,7 +1360,7 @@ input[type="checkbox"] {
 /* ============================================================
    21. Display Mode Specific
    ============================================================ */
-[data-theme="display"] .container {
+[data-mode="display"] .container {
     font-size: 1.15em;
 }
 
@@ -1406,7 +1405,7 @@ input[type="checkbox"] {
     to { text-shadow: 0 0 80px rgba(124, 58, 237, 0.8), 0 0 120px rgba(244, 63, 94, 0.4); }
 }
 
-[data-theme="display"] .round-number-large {
+[data-color="dark"] .round-number-large {
     animation: glow 2s infinite alternate;
 }
 
@@ -1589,6 +1588,6 @@ a {
 }
 
 @media (min-width: 1400px) {
-    [data-theme="display"] .container { max-width: 1400px; }
-    [data-theme="display"] .round-number-large { font-size: 16rem; }
+    [data-mode="display"] .container { max-width: 1400px; }
+    [data-mode="display"] .round-number-large { font-size: 16rem; }
 }
