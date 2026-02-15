@@ -180,6 +180,21 @@ body {
     content: '\2600'; /* sun */
 }
 
+/* Floating toggle — shown only when nav bar is hidden */
+.theme-toggle--floating {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 999;
+    display: none;
+    box-shadow: var(--shadow-md);
+}
+
+/* Show floating toggle when nav bar is not visible (display mode) */
+.display-mode .theme-toggle--floating {
+    display: inline-flex;
+}
+
 /* ----------------------------------------------------------
    7. Session ID Display
    ---------------------------------------------------------- */

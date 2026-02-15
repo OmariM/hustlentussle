@@ -51,19 +51,22 @@ try {
 } catch (_) {}
 
 // Apply mode (layout) and color (light/dark) independently
+// Color preferences are stored per mode so admin and display can differ
 function applyTheme() {
     const mode = displayMode ? 'display' : 'admin';
     document.documentElement.setAttribute('data-mode', mode);
 
-    const savedColor = localStorage.getItem('color-preference');
+    const colorKey = `color-preference-${mode}`;
+    const savedColor = localStorage.getItem(colorKey);
     const color = savedColor || (displayMode ? 'dark' : 'light');
     document.documentElement.setAttribute('data-color', color);
 }
 
 function toggleTheme() {
+    const mode = displayMode ? 'display' : 'admin';
     const current = document.documentElement.getAttribute('data-color');
     const next = (current === 'light') ? 'dark' : 'light';
-    localStorage.setItem('color-preference', next);
+    localStorage.setItem(`color-preference-${mode}`, next);
     document.documentElement.setAttribute('data-color', next);
 }
 
@@ -423,11 +426,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
-    // Theme toggle
-    const themeToggle = document.getElementById('theme-toggle');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', toggleTheme);
-    }
+    // Theme toggles (nav bar + floating for display mode)
+    document.querySelectorAll('#theme-toggle, #theme-toggle-floating').forEach(btn => {
+        btn.addEventListener('click', toggleTheme);
+    });
 
     // Nav pills are status indicators only — no click navigation
     document.querySelectorAll('.nav-pill').forEach(pill => {
