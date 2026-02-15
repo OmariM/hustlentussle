@@ -50,13 +50,23 @@ try {
     }
 } catch (_) {}
 
-// Auto-detect theme based on display mode
+// Apply theme based on display mode and user preference
 function applyTheme() {
-    if (displayMode) {
+    const saved = localStorage.getItem('theme-preference');
+    if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+    } else if (displayMode) {
         document.documentElement.setAttribute('data-theme', 'display');
     } else {
         document.documentElement.setAttribute('data-theme', 'admin');
     }
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = (current === 'admin') ? 'display' : 'admin';
+    localStorage.setItem('theme-preference', next);
+    document.documentElement.setAttribute('data-theme', next);
 }
 
 // Toast notification system
@@ -415,13 +425,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
-    // Nav pill click handlers
+    // Theme toggle
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+    }
+
+    // Nav pills are status indicators only — no click navigation
     document.querySelectorAll('.nav-pill').forEach(pill => {
-        pill.addEventListener('click', () => {
-            const screenId = pill.dataset.screen;
-            const screen = document.getElementById(screenId);
-            if (screen) showScreen(screen);
-        });
+        pill.style.pointerEvents = 'none';
+        pill.style.cursor = 'default';
     });
 
 		// Spotify integration UI gating
@@ -1761,7 +1774,8 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
         mixedChip = document.createElement('button');
         mixedChip.className = 'vote-chip vote-option-mixed';
         mixedChip.textContent = 'Mixed';
-        mixedChip.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
+        mixedChip.disabled = true;
+        mixedChip.style.display = 'none'; // Hidden until a guest judge picks Tie or NC
         mixedChip.addEventListener('click', () => onChipClick(mixedChip, VOTE_MIXED));
     }
 
@@ -1852,7 +1866,8 @@ function updateMixedButtonState(voteType) {
     const allOnlyTieOrNoContest = allGuestsOnlyTieOrNoContest(voteType);
     const shouldEnable = hasTieOrNoContest && !allOnlyTieOrNoContest;
     mixedBtn.disabled = !shouldEnable;
-    
+    mixedBtn.style.display = shouldEnable ? '' : 'none';
+
     // If mixed was selected but is now disabled, clear the selection
     if (!shouldEnable && mixedBtn.classList.contains('selected')) {
         mixedBtn.classList.remove('selected');

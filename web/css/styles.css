@@ -151,14 +151,45 @@ body {
 }
 
 /* ----------------------------------------------------------
-   6. Session ID Display
+   6. Theme Toggle
+   ---------------------------------------------------------- */
+.theme-toggle {
+    margin-left: auto;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+}
+
+.theme-toggle:hover {
+    border-color: var(--accent);
+}
+
+.theme-toggle-icon::before {
+    content: '\263E'; /* moon */
+    font-size: 16px;
+    line-height: 1;
+}
+
+[data-theme="display"] .theme-toggle-icon::before,
+.dark-mode .theme-toggle-icon::before {
+    content: '\2600'; /* sun */
+}
+
+/* ----------------------------------------------------------
+   7. Session ID Display
    ---------------------------------------------------------- */
 /* Session ID display — inline in nav bar, expands as dropdown */
 .session-id-display {
     position: relative;
     font-size: 12px;
     color: var(--text-primary);
-    margin-left: auto;
+    margin-left: 8px;
 }
 
 .session-id-display:empty {
@@ -1447,7 +1478,7 @@ input[type="checkbox"] {
 }
 
 .scores-display {
-    flex: 0 0 320px;
+    flex: 0 0 420px;
 }
 
 .scores-display h3 {

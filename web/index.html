@@ -21,6 +21,9 @@
             <button class="nav-pill" data-screen="battle-screen">Battle</button>
             <button class="nav-pill" data-screen="results-screen">Results</button>
         </div>
+        <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode">
+            <span class="theme-toggle-icon"></span>
+        </button>
         <div id="session-id-display" class="session-id-display"></div>
     </nav>
     <div class="container">
@@ -141,7 +144,7 @@
         <div id="battle-screen" class="screen">
             <div class="round-header-new">
                 <div class="round-badge" id="round-badge">Round <span id="round-number">1</span></div>
-                <h2 id="battle-title">Voting</h2>
+                <h2 id="battle-title" style="display:none">Voting</h2>
                 <p class="vote-progress" id="vote-progress"></p>
             </div>
 
@@ -232,7 +235,6 @@
             </div>
 
             <div id="combined-voting" class="combined-voting-section">
-                <h2>Voting</h2>
                 <div class="voting-container">
                     <div id="lead-voting" class="voting-section">
                         <h3>Voting for Leads</h3>
