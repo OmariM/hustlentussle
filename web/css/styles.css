@@ -1495,17 +1495,37 @@ input[type="checkbox"] {
     flex: 0 0 420px;
 }
 
-/* Display mode: swap battle graphic and participant order positions */
+/* Display mode: full-width matchup on top, battle graphic (2fr) + participant order (1fr) below */
 [data-mode="display"] .round-info-container {
-    flex-direction: row-reverse;
-}
-
-[data-mode="display"] .scores-display {
-    flex: 1;
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: auto auto;
 }
 
 [data-mode="display"] .round-content {
-    flex: 0 0 420px;
+    display: contents;
+}
+
+[data-mode="display"] #current-matchup {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+
+[data-mode="display"] .scores-display {
+    grid-column: 1;
+    grid-row: 2;
+    flex: unset;
+}
+
+[data-mode="display"] .contestant-order-section {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+/* Hide song input and judges list in display mode grid (already hidden by .display-mode) */
+[data-mode="display"] .song-input-container,
+[data-mode="display"] .judges {
+    display: none;
 }
 
 .scores-display h3 {
