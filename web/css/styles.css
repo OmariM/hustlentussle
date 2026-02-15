@@ -153,21 +153,12 @@ body {
 /* ----------------------------------------------------------
    6. Session ID Display
    ---------------------------------------------------------- */
+/* Session ID display — inline in nav bar, expands as dropdown */
 .session-id-display {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    top: auto;
-    background-color: var(--bg-card);
-    color: var(--text-primary);
-    padding: 12px 16px;
-    border-radius: var(--radius-md);
+    position: relative;
     font-size: 12px;
-    z-index: 1000;
-    max-width: 300px;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg);
-    transition: all 0.3s ease;
+    color: var(--text-primary);
+    margin-left: auto;
 }
 
 .session-id-display:empty {
@@ -177,14 +168,22 @@ body {
 .session-id-display-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.session-id-display-header:hover {
+    background: var(--bg);
 }
 
 .session-id-display-label {
-    flex: 1;
-    min-width: 0;
     font-weight: 600;
+    font-size: 12px;
+    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -192,14 +191,14 @@ body {
 
 .session-id-display-toggle {
     flex-shrink: 0;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: none;
     border-radius: 4px;
     background: var(--accent-light);
     color: var(--accent);
-    font-size: 12px;
+    font-size: 10px;
     line-height: 1;
     cursor: pointer;
     display: inline-flex;
@@ -214,15 +213,24 @@ body {
 }
 
 .session-id-display-body {
-    margin-top: 10px;
-    transition: max-height 0.3s ease, opacity 0.3s ease;
-    overflow: hidden;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 16px;
+    min-width: 280px;
+    max-width: 340px;
+    z-index: 100;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    transform-origin: top right;
 }
 
 .session-id-display--minimized .session-id-display-body {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
+    display: none;
 }
 
 .display-url-input {

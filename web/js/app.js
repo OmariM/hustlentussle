@@ -1391,7 +1391,7 @@ function updateSessionIdDisplay() {
         sessionIdDisplay.className = 'session-id-display';
         return;
     }
-    const isMinimized = localStorage.getItem('session-info-minimized') === 'true';
+    const isMinimized = localStorage.getItem('session-info-minimized') !== 'false';
     if (sessionId && !displayMode) {
         const baseUrl = window.location.origin + window.location.pathname;
         const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
