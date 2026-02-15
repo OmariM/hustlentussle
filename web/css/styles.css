@@ -1495,6 +1495,19 @@ input[type="checkbox"] {
     flex: 0 0 420px;
 }
 
+/* Display mode: swap battle graphic and participant order positions */
+[data-mode="display"] .round-info-container {
+    flex-direction: row-reverse;
+}
+
+[data-mode="display"] .scores-display {
+    flex: 1;
+}
+
+[data-mode="display"] .round-content {
+    flex: 0 0 420px;
+}
+
 .scores-display h3 {
     font-size: 14px;
     font-weight: 600;
