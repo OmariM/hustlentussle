@@ -1475,6 +1475,29 @@ input[type="checkbox"] {
     border-bottom: 1px solid var(--border);
 }
 
+/* Queue order animations (display mode) */
+.order-list li.animating-out {
+    animation: slideOutLeft 1s ease forwards;
+}
+
+.order-list li.animating-in {
+    animation: slideInRight 1.2s ease forwards;
+}
+
+.order-list li.loser-arrived {
+    background: var(--accent-light);
+}
+
+@keyframes slideOutLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-40px); }
+}
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(40px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
 /* ============================================================
    23. Scores Display / Live Graphic
    ============================================================ */

@@ -694,48 +694,53 @@ function showRoundTransitionOverlay(roundNumber, callback) {
 const STAGGER_DELAY_MS = 150; // Delay between each section
 const STAGGER_ANIMATION_MS = 400; // Duration of each fade-in
 
+// Get the display mode sections to animate (grid children in display mode)
+function getDisplaySections() {
+    return [
+        document.getElementById('current-matchup'),
+        document.querySelector('.judges'),
+        document.getElementById('next-up-section'),
+        document.querySelector('.scores-display')
+    ].filter(Boolean);
+}
+
 // Hide sections before overlay (so they're invisible during overlay)
 function hideSectionsForTransition() {
-    const roundContent = document.querySelector('.round-content');
-    if (!roundContent) return;
-    
-    roundContent.classList.add('sections-transitioning');
+    getDisplaySections().forEach(section => {
+        section.style.opacity = '0';
+    });
 }
 
 function performStaggeredFadeIn(callback) {
-    const roundContent = document.querySelector('.round-content');
-    if (!roundContent) {
+    const sections = getDisplaySections();
+    if (sections.length === 0) {
         if (callback) callback();
         return;
     }
-    
-    // Sections to animate in order (excluding battle graphic and participant order)
-    const sections = [
-        roundContent.querySelector('.round-info'),
-        roundContent.querySelector('.matchups'),
-        roundContent.querySelector('.judges')
-    ].filter(Boolean);
-    
-    // Sections should already be hidden via sections-transitioning class
-    // Apply staggered fade-in classes (animation starts at opacity:0 due to 'both' fill mode)
+
+    // Ensure all sections start hidden
+    sections.forEach(section => {
+        section.style.opacity = '0';
+        section.style.transform = 'translateY(12px)';
+    });
+
+    // Stagger each section's fade-in
     sections.forEach((section, index) => {
-        section.classList.add('section-fade-in', `stagger-${index + 1}`);
+        setTimeout(() => {
+            section.style.transition = `opacity ${STAGGER_ANIMATION_MS}ms ease, transform ${STAGGER_ANIMATION_MS}ms ease`;
+            section.style.opacity = '1';
+            section.style.transform = 'translateY(0)';
+        }, index * STAGGER_DELAY_MS);
     });
-    
-    // Use double requestAnimationFrame to ensure animation classes have been painted
-    // before removing the transitioning class (prevents flicker)
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            roundContent.classList.remove('sections-transitioning');
-        });
-    });
-    
+
     // Calculate total animation time and run callback after completion
     const totalAnimationTime = (sections.length - 1) * STAGGER_DELAY_MS + STAGGER_ANIMATION_MS + 50;
     setTimeout(() => {
-        // Clean up animation classes
-        sections.forEach((section, index) => {
-            section.classList.remove('section-fade-in', `stagger-${index + 1}`);
+        // Clean up inline styles
+        sections.forEach(section => {
+            section.style.transition = '';
+            section.style.opacity = '';
+            section.style.transform = '';
         });
         if (callback) callback();
     }, totalAnimationTime);
