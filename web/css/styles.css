@@ -1062,6 +1062,44 @@ input[type="checkbox"] {
 /* ============================================================
    16. Setup Screen
    ============================================================ */
+.spotify-auth-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.spotify-status {
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.spotify-status::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.spotify-status--disconnected {
+    color: var(--text-muted);
+}
+
+.spotify-status--disconnected::before {
+    background: var(--text-muted);
+}
+
+.spotify-status--connected {
+    color: var(--success);
+}
+
+.spotify-status--connected::before {
+    background: var(--success);
+}
+
 .setup-actions {
     display: flex;
     gap: 12px;

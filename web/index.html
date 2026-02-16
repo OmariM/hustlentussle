@@ -183,6 +183,20 @@
                 </div>
                 <p class="form-helper-text" id="points-to-win-helper">First contestant to reach 7 points wins.</p>
             </div>
+            <div class="form-group">
+                <label for="spotify-toggle">
+                    <input type="checkbox" id="spotify-toggle" />
+                    Enable Spotify integration
+                </label>
+                <p class="form-helper-text">Link a Spotify playlist to automatically assign songs to each round.</p>
+            </div>
+            <div class="form-group" id="spotify-auth-group" style="display:none;">
+                <div class="spotify-auth-row">
+                    <button type="button" id="spotify-auth-setup-btn" class="btn secondary">Connect Spotify</button>
+                    <span id="spotify-auth-status" class="spotify-status spotify-status--disconnected">Not connected</span>
+                </div>
+                <p class="form-helper-text">Authenticate with Spotify before starting the battle to enable playback.</p>
+            </div>
             <div class="form-group" id="playlist-url-group">
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
                 <input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/..." />

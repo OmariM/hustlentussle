@@ -443,40 +443,58 @@ document.addEventListener('DOMContentLoaded', () => {
         pill.style.cursor = 'default';
     });
 
-		// Spotify integration UI gating
-		const playlistUrlGroup = document.getElementById('playlist-url-group');
-		if (localStorage.getItem('spotify.enabled') === null) {
-			localStorage.setItem('spotify.enabled', 'false');
-		}
-		function applySpotifyEnabledUI() {
-			const isOn = localStorage.getItem('spotify.enabled') === 'true';
-			if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
-			if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
-			if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
-			// Dynamically add/remove home auth button
-			try {
-				const home = document.getElementById('home-screen');
-				const actions = home ? home.querySelector('.home-actions') : null;
-				if (actions) {
-					let btn = document.getElementById('spotify-auth-btn');
-					if (isOn && !btn) {
-						btn = document.createElement('button');
-						btn.id = 'spotify-auth-btn';
-						btn.className = 'btn secondary large';
-						btn.textContent = 'Authenticate Spotify';
-						btn.onclick = () => {
-							if (localStorage.getItem('spotify.enabled') === 'true') {
-								startSpotifyAuth(window.location.origin + window.location.pathname);
-							}
-						};
-						actions.appendChild(btn);
-					} else if (!isOn && btn) {
-						actions.removeChild(btn);
-					}
-				}
-			} catch (_) {}
-		}
-		applySpotifyEnabledUI();
+    // Spotify integration UI gating
+    const playlistUrlGroup = document.getElementById('playlist-url-group');
+    const spotifyToggleCheckbox = document.getElementById('spotify-toggle');
+    const spotifyAuthGroup = document.getElementById('spotify-auth-group');
+    const spotifyAuthSetupBtn = document.getElementById('spotify-auth-setup-btn');
+    const spotifyAuthStatus = document.getElementById('spotify-auth-status');
+    if (localStorage.getItem('spotify.enabled') === null) {
+        localStorage.setItem('spotify.enabled', 'false');
+    }
+    // Initialize checkbox from localStorage
+    if (spotifyToggleCheckbox) {
+        spotifyToggleCheckbox.checked = localStorage.getItem('spotify.enabled') === 'true';
+        spotifyToggleCheckbox.addEventListener('change', () => {
+            localStorage.setItem('spotify.enabled', spotifyToggleCheckbox.checked ? 'true' : 'false');
+            applySpotifyEnabledUI();
+        });
+    }
+    // Auth button on setup page
+    if (spotifyAuthSetupBtn) {
+        spotifyAuthSetupBtn.addEventListener('click', () => {
+            startSpotifyAuth(window.location.origin + window.location.pathname);
+        });
+    }
+    function applySpotifyEnabledUI() {
+        const isOn = localStorage.getItem('spotify.enabled') === 'true';
+        if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
+        if (spotifyAuthGroup) spotifyAuthGroup.style.display = isOn ? '' : 'none';
+        if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
+        // Check auth status when Spotify is enabled
+        if (isOn) checkSpotifyAuthStatus();
+    }
+    async function checkSpotifyAuthStatus() {
+        if (!spotifyAuthStatus || !spotifyAuthSetupBtn) return;
+        try {
+            const resp = await fetch('/api/spotify/user_token?session_id=preauth');
+            if (resp.ok) {
+                spotifyAuthStatus.textContent = 'Connected';
+                spotifyAuthStatus.className = 'spotify-status spotify-status--connected';
+                spotifyAuthSetupBtn.textContent = 'Reconnect Spotify';
+            } else {
+                spotifyAuthStatus.textContent = 'Not connected';
+                spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
+                spotifyAuthSetupBtn.textContent = 'Connect Spotify';
+            }
+        } catch (_) {
+            spotifyAuthStatus.textContent = 'Not connected';
+            spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
+            spotifyAuthSetupBtn.textContent = 'Connect Spotify';
+        }
+    }
+    applySpotifyEnabledUI();
 
     // Hide nav bar on home screen initially (showScreen isn't called on first load)
     const navBar = document.getElementById('nav-bar');
