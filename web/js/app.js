@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Home screen navigation
     goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
-    goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
     
     // Upload screen
     battleFileUpload.addEventListener('change', handleFileSelect);
