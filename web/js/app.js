@@ -1184,6 +1184,13 @@ function updateContestantOrder(state) {
     previousLeadOrder = [...leadOrder];
     previousFollowOrder = [...followOrder];
     previousRoundNumber = currentRoundNumber;
+
+    // Update "Next Up" section for display mode
+    // The queue order shows: index 0 and 1 are currently competing, index 2 is next up
+    const nextUpLead = document.getElementById('next-up-lead');
+    const nextUpFollow = document.getElementById('next-up-follow');
+    if (nextUpLead) nextUpLead.textContent = leadOrder[2] || '—';
+    if (nextUpFollow) nextUpFollow.textContent = followOrder[2] || '—';
 }
 
 function renderOrderListImmediate(order, container, role, loserNames) {

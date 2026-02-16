@@ -1228,8 +1228,8 @@ input[type="checkbox"] {
 }
 
 .graphic-name {
-    flex: 1;
     font-weight: 500;
+    margin-right: 8px;
 }
 
 .crown-icon {
@@ -1377,6 +1377,7 @@ input[type="checkbox"] {
    ============================================================ */
 [data-mode="display"] .container {
     font-size: 1.15em;
+    max-width: 1400px;
 }
 
 /* Round transition overlay */
@@ -1495,37 +1496,204 @@ input[type="checkbox"] {
     flex: 0 0 420px;
 }
 
-/* Display mode: full-width matchup on top, battle graphic (2fr) + participant order (1fr) below */
+/* Display mode: projector-optimized layout */
 [data-mode="display"] .round-info-container {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    grid-template-rows: auto auto;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: var(--space-lg);
 }
 
 [data-mode="display"] .round-content {
     display: contents;
 }
 
+/* Row 1: current matchup spans full width */
 [data-mode="display"] #current-matchup {
     grid-column: 1 / -1;
     grid-row: 1;
 }
 
-[data-mode="display"] .scores-display {
+/* Row 2: contestant judges + next up side by side, equal height */
+[data-mode="display"] .judges {
     grid-column: 1;
     grid-row: 2;
-    flex: unset;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    align-self: stretch;
 }
 
-[data-mode="display"] .contestant-order-section {
+[data-mode="display"] #next-up-section {
     grid-column: 2;
     grid-row: 2;
+    align-self: stretch;
 }
 
-/* Hide song input and judges list in display mode grid (already hidden by .display-mode) */
+/* Row 3: battle graphic spans full width */
+[data-mode="display"] .scores-display {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    flex: unset;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+}
+
+/* Hide elements not needed on projector display */
 [data-mode="display"] .song-input-container,
-[data-mode="display"] .judges {
+[data-mode="display"] .contestant-order-section {
     display: none;
+}
+
+/* In display mode, show contestant judges section (second child) for the audience */
+[data-mode="display"] .judges-section:last-child {
+    display: block;
+}
+
+/* Display mode: show next-up section */
+[data-mode="display"] #next-up-section {
+    display: block !important;
+}
+
+/* Display mode: larger text for projector legibility */
+[data-mode="display"] .matchups.matchup-card .pair {
+    font-size: 36px;
+}
+
+[data-mode="display"] .matchups.matchup-card .matchup h3 {
+    font-size: 18px;
+}
+
+[data-mode="display"] .matchups.matchup-card .matchup {
+    padding: var(--space-xl) 24px;
+}
+
+[data-mode="display"] .matchups.matchup-card .vs {
+    font-size: 36px;
+    width: 80px;
+}
+
+[data-mode="display"] .round-badge {
+    font-size: 18px;
+    padding: 6px 20px;
+}
+
+[data-mode="display"] .judges-section h3 {
+    font-size: 22px;
+    margin-bottom: var(--space-md);
+}
+
+[data-mode="display"] .judges-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+[data-mode="display"] .judge-item {
+    font-size: 20px;
+    padding: 8px 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+}
+
+[data-mode="display"] .scores-display h3 {
+    font-size: 26px;
+}
+
+[data-mode="display"] .graphic-column h4 {
+    font-size: 22px;
+}
+
+[data-mode="display"] .graphic-row {
+    font-size: 24px;
+    padding: 10px 0;
+}
+
+[data-mode="display"] .graphic-rank {
+    min-width: 36px;
+    font-size: 24px;
+}
+
+[data-mode="display"] .badge {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+}
+
+/* Next Up section styling */
+.next-up-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+}
+
+.next-up-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+[data-mode="display"] .next-up-section h3 {
+    font-size: 22px;
+    margin-bottom: var(--space-md);
+}
+
+.next-up-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.next-up-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.next-up-role {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    min-width: 60px;
+}
+
+.next-up-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+[data-mode="display"] .next-up-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+[data-mode="display"] .next-up-item {
+    padding: 8px 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    gap: 10px;
+}
+
+[data-mode="display"] .next-up-role {
+    font-size: 14px;
+    min-width: unset;
+}
+
+[data-mode="display"] .next-up-name {
+    font-size: 20px;
 }
 
 .scores-display h3 {
@@ -1636,6 +1804,5 @@ a {
 }
 
 @media (min-width: 1400px) {
-    [data-mode="display"] .container { max-width: 1400px; }
     [data-mode="display"] .round-number-large { font-size: 16rem; }
 }
