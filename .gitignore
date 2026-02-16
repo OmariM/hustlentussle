@@ -55,6 +55,9 @@ docs/screenshots/*
 !docs/screenshots/voting-active.png
 !docs/screenshots/vote-confirmation.png
 !docs/screenshots/results-screen.png
+!docs/screenshots/battle-midgame.png
+!docs/screenshots/display-dark.png
+!docs/screenshots/display-light.png
 
 # Render specific
 .render-buildlogs/

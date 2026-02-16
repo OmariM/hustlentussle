@@ -75,6 +75,10 @@ Each round, cast votes for leads and follows separately. Selected votes are high
 
 You can **Undo Round** to revert a mistake, or **End Battle Early** to determine winners by current standings.
 
+As the battle progresses, the battle graphic tracks every round's results for all contestants. Winning rounds are highlighted so you can follow each dancer's journey at a glance.
+
+![Battle Mid-Game](docs/screenshots/battle-midgame.png)
+
 ### Results
 
 When the battle ends, you'll see final leaderboards with point progression for every contestant, plus a collapsible round-by-round history.
@@ -85,7 +89,11 @@ Click **Download Battle Data** to export a multi-sheet Excel file with the full 
 
 ### Display Mode
 
-Share a spectator-only view of the battle on a projector or second screen. A QR code and display URL are shown in the header during the battle -- audience members can scan it to follow along live. The display auto-refreshes every 3 seconds.
+Share a spectator-only view of the battle on a projector or second screen. The display shows the current matchup, contestant judges, who's next up, and the full battle graphic -- all optimized for projector legibility. A QR code and display URL are shown in the header during the battle -- audience members can scan it to follow along live. The display auto-refreshes every 3 seconds.
+
+![Display Mode (Dark)](docs/screenshots/display-dark.png)
+
+![Display Mode (Light)](docs/screenshots/display-light.png)
 
 ### Spotify Integration
 
