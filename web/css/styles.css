@@ -146,10 +146,6 @@ body {
     padding: var(--space-lg) 20px;
 }
 
-[data-mode="display"] .container {
-    max-width: 1200px;
-}
-
 /* ----------------------------------------------------------
    6. Theme Toggle
    ---------------------------------------------------------- */
@@ -1521,7 +1517,7 @@ input[type="checkbox"] {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: 20px 24px;
     align-self: stretch;
 }
 
@@ -1529,6 +1525,7 @@ input[type="checkbox"] {
     grid-column: 2;
     grid-row: 2;
     align-self: stretch;
+    padding: 20px 24px;
 }
 
 /* Row 3: battle graphic spans full width */
@@ -1539,7 +1536,7 @@ input[type="checkbox"] {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: 20px 24px;
 }
 
 /* Hide elements not needed on projector display */
@@ -1558,17 +1555,25 @@ input[type="checkbox"] {
     display: block !important;
 }
 
-/* Display mode: larger text for projector legibility */
-[data-mode="display"] .matchups.matchup-card .pair {
-    font-size: 36px;
+/* Display mode: consistent typography scale for projector legibility
+   Card headings: 20px uppercase  |  Content: 22px  |  Pills: 22px / 10px 24px  |  Matchup: 36px */
+
+[data-mode="display"] .round-badge {
+    font-size: 18px;
+    padding: 6px 20px;
+}
+
+/* -- Matchup card -- */
+[data-mode="display"] .matchups.matchup-card .matchup {
+    padding: var(--space-xl) 24px;
 }
 
 [data-mode="display"] .matchups.matchup-card .matchup h3 {
-    font-size: 18px;
+    font-size: 16px;
 }
 
-[data-mode="display"] .matchups.matchup-card .matchup {
-    padding: var(--space-xl) 24px;
+[data-mode="display"] .matchups.matchup-card .pair {
+    font-size: 36px;
 }
 
 [data-mode="display"] .matchups.matchup-card .vs {
@@ -1576,46 +1581,43 @@ input[type="checkbox"] {
     width: 80px;
 }
 
-[data-mode="display"] .round-badge {
-    font-size: 18px;
-    padding: 6px 20px;
-}
-
+/* -- Contestant Judges card -- */
 [data-mode="display"] .judges-section h3 {
-    font-size: 22px;
+    font-size: 20px;
     margin-bottom: var(--space-md);
 }
 
 [data-mode="display"] .judges-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
 }
 
 [data-mode="display"] .judge-item {
-    font-size: 20px;
-    padding: 8px 20px;
+    font-size: 22px;
+    padding: 10px 24px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 999px;
 }
 
+/* -- Battle Graphic card -- */
 [data-mode="display"] .scores-display h3 {
-    font-size: 26px;
+    font-size: 20px;
 }
 
 [data-mode="display"] .graphic-column h4 {
-    font-size: 22px;
+    font-size: 18px;
 }
 
 [data-mode="display"] .graphic-row {
-    font-size: 24px;
+    font-size: 22px;
     padding: 10px 0;
 }
 
 [data-mode="display"] .graphic-rank {
     min-width: 36px;
-    font-size: 24px;
+    font-size: 22px;
 }
 
 [data-mode="display"] .badge {
@@ -1641,8 +1643,9 @@ input[type="checkbox"] {
     margin-bottom: var(--space-md);
 }
 
+/* -- Next Up card -- */
 [data-mode="display"] .next-up-section h3 {
-    font-size: 22px;
+    font-size: 20px;
     margin-bottom: var(--space-md);
 }
 
@@ -1676,11 +1679,11 @@ input[type="checkbox"] {
 [data-mode="display"] .next-up-container {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
 }
 
 [data-mode="display"] .next-up-item {
-    padding: 8px 20px;
+    padding: 10px 24px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -1688,12 +1691,12 @@ input[type="checkbox"] {
 }
 
 [data-mode="display"] .next-up-role {
-    font-size: 14px;
+    font-size: 16px;
     min-width: unset;
 }
 
 [data-mode="display"] .next-up-name {
-    font-size: 20px;
+    font-size: 22px;
 }
 
 .scores-display h3 {
