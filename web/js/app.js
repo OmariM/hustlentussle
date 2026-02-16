@@ -1846,14 +1846,19 @@ function recordVote(judgeName, voteOption, voteType) {
     }
     console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
 
-    // Demo mode hook: enable next when a vote is cast
+    // Demo mode hook: advance once ALL votes for a role are cast
     if (demoMode) {
         const currentStep = DEMO_STEPS[demoStep];
         if (currentStep && (
             (currentStep.action === 'wait-for-lead-vote' && voteType === 'lead') ||
             (currentStep.action === 'wait-for-follow-vote' && voteType === 'follow')
         )) {
-            enableDemoNextButton();
+            const votes = voteType === 'lead' ? leadVotes : followVotes;
+            const allJudges = buildJudgeRoster();
+            const allVoted = allJudges.every(j => votes[j] !== undefined);
+            if (allVoted) {
+                enableDemoNextButton();
+            }
         }
     }
 
@@ -3386,35 +3391,41 @@ const DEMO_STEPS = [
     {
         title: 'Welcome to Hustle n\' Tussle!',
         content: 'This guided demo will walk you through setting up and running a dance battle. We\'ve pre-filled some sample data so you can try the full flow. Click Next to get started.',
+        screen: 'setup',
         position: 'center'
     },
     {
         title: 'Lead & Follow Names',
         content: 'Enter the names of your lead and follow dancers, separated by commas. We\'ve filled in 4 of each for this demo.',
+        screen: 'setup',
         target: '#lead-names',
         position: 'bottom'
     },
     {
         title: 'Guest Judges',
         content: 'Guest judges award 2 points per vote and can vote Tie or No Contest. We\'ve added 2 judges for this demo.',
+        screen: 'setup',
         target: '#judge-names',
         position: 'bottom'
     },
     {
         title: 'Contestant Judging',
         content: 'When enabled, non-competing dancers also judge (1 point each). Simple mode lets them vote as a single group. Try toggling these options!',
+        screen: 'setup',
         target: '#simple-contestant-judges',
         position: 'bottom'
     },
     {
         title: 'Points to Win',
         content: 'Set the threshold to win. Default is 7 points. Auto-calculate uses (contestants - 1). For this quick demo, we\'ll use a low value.',
+        screen: 'setup',
         target: '#points-to-win-mode',
         position: 'bottom'
     },
     {
         title: 'Start the Competition',
         content: 'Everything looks good! Click "Start Competition" to begin the battle.',
+        screen: 'setup',
         target: '#start-competition',
         position: 'top',
         action: 'wait-for-start'
@@ -3422,12 +3433,14 @@ const DEMO_STEPS = [
     {
         title: 'The Matchup',
         content: 'Two pairs are competing. Pair 1 vs Pair 2 — each has a lead and a follow. Judges vote on leads and follows separately.',
+        screen: 'battle',
         target: '#current-matchup',
         position: 'bottom'
     },
     {
         title: 'Cast Your Lead Votes',
         content: 'Each judge votes for who danced better as a lead. Guest judges can also vote Tie or No Contest. Try casting a vote now!',
+        screen: 'battle',
         target: '#lead-voting',
         position: 'bottom',
         action: 'wait-for-lead-vote'
@@ -3435,6 +3448,7 @@ const DEMO_STEPS = [
     {
         title: 'Cast Your Follow Votes',
         content: 'Now vote for the follows. Same rules apply — guest judges get Tie/NC options, contestant judges must pick a winner.',
+        screen: 'battle',
         target: '#follow-voting',
         position: 'top',
         action: 'wait-for-follow-vote'
@@ -3442,6 +3456,7 @@ const DEMO_STEPS = [
     {
         title: 'Submit Your Votes',
         content: 'Once all judges have voted for both leads and follows, click "Confirm Votes" to submit. The round results will appear and the next round starts automatically.',
+        screen: 'battle',
         target: '#submit-votes',
         position: 'top',
         action: 'wait-for-submit'
@@ -3449,6 +3464,7 @@ const DEMO_STEPS = [
     {
         title: 'Round 2 — Try the Mixed Vote',
         content: 'Now try this: have one guest judge vote Tie or No Contest for a lead, while the other guest judge picks a winner. When you do, the "Mixed" button will appear on the contestant judge row — use it when contestants are split (not unanimously voting for one dancer).',
+        screen: 'battle',
         target: '#lead-voting',
         position: 'bottom',
         action: 'wait-for-lead-vote'
@@ -3456,6 +3472,7 @@ const DEMO_STEPS = [
     {
         title: 'Finish Round 2 Follows',
         content: 'Cast the follow votes for round 2 as well.',
+        screen: 'battle',
         target: '#follow-voting',
         position: 'top',
         action: 'wait-for-follow-vote'
@@ -3463,6 +3480,7 @@ const DEMO_STEPS = [
     {
         title: 'Submit Round 2',
         content: 'Submit your votes to see the results and battle graphic update.',
+        screen: 'battle',
         target: '#submit-votes',
         position: 'top',
         action: 'wait-for-submit'
@@ -3470,12 +3488,14 @@ const DEMO_STEPS = [
     {
         title: 'The Battle Graphic',
         content: 'The battle graphic shows each dancer\'s score progression across rounds. It updates in real-time as you submit votes. This is also visible in Display Mode for audiences.',
+        screen: 'battle',
         target: '.scores-display',
         position: 'left'
     },
     {
         title: 'Demo Complete!',
         content: 'You now know the basics of running a Hustle n\' Tussle battle. You can continue exploring this demo battle, or exit to start a real one. Have fun!',
+        screen: 'battle',
         position: 'center'
     }
 ];
@@ -3539,6 +3559,18 @@ function showDemoStep(index) {
     demoStep = index;
     const step = DEMO_STEPS[index];
     if (!step) return;
+
+    // Switch to the correct screen if needed
+    if (step.screen) {
+        const screenMap = { setup: setupScreen, battle: roundScreen, results: resultsScreen };
+        const targetScreen = screenMap[step.screen];
+        if (targetScreen) {
+            const activeScreen = document.querySelector('.screen.active');
+            if (activeScreen !== targetScreen) {
+                showScreen(targetScreen);
+            }
+        }
+    }
 
     const hint = document.getElementById('demo-hint');
     if (!hint) return;
