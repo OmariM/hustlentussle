@@ -35,7 +35,7 @@ class DevelopmentConfig(Config):
     DEBUG = True
     ENABLE_DEBUG_TOOLS = True  # Enable debug tools in development
     HOST = "127.0.0.1"
-    PORT = 5000
+    PORT = 5001
 
     # In development, use in-memory by default (no DATABASE_URL)
     # Set DATABASE_URL env var to test with PostgreSQL locally

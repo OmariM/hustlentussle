@@ -1810,7 +1810,202 @@ a {
 }
 
 /* ============================================================
-   28. Responsive
+   28. Rules Grid (Home Page)
+   ============================================================ */
+.rules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-md);
+    margin: var(--space-lg) 0 var(--space-xl);
+    text-align: left;
+}
+
+.rule-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    transition: border-color 0.2s;
+}
+
+.rule-card:hover {
+    border-color: var(--accent);
+}
+
+.home-about {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto var(--space-xl);
+}
+
+.home-about p {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.home-rules h2 {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+.rule-card h3 {
+    font-size: 15px;
+    margin-bottom: var(--space-sm);
+    color: var(--accent);
+}
+
+.rule-card p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.rule-card ul {
+    list-style: disc;
+    padding-left: var(--space-lg);
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+
+.rule-card li {
+    margin-bottom: var(--space-xs);
+}
+
+/* ============================================================
+   29. Demo Mode Overlay
+   ============================================================ */
+.demo-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+    pointer-events: none;
+}
+
+.demo-hint {
+    position: fixed;
+    z-index: 10000;
+    background: var(--bg-card);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    max-width: 380px;
+    width: calc(100vw - 32px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    pointer-events: auto;
+}
+
+.demo-hint-drag-handle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: grab;
+    user-select: none;
+    margin: calc(-1 * var(--space-lg));
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: var(--bg-card-hover);
+}
+
+.demo-hint-drag-handle:active {
+    cursor: grabbing;
+}
+
+.demo-drag-icon {
+    font-size: 16px;
+    color: var(--text-muted);
+    line-height: 1;
+}
+
+.demo-hint h4 {
+    font-size: 16px;
+    margin-bottom: var(--space-sm);
+    color: var(--accent);
+}
+
+.demo-hint p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-md);
+}
+
+.demo-hint-step {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.demo-hint-actions {
+    display: flex;
+    gap: var(--space-sm);
+    justify-content: flex-end;
+}
+
+.demo-hint-actions .btn {
+    font-size: 13px;
+    padding: 6px 14px;
+}
+
+.demo-arrow {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--bg-card);
+    border: 2px solid var(--accent);
+    transform: rotate(45deg);
+}
+
+.demo-arrow--top {
+    bottom: -7px;
+    left: 50%;
+    margin-left: -6px;
+    border-top: none;
+    border-left: none;
+}
+
+.demo-arrow--bottom {
+    top: -7px;
+    left: 50%;
+    margin-left: -6px;
+    border-bottom: none;
+    border-right: none;
+}
+
+.demo-arrow--left {
+    right: -7px;
+    top: 50%;
+    margin-top: -6px;
+    border-bottom: none;
+    border-left: none;
+}
+
+.demo-arrow--right {
+    left: -7px;
+    top: 50%;
+    margin-top: -6px;
+    border-top: none;
+    border-right: none;
+}
+
+.demo-highlight {
+    position: relative;
+    z-index: 9999 !important;
+    box-shadow: 0 0 0 4px var(--accent), 0 0 20px rgba(29, 78, 216, 0.3);
+    border-radius: var(--radius-sm);
+}
+
+[data-color="dark"] .demo-highlight {
+    box-shadow: 0 0 0 4px var(--accent), 0 0 30px rgba(124, 58, 237, 0.4);
+}
+
+/* ============================================================
+   30. Responsive
    ============================================================ */
 @media (max-width: 640px) {
     .matchup-card { flex-direction: column; }
@@ -1824,6 +2019,8 @@ a {
     .standings-columns { grid-template-columns: 1fr; }
     .modal-summary { grid-template-columns: 1fr; }
     .home-title { font-size: 28px; }
+    .rules-grid { grid-template-columns: 1fr; }
+    .demo-hint { max-width: calc(100vw - 32px); }
     .submit-area { position: sticky; bottom: 0; padding: 16px; background: var(--bg); z-index: 10; }
     .round-info-container { flex-direction: column; }
     .scores-display { flex: 0 0 auto; width: 100%; }

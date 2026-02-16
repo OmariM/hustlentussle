@@ -27,6 +27,12 @@ let pendingQueueAnimationData = null; // Store data for queue animation after st
 let isUndoInProgress = false; // Skip animations during undo operations
 let isSubmitting = false; // Prevent double-submission
 
+// Demo mode state
+let demoMode = false;
+let demoStep = 0;
+let demoOverlay = null; // Container for backdrop + hint
+let demoWaitingForAction = false; // True when waiting for user interaction before enabling Next
+
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
@@ -1565,9 +1571,17 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         
         // Render from canonical state
         await refreshCanonicalState();
-        
+
         // Show round screen
         showScreen(roundScreen);
+
+        // Demo mode hook: advance past the "Start Competition" step
+        if (demoMode) {
+            const currentStep = DEMO_STEPS[demoStep];
+            if (currentStep && currentStep.action === 'wait-for-start') {
+                enableDemoNextButton();
+            }
+        }
     } catch (error) {
         console.error('Error starting game:', error);
         showToast('Failed to start game: ' + (error.message || 'Unknown error'), 'error');
@@ -1831,10 +1845,21 @@ function recordVote(judgeName, voteOption, voteType) {
         followVotes[judgeName] = voteOption;
     }
     console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
-    
+
+    // Demo mode hook: enable next when a vote is cast
+    if (demoMode) {
+        const currentStep = DEMO_STEPS[demoStep];
+        if (currentStep && (
+            (currentStep.action === 'wait-for-lead-vote' && voteType === 'lead') ||
+            (currentStep.action === 'wait-for-follow-vote' && voteType === 'follow')
+        )) {
+            enableDemoNextButton();
+        }
+    }
+
     // Update mixed button availability based on tie/no contest votes
     updateMixedButtonState(voteType);
-    
+
     // Update submit button state based on voting progress
     updateSubmitButtonState();
 }
@@ -2176,6 +2201,14 @@ async function submitCombinedVotes(options = {}) {
         
         // Close the modal on successful submit
         closeVoteConfirmModal();
+
+        // Demo mode hook: advance past the "Submit" step
+        if (demoMode) {
+            const currentStep = DEMO_STEPS[demoStep];
+            if (currentStep && currentStep.action === 'wait-for-submit') {
+                enableDemoNextButton();
+            }
+        }
 
         const shouldAutoAdvance = options && options.autoAdvance === true;
         const showResultsInRound = !shouldAutoAdvance || data.game_finished;
@@ -3343,4 +3376,376 @@ async function ensureUserAuthForPlayback() {
             }).catch(() => {});
         }
     } catch (_) {}
+})();
+
+// ============================================================
+// Demo Mode
+// ============================================================
+
+const DEMO_STEPS = [
+    {
+        title: 'Welcome to Hustle n\' Tussle!',
+        content: 'This guided demo will walk you through setting up and running a dance battle. We\'ve pre-filled some sample data so you can try the full flow. Click Next to get started.',
+        position: 'center'
+    },
+    {
+        title: 'Lead & Follow Names',
+        content: 'Enter the names of your lead and follow dancers, separated by commas. We\'ve filled in 4 of each for this demo.',
+        target: '#lead-names',
+        position: 'bottom'
+    },
+    {
+        title: 'Guest Judges',
+        content: 'Guest judges award 2 points per vote and can vote Tie or No Contest. We\'ve added 2 judges for this demo.',
+        target: '#judge-names',
+        position: 'bottom'
+    },
+    {
+        title: 'Contestant Judging',
+        content: 'When enabled, non-competing dancers also judge (1 point each). Simple mode lets them vote as a single group. Try toggling these options!',
+        target: '#simple-contestant-judges',
+        position: 'bottom'
+    },
+    {
+        title: 'Points to Win',
+        content: 'Set the threshold to win. Default is 7 points. Auto-calculate uses (contestants - 1). For this quick demo, we\'ll use a low value.',
+        target: '#points-to-win-mode',
+        position: 'bottom'
+    },
+    {
+        title: 'Start the Competition',
+        content: 'Everything looks good! Click "Start Competition" to begin the battle.',
+        target: '#start-competition',
+        position: 'top',
+        action: 'wait-for-start'
+    },
+    {
+        title: 'The Matchup',
+        content: 'Two pairs are competing. Pair 1 vs Pair 2 — each has a lead and a follow. Judges vote on leads and follows separately.',
+        target: '#current-matchup',
+        position: 'bottom'
+    },
+    {
+        title: 'Cast Your Lead Votes',
+        content: 'Each judge votes for who danced better as a lead. Guest judges can also vote Tie or No Contest. Try casting a vote now!',
+        target: '#lead-voting',
+        position: 'bottom',
+        action: 'wait-for-lead-vote'
+    },
+    {
+        title: 'Cast Your Follow Votes',
+        content: 'Now vote for the follows. Same rules apply — guest judges get Tie/NC options, contestant judges must pick a winner.',
+        target: '#follow-voting',
+        position: 'top',
+        action: 'wait-for-follow-vote'
+    },
+    {
+        title: 'Submit Your Votes',
+        content: 'Once all judges have voted for both leads and follows, click "Confirm Votes" to submit. The round results will appear and the next round starts automatically.',
+        target: '#submit-votes',
+        position: 'top',
+        action: 'wait-for-submit'
+    },
+    {
+        title: 'Round 2 — Try the Mixed Vote',
+        content: 'Now try this: have one guest judge vote Tie or No Contest for a lead, while the other guest judge picks a winner. When you do, the "Mixed" button will appear on the contestant judge row — use it when contestants are split (not unanimously voting for one dancer).',
+        target: '#lead-voting',
+        position: 'bottom',
+        action: 'wait-for-lead-vote'
+    },
+    {
+        title: 'Finish Round 2 Follows',
+        content: 'Cast the follow votes for round 2 as well.',
+        target: '#follow-voting',
+        position: 'top',
+        action: 'wait-for-follow-vote'
+    },
+    {
+        title: 'Submit Round 2',
+        content: 'Submit your votes to see the results and battle graphic update.',
+        target: '#submit-votes',
+        position: 'top',
+        action: 'wait-for-submit'
+    },
+    {
+        title: 'The Battle Graphic',
+        content: 'The battle graphic shows each dancer\'s score progression across rounds. It updates in real-time as you submit votes. This is also visible in Display Mode for audiences.',
+        target: '.scores-display',
+        position: 'left'
+    },
+    {
+        title: 'Demo Complete!',
+        content: 'You now know the basics of running a Hustle n\' Tussle battle. You can continue exploring this demo battle, or exit to start a real one. Have fun!',
+        position: 'center'
+    }
+];
+
+function startDemo() {
+    demoMode = true;
+    demoStep = 0;
+
+    // Pre-fill setup form with sample data
+    showScreen(setupScreen);
+    if (leadNamesInput) leadNamesInput.value = 'Alex, Blake, Casey, Dana';
+    if (followNamesInput) followNamesInput.value = 'Jordan, Morgan, Riley, Skyler';
+    if (judgeNamesInput) judgeNamesInput.value = 'Sam, Pat';
+    if (contestantJudgingToggle) contestantJudgingToggle.checked = true;
+    if (simpleContestantJudgesInput) {
+        simpleContestantJudgesInput.checked = true;
+        simpleContestantJudgesInput.disabled = false;
+    }
+    // Set points to win to custom low value for quick demo
+    if (pointsToWinModeSelect) {
+        pointsToWinModeSelect.value = 'custom';
+        if (customPointsContainer) customPointsContainer.style.display = '';
+        if (pointsToWinInput) pointsToWinInput.value = '3';
+        if (pointsToWinHelper) pointsToWinHelper.textContent = 'First contestant to reach 3 points wins.';
+    }
+
+    createDemoOverlay();
+    showDemoStep(0);
+}
+
+function createDemoOverlay() {
+    // Remove existing if any
+    removeDemoOverlay();
+
+    demoOverlay = document.createElement('div');
+    demoOverlay.id = 'demo-overlay';
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'demo-backdrop';
+    backdrop.addEventListener('click', (e) => e.stopPropagation());
+    demoOverlay.appendChild(backdrop);
+
+    const hint = document.createElement('div');
+    hint.className = 'demo-hint';
+    hint.id = 'demo-hint';
+    demoOverlay.appendChild(hint);
+
+    document.body.appendChild(demoOverlay);
+}
+
+function removeDemoOverlay() {
+    if (demoOverlay) {
+        demoOverlay.remove();
+        demoOverlay = null;
+    }
+    // Clean up any highlights
+    document.querySelectorAll('.demo-highlight').forEach(el => el.classList.remove('demo-highlight'));
+}
+
+function showDemoStep(index) {
+    demoStep = index;
+    const step = DEMO_STEPS[index];
+    if (!step) return;
+
+    const hint = document.getElementById('demo-hint');
+    if (!hint) return;
+
+    // Clear old highlights
+    document.querySelectorAll('.demo-highlight').forEach(el => el.classList.remove('demo-highlight'));
+
+    // Check if this step has a wait-for action
+    const isInteractive = !!step.action;
+    demoWaitingForAction = isInteractive;
+
+    // Show/hide backdrop: hide on interactive steps so user can interact with the page
+    const backdrop = demoOverlay ? demoOverlay.querySelector('.demo-backdrop') : null;
+    if (backdrop) {
+        backdrop.style.display = isInteractive ? 'none' : '';
+    }
+
+    // Build hint content
+    const totalSteps = DEMO_STEPS.length;
+    const isFirst = index === 0;
+    const isLast = index === totalSteps - 1;
+
+    hint.innerHTML = `
+        <div class="demo-hint-drag-handle">
+            <div class="demo-hint-step">Step ${index + 1} of ${totalSteps}</div>
+            <span class="demo-drag-icon">⠿</span>
+        </div>
+        <h4>${step.title}</h4>
+        <p>${step.content}</p>
+        <div class="demo-hint-actions">
+            <button class="btn secondary" id="demo-exit-btn">Exit Demo</button>
+            ${!isFirst ? '<button class="btn secondary" id="demo-prev-btn">Previous</button>' : ''}
+            ${isLast
+                ? '<button class="btn primary" id="demo-finish-btn">Finish</button>'
+                : (isInteractive ? '' : '<button class="btn primary" id="demo-next-btn">Next</button>')
+            }
+        </div>
+    `;
+
+    // Position the hint
+    positionDemoHint(step);
+
+    // Make hint draggable
+    makeDemoHintDraggable(hint);
+
+    // Wire up buttons
+    const exitBtn = document.getElementById('demo-exit-btn');
+    const prevBtn = document.getElementById('demo-prev-btn');
+    const nextBtn = document.getElementById('demo-next-btn');
+    const finishBtn = document.getElementById('demo-finish-btn');
+
+    if (exitBtn) exitBtn.addEventListener('click', exitDemo);
+    if (prevBtn) prevBtn.addEventListener('click', () => showDemoStep(demoStep - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => showDemoStep(demoStep + 1));
+    if (finishBtn) finishBtn.addEventListener('click', exitDemo);
+}
+
+function positionDemoHint(step) {
+    const hint = document.getElementById('demo-hint');
+    if (!hint) return;
+
+    // Remove any old arrow
+    const oldArrow = hint.querySelector('.demo-arrow');
+    if (oldArrow) oldArrow.remove();
+
+    if (!step.target || step.position === 'center') {
+        // Center the hint on screen
+        hint.style.top = '50%';
+        hint.style.left = '50%';
+        hint.style.transform = 'translate(-50%, -50%)';
+        return;
+    }
+
+    const targetEl = document.querySelector(step.target);
+    if (!targetEl) {
+        // Fallback to center
+        hint.style.top = '50%';
+        hint.style.left = '50%';
+        hint.style.transform = 'translate(-50%, -50%)';
+        return;
+    }
+
+    // Highlight the target
+    targetEl.classList.add('demo-highlight');
+
+    // Scroll target into view
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Wait a tick for scroll to settle, then position
+    requestAnimationFrame(() => {
+        const rect = targetEl.getBoundingClientRect();
+        const hintRect = hint.getBoundingClientRect();
+        const margin = 16;
+
+        hint.style.transform = '';
+        let top, left;
+
+        switch (step.position) {
+            case 'bottom':
+                top = rect.bottom + margin;
+                left = rect.left + rect.width / 2 - hintRect.width / 2;
+                break;
+            case 'top':
+                top = rect.top - hintRect.height - margin;
+                left = rect.left + rect.width / 2 - hintRect.width / 2;
+                break;
+            case 'left':
+                top = rect.top + rect.height / 2 - hintRect.height / 2;
+                left = rect.left - hintRect.width - margin;
+                break;
+            case 'right':
+                top = rect.top + rect.height / 2 - hintRect.height / 2;
+                left = rect.right + margin;
+                break;
+            default:
+                top = rect.bottom + margin;
+                left = rect.left;
+        }
+
+        // Clamp to viewport
+        left = Math.max(8, Math.min(left, window.innerWidth - hintRect.width - 8));
+        top = Math.max(8, Math.min(top, window.innerHeight - hintRect.height - 8));
+
+        hint.style.top = top + 'px';
+        hint.style.left = left + 'px';
+
+        // Add arrow
+        const arrow = document.createElement('div');
+        arrow.className = 'demo-arrow';
+        switch (step.position) {
+            case 'bottom': arrow.classList.add('demo-arrow--bottom'); break;
+            case 'top': arrow.classList.add('demo-arrow--top'); break;
+            case 'left': arrow.classList.add('demo-arrow--left'); break;
+            case 'right': arrow.classList.add('demo-arrow--right'); break;
+        }
+        hint.appendChild(arrow);
+    });
+}
+
+function makeDemoHintDraggable(hint) {
+    const handle = hint.querySelector('.demo-hint-drag-handle');
+    if (!handle) return;
+
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+
+    function onPointerDown(e) {
+        // Don't drag if clicking a button
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = hint.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        hint.style.transform = '';
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', onPointerUp);
+        e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        hint.style.left = (startLeft + dx) + 'px';
+        hint.style.top = (startTop + dy) + 'px';
+        // Remove arrow when user manually moves the hint
+        const arrow = hint.querySelector('.demo-arrow');
+        if (arrow) arrow.remove();
+    }
+
+    function onPointerUp() {
+        isDragging = false;
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+    }
+
+    handle.addEventListener('pointerdown', onPointerDown);
+}
+
+function enableDemoNextButton() {
+    if (!demoMode || !demoWaitingForAction) return;
+    demoWaitingForAction = false;
+    // Auto-advance to the next step
+    showDemoStep(demoStep + 1);
+}
+
+function exitDemo() {
+    demoMode = false;
+    demoStep = 0;
+    demoWaitingForAction = false;
+    removeDemoOverlay();
+    resetAndGoHome();
+}
+
+// Wire up the "Try Demo" button when DOM is ready
+(function initDemoButton() {
+    function wireDemo() {
+        const tryDemoBtn = document.getElementById('try-demo');
+        if (tryDemoBtn) {
+            tryDemoBtn.addEventListener('click', startDemo);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireDemo);
+    } else {
+        wireDemo();
+    }
 })();
