@@ -1400,7 +1400,7 @@ input[type="checkbox"] {
     font-size: 24px;
     letter-spacing: 4px;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .round-number-large {
@@ -1408,7 +1408,7 @@ input[type="checkbox"] {
     font-size: 12rem;
     font-weight: 700;
     line-height: 1;
-    color: var(--text-primary);
+    color: #fff;
     text-shadow: 0 0 40px rgba(124, 58, 237, 0.5);
 }
 
