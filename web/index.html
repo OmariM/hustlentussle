@@ -4,31 +4,90 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hustle n' Tussle - Dance Competition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&amp;family=DM+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css?v={{ config.ASSET_VERSION }}">
 </head>
 <body>
-    <div id="session-id-display" class="session-id-display"></div>
-    <div class="container">
-        <header>
-            <h1>Hustle n' Tussle</h1>
-            <h2>Battle Manager</h2>
-        </header>
-
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-            <button id="theme-toggle" class="btn secondary" style="min-width:auto;">Toggle Theme</button>
+    <div id="toast-container" class="toast-container"></div>
+    <button id="theme-toggle-floating" class="theme-toggle theme-toggle--floating" title="Toggle light/dark mode">
+        <span class="theme-toggle-icon"></span>
+    </button>
+    <nav class="nav-bar" id="nav-bar">
+        <div class="brand">
+            <span class="dot"></span>
+            Hustle n' Tussle
         </div>
-		<div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
-			<button id="spotify-toggle" class="btn secondary" style="min-width:auto;">Toggle Spotify Integration</button>
-		</div>
+        <div class="nav-pills">
+            <button class="nav-pill" data-screen="setup-screen">Setup</button>
+            <button class="nav-pill" data-screen="battle-screen">Battle</button>
+            <button class="nav-pill" data-screen="results-screen">Results</button>
+        </div>
+        <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode">
+            <span class="theme-toggle-icon"></span>
+        </button>
+        <div id="session-id-display" class="session-id-display"></div>
+    </nav>
+    <div class="container">
 
         <div id="home-screen" class="screen active">
-            <div class="welcome-section">
-                <h2>Welcome to Hustle n' Tussle</h2>
-                <p>The ultimate dance battle management system</p>
+            <div class="home-hero">
+                <h1 class="home-title">Hustle n' Tussle</h1>
+                <p class="home-subtitle">Dance Battle Manager</p>
             </div>
+
+            <div class="home-about">
+                <p>Created by Kenji Tominaga, HNT is a street dance-formatted hustle battle event with a mission to get dancers comfortable beyond social environments, learn to groove to various genres with different partners, and provide consistent opportunities for dancers to grow.</p>
+                <p>We host Jack &amp; Jill and 7 to Smoke style battles for NewStyle, Classic, and Latin Hustle dancers. Represent your hustle style and step out of your comfort zone!</p>
+            </div>
+
+            <div class="home-rules">
+                <h2>7 to Smoke Battle Rules</h2>
+
+                <div class="rules-grid">
+                    <div class="rule-card">
+                        <h3>Battle Style</h3>
+                        <ul>
+                            <li>Leaders and followers line up separately; the first 2 from each side enter the battle</li>
+                            <li>1 round face to face, 1 min each, 1 song</li>
+                            <li>Leader and follower are separately judged</li>
+                            <li>Winners earn 1 point per round, accumulated through the season</li>
+                            <li>Winning leader and follower stay in the round until they lose</li>
+                            <li>Dancers winning 7 rounds straight will be the winner</li>
+                            <li>The battle ends in 60 min if no one wins 7 rounds straight</li>
+                        </ul>
+                    </div>
+                    <div class="rule-card">
+                        <h3>Judging</h3>
+                        <ul>
+                            <li>Judges will be guest judges + random judges from the contestants</li>
+                            <li>Criteria: Connection, Technique, Musicality, Expression/Spirit</li>
+                            <li>Participant judges switch each round</li>
+                        </ul>
+                    </div>
+                    <div class="rule-card">
+                        <h3>Special Outcomes</h3>
+                        <ul>
+                            <li><strong>Tie:</strong> no points awarded; the tied dancers face each other again next round</li>
+                            <li><strong>No Contest:</strong> no points; previous dancers return to the queue and fresh opponents are selected</li>
+                        </ul>
+                    </div>
+                    <div class="rule-card">
+                        <h3>App-Specific Features</h3>
+                        <ul>
+                            <li><strong>Guest judges</strong> award 2 points and can vote Tie or No Contest</li>
+                            <li><strong>Contestant judges</strong> award 1 point and must pick a winner</li>
+                            <li>Simple mode lets contestant judges vote as a group</li>
+                            <li>Points to win is configurable (default 7, auto-calculate, or custom)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             <div class="home-actions">
                 <button id="go-to-battle" class="btn primary large">Start Battle</button>
-                <button id="go-to-upload" class="btn secondary large">Upload Results</button>
+                <button id="try-demo" class="btn secondary large">Try Demo</button>
             </div>
         </div>
 
@@ -87,21 +146,21 @@
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
             <div class="form-group">
-                <label for="randomize-order-toggle" style="display:flex;align-items:center;gap:8px;">
+                <label for="randomize-order-toggle">
                     <input type="checkbox" id="randomize-order-toggle" checked />
                     Randomize starting order
                 </label>
                 <p class="form-helper-text">Uncheck to keep contestants in the order entered.</p>
             </div>
             <div class="form-group">
-                <label for="contestant-judging-toggle" style="display:flex;align-items:center;gap:8px;">
+                <label for="contestant-judging-toggle">
                     <input type="checkbox" id="contestant-judging-toggle" checked />
                     Enable contestant judging
                 </label>
                 <p class="form-helper-text">Turn off to use guest judges only.</p>
             </div>
             <div class="form-group">
-                <label for="simple-contestant-judges" style="display:flex;align-items:center;gap:8px;">
+                <label for="simple-contestant-judges">
                     <input type="checkbox" id="simple-contestant-judges" />
                     Enable simple contestant judges (use a single proxy judge)
                 </label>
@@ -124,7 +183,21 @@
                 </div>
                 <p class="form-helper-text" id="points-to-win-helper">First contestant to reach 7 points wins.</p>
             </div>
-			<div class="form-group" id="playlist-url-group">
+            <div class="form-group">
+                <label for="spotify-toggle">
+                    <input type="checkbox" id="spotify-toggle" />
+                    Enable Spotify integration
+                </label>
+                <p class="form-helper-text">Link a Spotify playlist to automatically assign songs to each round.</p>
+            </div>
+            <div class="form-group" id="spotify-auth-group" style="display:none;">
+                <div class="spotify-auth-row">
+                    <button type="button" id="spotify-auth-setup-btn" class="btn secondary">Connect Spotify</button>
+                    <span id="spotify-auth-status" class="spotify-status spotify-status--disconnected">Not connected</span>
+                </div>
+                <p class="form-helper-text">Authenticate with Spotify before starting the battle to enable playback.</p>
+            </div>
+            <div class="form-group" id="playlist-url-group">
                 <label for="playlist-url">Spotify Playlist URL (optional):</label>
                 <input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/..." />
             </div>
@@ -135,14 +208,15 @@
         </div>
 
         <div id="battle-screen" class="screen">
-            <h1 id="battle-title">Battle</h1>
-            
+            <div class="round-header-new">
+                <div class="round-badge" id="round-badge">Round <span id="round-number">1</span></div>
+                <h2 id="battle-title" style="display:none">Voting</h2>
+                <p class="vote-progress" id="vote-progress"></p>
+            </div>
+
             <div class="round-header">
                 <div class="round-info-container">
                     <div class="round-content">
-                        <div id="current-round" class="round-info">
-                            <h2>Round <span id="round-number">1</span></h2>
-                        </div>
 
                         <div id="song-input-section" class="song-input-container">
                             <h3>Song Information</h3>
@@ -155,7 +229,7 @@
                             <div id="playlist-embed"></div>
                         </div>
 
-                        <div id="current-matchup" class="matchups">
+                        <div id="current-matchup" class="matchups matchup-card">
                             <div class="matchup">
                                 <h3>Pair 1</h3>
                                 <div class="pair">
@@ -208,6 +282,20 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div id="next-up-section" class="next-up-section" style="display:none;">
+                            <h3>Next Up</h3>
+                            <div class="next-up-container">
+                                <div class="next-up-item">
+                                    <span class="next-up-role">Lead</span>
+                                    <span class="next-up-name" id="next-up-lead">—</span>
+                                </div>
+                                <div class="next-up-item">
+                                    <span class="next-up-role">Follow</span>
+                                    <span class="next-up-name" id="next-up-follow">—</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="scores-display">
@@ -227,7 +315,6 @@
             </div>
 
             <div id="combined-voting" class="combined-voting-section">
-                <h2>Voting</h2>
                 <div class="voting-container">
                     <div id="lead-voting" class="voting-section">
                         <h3>Voting for Leads</h3>
@@ -248,10 +335,26 @@
                     </div>
                 </div>
                 
-                <div class="vote-submission">
-                    <button id="submit-votes" class="btn primary">Confirm Votes</button>
+                <div class="submit-area">
+                    <button id="submit-votes" class="btn primary large">Confirm Votes</button>
+                </div>
+                <div class="battle-actions">
                     <button id="undo-round" class="btn secondary" disabled>Undo Round</button>
                     <button id="end-battle-early" class="btn warning">End Battle Early</button>
+                </div>
+
+                <div class="standings-card" id="mini-leaderboard">
+                    <h3>Standings</h3>
+                    <div class="standings-columns">
+                        <div class="standings-col">
+                            <h4>Leads</h4>
+                            <div id="mini-lead-standings"></div>
+                        </div>
+                        <div class="standings-col">
+                            <h4>Follows</h4>
+                            <div id="mini-follow-standings"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- End battle early confirmation modal -->

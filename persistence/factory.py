@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 class RepositoryFactory:
     """
     Factory for creating game repositories with optional fallback.
-    
+
     Supports creating a PostgreSQL repository with automatic fallback
     to in-memory storage when the database is unavailable.
     """
-    
+
     @staticmethod
     def create_repository(
         database_url: Optional[str] = None,
@@ -38,15 +38,15 @@ class RepositoryFactory:
     ) -> GameRepositoryInterface:
         """
         Create a game repository based on configuration.
-        
+
         Args:
             database_url: PostgreSQL connection URL. If None, uses memory repository.
             fallback_enabled: If True, falls back to memory on database failure.
             expiration_seconds: Game expiration time in seconds.
-            
+
         Returns:
             A GameRepositoryInterface implementation
-            
+
         Raises:
             PersistenceError: If database connection fails and fallback is disabled
         """
@@ -54,7 +54,7 @@ class RepositoryFactory:
         if not database_url:
             logger.info("No DATABASE_URL configured, using in-memory repository")
             return MemoryGameRepository(expiration_seconds=expiration_seconds)
-        
+
         # Try to create PostgreSQL repository
         try:
             repo = PostgresGameRepository(
@@ -75,12 +75,12 @@ class RepositoryFactory:
 class FallbackRepository(GameRepositoryInterface):
     """
     Repository wrapper that provides automatic fallback on errors.
-    
+
     Wraps a primary repository (PostgreSQL) and falls back to a
     secondary repository (memory) when operations fail, with the
     ability to sync back to primary when it recovers.
     """
-    
+
     def __init__(
         self,
         primary: GameRepositoryInterface,
@@ -89,7 +89,7 @@ class FallbackRepository(GameRepositoryInterface):
     ):
         """
         Initialize the fallback repository.
-        
+
         Args:
             primary: The primary repository (usually PostgreSQL)
             fallback: The fallback repository (usually memory)
@@ -98,26 +98,26 @@ class FallbackRepository(GameRepositoryInterface):
         self.primary = primary
         self.fallback = fallback
         self.retry_interval_seconds = retry_interval_seconds
-        
+
         self._using_fallback = False
         self._last_primary_attempt = 0
         self._lock = threading.RLock()
-    
+
     def _should_retry_primary(self) -> bool:
         """Check if we should attempt to use primary again."""
         if not self._using_fallback:
             return True
         return (time.time() - self._last_primary_attempt) > self.retry_interval_seconds
-    
+
     def _try_primary(self, operation, *args, **kwargs):
         """
         Try an operation on primary, fall back on failure.
-        
+
         Args:
             operation: Name of the operation method
             *args: Positional arguments
             **kwargs: Keyword arguments
-            
+
         Returns:
             Result of the operation
         """
@@ -126,75 +126,75 @@ class FallbackRepository(GameRepositoryInterface):
                 try:
                     self._last_primary_attempt = time.time()
                     result = getattr(self.primary, operation)(*args, **kwargs)
-                    
+
                     if self._using_fallback:
                         logger.info("Primary repository recovered")
                         self._using_fallback = False
-                    
+
                     return result
                 except PersistenceError as e:
                     if not self._using_fallback:
                         logger.warning(f"Primary repository failed ({e}), switching to fallback")
                         self._using_fallback = True
-            
+
             # Use fallback
             return getattr(self.fallback, operation)(*args, **kwargs)
-    
+
     def create(self, game: Game) -> str:
-        return self._try_primary('create', game)
-    
+        return self._try_primary("create", game)
+
     def get(self, session_id: str) -> Optional[Game]:
         # First try primary
-        result = self._try_primary('get', session_id)
-        
+        result = self._try_primary("get", session_id)
+
         # If not found in primary but we're using fallback, check fallback
         if result is None and self._using_fallback:
             result = self.fallback.get(session_id)
-        
+
         return result
-    
+
     def save(self, session_id: str, game: Game) -> bool:
-        return self._try_primary('save', session_id, game)
-    
+        return self._try_primary("save", session_id, game)
+
     def delete(self, session_id: str) -> bool:
-        return self._try_primary('delete', session_id)
-    
+        return self._try_primary("delete", session_id)
+
     def exists(self, session_id: str) -> bool:
-        result = self._try_primary('exists', session_id)
-        
+        result = self._try_primary("exists", session_id)
+
         # If not found in primary but we're using fallback, check fallback
         if not result and self._using_fallback:
             result = self.fallback.exists(session_id)
-        
+
         return result
-    
+
     def cleanup_expired(self) -> int:
         count = 0
-        
+
         # Cleanup both repositories
         try:
             count += self.primary.cleanup_expired()
         except PersistenceError:
             pass
-        
+
         count += self.fallback.cleanup_expired()
         return count
-    
+
     def list_sessions(self) -> list:
         sessions = set()
-        
+
         # Get from primary
         try:
             sessions.update(self.primary.list_sessions())
         except PersistenceError:
             pass
-        
+
         # Get from fallback if in use
         if self._using_fallback:
             sessions.update(self.fallback.list_sessions())
-        
+
         return list(sessions)
-    
+
     @property
     def is_using_fallback(self) -> bool:
         """Check if currently using fallback repository."""
@@ -204,10 +204,10 @@ class FallbackRepository(GameRepositoryInterface):
 class CleanupScheduler:
     """
     Background scheduler for periodic cleanup of expired games.
-    
+
     Runs cleanup on a configured interval in a background thread.
     """
-    
+
     def __init__(
         self,
         repository: GameRepositoryInterface,
@@ -215,7 +215,7 @@ class CleanupScheduler:
     ):
         """
         Initialize the cleanup scheduler.
-        
+
         Args:
             repository: The repository to clean up
             interval_seconds: How often to run cleanup (default: 1 hour)
@@ -224,24 +224,24 @@ class CleanupScheduler:
         self.interval_seconds = interval_seconds
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
-    
+
     def start(self):
         """Start the background cleanup thread."""
         if self._thread and self._thread.is_alive():
             return
-        
+
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         logger.info(f"Cleanup scheduler started (interval: {self.interval_seconds}s)")
-    
+
     def stop(self):
         """Stop the background cleanup thread."""
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
         logger.info("Cleanup scheduler stopped")
-    
+
     def _run(self):
         """Background thread main loop."""
         while not self._stop_event.wait(self.interval_seconds):
@@ -251,7 +251,7 @@ class CleanupScheduler:
                     logger.info(f"Scheduled cleanup removed {removed} expired games")
             except Exception as e:
                 logger.error(f"Cleanup failed: {e}")
-    
+
     def cleanup_now(self) -> int:
         """Run cleanup immediately (synchronously)."""
         try:
@@ -259,4 +259,3 @@ class CleanupScheduler:
         except Exception as e:
             logger.error(f"Immediate cleanup failed: {e}")
             return 0
-

@@ -25,6 +25,13 @@ let roundTransitionInProgress = false; // Track if round transition overlay is s
 let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
 let pendingQueueAnimationData = null; // Store data for queue animation after stagger
 let isUndoInProgress = false; // Skip animations during undo operations
+let isSubmitting = false; // Prevent double-submission
+
+// Demo mode state
+let demoMode = false;
+let demoStep = 0;
+let demoOverlay = null; // Container for backdrop + hint
+let demoWaitingForAction = false; // True when waiting for user interaction before enabling Next
 
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
@@ -48,6 +55,56 @@ try {
         localStorage.setItem('spotify.enabled', 'false');
     }
 } catch (_) {}
+
+// Apply mode (layout) and color (light/dark) independently
+// Color preferences are stored per mode so admin and display can differ
+function applyTheme() {
+    const mode = displayMode ? 'display' : 'admin';
+    document.documentElement.setAttribute('data-mode', mode);
+
+    const colorKey = `color-preference-${mode}`;
+    const savedColor = localStorage.getItem(colorKey);
+    const color = savedColor || (displayMode ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-color', color);
+}
+
+function toggleTheme() {
+    const mode = displayMode ? 'display' : 'admin';
+    const current = document.documentElement.getAttribute('data-color');
+    const next = (current === 'light') ? 'dark' : 'light';
+    localStorage.setItem(`color-preference-${mode}`, next);
+    document.documentElement.setAttribute('data-color', next);
+}
+
+// Toast notification system
+function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
+}
+
+// Loading state utility
+function setButtonLoading(button, loading) {
+    if (!button) return;
+    if (loading) {
+        button.dataset.originalText = button.textContent;
+        button.classList.add('loading');
+        button.disabled = true;
+    } else {
+        button.classList.remove('loading');
+        button.disabled = false;
+        if (button.dataset.originalText) {
+            button.textContent = button.dataset.originalText;
+        }
+    }
+}
 
 // DOM Elements (initialized in the DOMContentLoaded event)
 let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
@@ -83,7 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Detect display mode early (before DOM element setup)
     detectDisplayMode();
-    
+    applyTheme();
+
     // Initialize DOM elements
     homeScreen = document.getElementById('home-screen');
     uploadScreen = document.getElementById('upload-screen');
@@ -273,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Home screen navigation
     goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
-    goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
     
     // Upload screen
     battleFileUpload.addEventListener('change', handleFileSelect);
@@ -374,83 +432,75 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
 
-		// Theme toggle
-    const themeToggle = document.getElementById('theme-toggle');
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
+    // Theme toggles (nav bar + floating for display mode)
+    document.querySelectorAll('#theme-toggle, #theme-toggle-floating').forEach(btn => {
+        btn.addEventListener('click', toggleTheme);
+    });
+
+    // Nav pills are status indicators only — no click navigation
+    document.querySelectorAll('.nav-pill').forEach(pill => {
+        pill.style.pointerEvents = 'none';
+        pill.style.cursor = 'default';
+    });
+
+    // Spotify integration UI gating
+    const playlistUrlGroup = document.getElementById('playlist-url-group');
+    const spotifyToggleCheckbox = document.getElementById('spotify-toggle');
+    const spotifyAuthGroup = document.getElementById('spotify-auth-group');
+    const spotifyAuthSetupBtn = document.getElementById('spotify-auth-setup-btn');
+    const spotifyAuthStatus = document.getElementById('spotify-auth-status');
+    if (localStorage.getItem('spotify.enabled') === null) {
+        localStorage.setItem('spotify.enabled', 'false');
     }
-    if (themeToggle) {
-        themeToggle.addEventListener('click', () => {
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            const next = isDark ? 'light' : 'dark';
-            if (next === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            } else {
-                document.documentElement.removeAttribute('data-theme');
-            }
-            localStorage.setItem('theme', next);
+    // Initialize checkbox from localStorage
+    if (spotifyToggleCheckbox) {
+        spotifyToggleCheckbox.checked = localStorage.getItem('spotify.enabled') === 'true';
+        spotifyToggleCheckbox.addEventListener('change', () => {
+            localStorage.setItem('spotify.enabled', spotifyToggleCheckbox.checked ? 'true' : 'false');
+            applySpotifyEnabledUI();
         });
     }
+    // Auth button on setup page
+    if (spotifyAuthSetupBtn) {
+        spotifyAuthSetupBtn.addEventListener('click', () => {
+            startSpotifyAuth(window.location.origin + window.location.pathname);
+        });
+    }
+    function applySpotifyEnabledUI() {
+        const isOn = localStorage.getItem('spotify.enabled') === 'true';
+        if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
+        if (spotifyAuthGroup) spotifyAuthGroup.style.display = isOn ? '' : 'none';
+        if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
+        if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
+        // Check auth status when Spotify is enabled
+        if (isOn) checkSpotifyAuthStatus();
+    }
+    async function checkSpotifyAuthStatus() {
+        if (!spotifyAuthStatus || !spotifyAuthSetupBtn) return;
+        try {
+            const resp = await fetch('/api/spotify/user_token?session_id=preauth');
+            if (resp.ok) {
+                spotifyAuthStatus.textContent = 'Connected';
+                spotifyAuthStatus.className = 'spotify-status spotify-status--connected';
+                spotifyAuthSetupBtn.textContent = 'Reconnect Spotify';
+            } else {
+                spotifyAuthStatus.textContent = 'Not connected';
+                spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
+                spotifyAuthSetupBtn.textContent = 'Connect Spotify';
+            }
+        } catch (_) {
+            spotifyAuthStatus.textContent = 'Not connected';
+            spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
+            spotifyAuthSetupBtn.textContent = 'Connect Spotify';
+        }
+    }
+    applySpotifyEnabledUI();
 
-		// Spotify integration toggle and UI gating
-		const spotifyToggle = document.getElementById('spotify-toggle');
-		const playlistUrlGroup = document.getElementById('playlist-url-group');
-		if (localStorage.getItem('spotify.enabled') === null) {
-			localStorage.setItem('spotify.enabled', 'false');
-		}
-		function applySpotifyEnabledUI() {
-			const isOn = localStorage.getItem('spotify.enabled') === 'true';
-			if (playlistUrlGroup) playlistUrlGroup.style.display = isOn ? '' : 'none';
-			if (songInputSection) songInputSection.style.display = isOn ? '' : 'none';
-			if (playlistEmbedSection) playlistEmbedSection.style.display = isOn && playlistModeEnabled ? '' : 'none';
-			if (spotifyToggle) spotifyToggle.textContent = isOn ? 'Disable Spotify Integration' : 'Enable Spotify Integration';
-			// Dynamically add/remove home auth button
-			try {
-				const home = document.getElementById('home-screen');
-				const actions = home ? home.querySelector('.home-actions') : null;
-				if (actions) {
-					let btn = document.getElementById('spotify-auth-btn');
-					if (isOn && !btn) {
-						btn = document.createElement('button');
-						btn.id = 'spotify-auth-btn';
-						btn.className = 'btn secondary large';
-						btn.textContent = 'Authenticate Spotify';
-						btn.onclick = () => {
-							if (localStorage.getItem('spotify.enabled') === 'true') {
-								startSpotifyAuth(window.location.origin + window.location.pathname);
-							}
-						};
-						actions.appendChild(btn);
-					} else if (!isOn && btn) {
-						actions.removeChild(btn);
-					}
-				}
-			} catch (_) {}
-		}
-		applySpotifyEnabledUI();
-		if (spotifyToggle) {
-			spotifyToggle.addEventListener('click', () => {
-				const current = localStorage.getItem('spotify.enabled') === 'true';
-				const next = !current;
-				localStorage.setItem('spotify.enabled', next ? 'true' : 'false');
-				if (!next) {
-					// Turning off disables any active playlist mode and clears embeds
-					disablePlaylistMode('Spotify integration disabled');
-				} else {
-					// Turning on: if we have a playlist URL (in input or stored for session), try enabling playlist mode
-					const inputUrl = playlistUrlInput ? (playlistUrlInput.value || '').trim() : '';
-					let toEnable = inputUrl;
-					if (!toEnable && sessionId) {
-						try { toEnable = localStorage.getItem(`playlist:url:${sessionId}`) || ''; } catch (_) {}
-					}
-					if (toEnable) {
-						try { maybeEnablePlaylistMode(toEnable).catch(()=>{}); } catch (_) {}
-					}
-				}
-				applySpotifyEnabledUI();
-			});
-		}
+    // Hide nav bar on home screen initially (showScreen isn't called on first load)
+    const navBar = document.getElementById('nav-bar');
+    if (navBar && !displayMode) {
+        navBar.style.display = 'none';
+    }
 
     // Initialize display mode if detected (this goes directly to battle screen)
     if (displayMode) {
@@ -459,15 +509,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Functions
+function updateNavPills(activeScreen) {
+    document.querySelectorAll('.nav-pill').forEach(pill => {
+        pill.classList.remove('active');
+        if (activeScreen && pill.dataset.screen === activeScreen.id) {
+            pill.classList.add('active');
+        }
+    });
+}
+
 function showScreen(screen) {
     homeScreen.classList.remove('active');
     uploadScreen.classList.remove('active');
     setupScreen.classList.remove('active');
     roundScreen.classList.remove('active');
     resultsScreen.classList.remove('active');
-    
+
     screen.classList.add('active');
-    
+
+    // Update nav pills to reflect current screen
+    updateNavPills(screen);
+
+    // Hide nav on home screen and in display mode
+    const navBar = document.getElementById('nav-bar');
+    if (navBar) {
+        navBar.style.display = (screen === homeScreen || displayMode) ? 'none' : '';
+    }
+
     // Reset error messages when switching screens
     uploadError.textContent = '';
     uploadError.classList.remove('visible');
@@ -650,48 +718,53 @@ function showRoundTransitionOverlay(roundNumber, callback) {
 const STAGGER_DELAY_MS = 150; // Delay between each section
 const STAGGER_ANIMATION_MS = 400; // Duration of each fade-in
 
+// Get the display mode sections to animate (grid children in display mode)
+function getDisplaySections() {
+    return [
+        document.getElementById('current-matchup'),
+        document.querySelector('.judges'),
+        document.getElementById('next-up-section'),
+        document.querySelector('.scores-display')
+    ].filter(Boolean);
+}
+
 // Hide sections before overlay (so they're invisible during overlay)
 function hideSectionsForTransition() {
-    const roundContent = document.querySelector('.round-content');
-    if (!roundContent) return;
-    
-    roundContent.classList.add('sections-transitioning');
+    getDisplaySections().forEach(section => {
+        section.style.opacity = '0';
+    });
 }
 
 function performStaggeredFadeIn(callback) {
-    const roundContent = document.querySelector('.round-content');
-    if (!roundContent) {
+    const sections = getDisplaySections();
+    if (sections.length === 0) {
         if (callback) callback();
         return;
     }
-    
-    // Sections to animate in order (excluding battle graphic and participant order)
-    const sections = [
-        roundContent.querySelector('.round-info'),
-        roundContent.querySelector('.matchups'),
-        roundContent.querySelector('.judges')
-    ].filter(Boolean);
-    
-    // Sections should already be hidden via sections-transitioning class
-    // Apply staggered fade-in classes (animation starts at opacity:0 due to 'both' fill mode)
+
+    // Ensure all sections start hidden
+    sections.forEach(section => {
+        section.style.opacity = '0';
+        section.style.transform = 'translateY(12px)';
+    });
+
+    // Stagger each section's fade-in
     sections.forEach((section, index) => {
-        section.classList.add('section-fade-in', `stagger-${index + 1}`);
+        setTimeout(() => {
+            section.style.transition = `opacity ${STAGGER_ANIMATION_MS}ms ease, transform ${STAGGER_ANIMATION_MS}ms ease`;
+            section.style.opacity = '1';
+            section.style.transform = 'translateY(0)';
+        }, index * STAGGER_DELAY_MS);
     });
-    
-    // Use double requestAnimationFrame to ensure animation classes have been painted
-    // before removing the transitioning class (prevents flicker)
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            roundContent.classList.remove('sections-transitioning');
-        });
-    });
-    
+
     // Calculate total animation time and run callback after completion
     const totalAnimationTime = (sections.length - 1) * STAGGER_DELAY_MS + STAGGER_ANIMATION_MS + 50;
     setTimeout(() => {
-        // Clean up animation classes
-        sections.forEach((section, index) => {
-            section.classList.remove('section-fade-in', `stagger-${index + 1}`);
+        // Clean up inline styles
+        sections.forEach(section => {
+            section.style.transition = '';
+            section.style.opacity = '';
+            section.style.transform = '';
         });
         if (callback) callback();
     }, totalAnimationTime);
@@ -720,12 +793,9 @@ function applyDisplayModeUI() {
     const roundResults = document.getElementById('round-results');
     if (roundResults) roundResults.style.display = 'none';
     
-    // Hide theme and spotify toggles for cleaner display
-    const themeToggle = document.getElementById('theme-toggle');
-    if (themeToggle) themeToggle.parentElement.style.display = 'none';
-    
-    const spotifyToggle = document.getElementById('spotify-toggle');
-    if (spotifyToggle) spotifyToggle.parentElement.style.display = 'none';
+    // Hide spotify-related controls for cleaner display
+    const spotifyToggleEl = document.getElementById('spotify-toggle');
+    if (spotifyToggleEl) spotifyToggleEl.parentElement.style.display = 'none';
 }
 
 async function initDisplayMode() {
@@ -843,6 +913,9 @@ function renderFromState(state) {
 
     // Scoreboard
     updateLiveGraphicFromState(state);
+
+    // Update mini leaderboard
+    updateMiniLeaderboard();
 
     // Update contestant order visualization
     updateContestantOrder(state);
@@ -1049,6 +1122,33 @@ function updateLiveGraphicFromState(state) {
     renderColumn(orderedFollows, followMap, winnerFollowName, liveFollowGraphic, canShowFollowCrown);
 }
 
+function updateMiniLeaderboard() {
+    const leadContainer = document.getElementById('mini-lead-standings');
+    const followContainer = document.getElementById('mini-follow-standings');
+    if (!leadContainer || !followContainer) return;
+
+    function renderStandings(contestants, container) {
+        container.innerHTML = '';
+        if (!contestants || contestants.length === 0) return;
+        const sorted = [...contestants].sort((a, b) => (b.points || 0) - (a.points || 0));
+        sorted.forEach((c, i) => {
+            const row = document.createElement('div');
+            row.className = 'standings-row';
+            const name = c.name || c;
+            const points = c.points || 0;
+            row.innerHTML =
+                '<span class="rank">' + (i + 1) + '</span>' +
+                '<span class="name">' + name + '</span>' +
+                '<div class="bar-track"><div class="fill" style="width: ' + Math.min((points / 7) * 100, 100) + '%"></div></div>' +
+                '<span class="pts">' + points + '</span>';
+            container.appendChild(row);
+        });
+    }
+
+    renderStandings(currentLeads, leadContainer);
+    renderStandings(currentFollows, followContainer);
+}
+
 function updateContestantOrder(state) {
     // Update the contestant order visualization showing who's competing now and who's next
     const leadOrderList = document.getElementById('lead-order-list');
@@ -1113,6 +1213,13 @@ function updateContestantOrder(state) {
     previousLeadOrder = [...leadOrder];
     previousFollowOrder = [...followOrder];
     previousRoundNumber = currentRoundNumber;
+
+    // Update "Next Up" section for display mode
+    // The queue order shows: index 0 and 1 are currently competing, index 2 is next up
+    const nextUpLead = document.getElementById('next-up-lead');
+    const nextUpFollow = document.getElementById('next-up-follow');
+    if (nextUpLead) nextUpLead.textContent = leadOrder[2] || '—';
+    if (nextUpFollow) nextUpFollow.textContent = followOrder[2] || '—';
 }
 
 function renderOrderListImmediate(order, container, role, loserNames) {
@@ -1333,7 +1440,7 @@ function updateSessionIdDisplay() {
         sessionIdDisplay.className = 'session-id-display';
         return;
     }
-    const isMinimized = localStorage.getItem('session-info-minimized') === 'true';
+    const isMinimized = localStorage.getItem('session-info-minimized') !== 'false';
     if (sessionId && !displayMode) {
         const baseUrl = window.location.origin + window.location.pathname;
         const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
@@ -1419,10 +1526,11 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
     const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
 
     if (!leads || !follows || !judges) {
-        alert('Please enter names for leads, follows, and judges.');
+        showToast('Please enter names for leads, follows, and judges.', 'error');
         return;
     }
 
+    setButtonLoading(startCompetitionBtn, true);
     try {
         const response = await fetch('/api/start_game', {
             method: 'POST',
@@ -1481,12 +1589,22 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         
         // Render from canonical state
         await refreshCanonicalState();
-        
+
         // Show round screen
         showScreen(roundScreen);
+
+        // Demo mode hook: advance past the "Start Competition" step
+        if (demoMode) {
+            const currentStep = DEMO_STEPS[demoStep];
+            if (currentStep && currentStep.action === 'wait-for-start') {
+                enableDemoNextButton();
+            }
+        }
     } catch (error) {
         console.error('Error starting game:', error);
-        alert('Failed to start the competition. Please try again.');
+        showToast('Failed to start game: ' + (error.message || 'Unknown error'), 'error');
+    } finally {
+        setButtonLoading(startCompetitionBtn, false);
     }
 }
 
@@ -1654,127 +1772,88 @@ function setupVotingUI() {
 }
 
 function createJudgeVotingCard(judgeName, isGuest, voteType) {
-    const judgeCard = document.createElement('div');
-    judgeCard.className = 'judge-card';
-    judgeCard.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
-    
-    const judgeNameEl = document.createElement('div');
+    const row = document.createElement('div');
+    row.className = 'judge-row';
+    row.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
+
+    // Avatar with initials
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    const initials = judgeName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    avatar.textContent = initials;
+
+    // Judge name
+    const judgeNameEl = document.createElement('span');
     judgeNameEl.className = 'judge-name';
     judgeNameEl.textContent = judgeName + (isGuest ? ' (Guest)' : '');
-    
-    const voteOptions = document.createElement('div');
-    voteOptions.className = 'vote-options';
-    
+
+    // Vote chips container
+    const voteChips = document.createElement('div');
+    voteChips.className = 'vote-chips';
+
     const option1Name = voteType === 'lead' ? lead1Name.textContent : follow1Name.textContent;
     const option2Name = voteType === 'lead' ? lead2Name.textContent : follow2Name.textContent;
     const isProxyContestantJudges = simpleContestantJudgesEnabled && judgeName === PROXY_CONTESTANT_JUDGES_NAME;
-    
-    // Option 1 button
-    const option1Btn = document.createElement('button');
-    option1Btn.className = 'vote-btn vote-option-1';
-    option1Btn.textContent = option1Name;
-    option1Btn.addEventListener('click', () => {
-        // If voting is locked, don't allow changes
+
+    // Helper to handle chip click
+    function onChipClick(chip, voteValue) {
         if (votingLocked[voteType]) return;
-        
-        // Remove selected class from all buttons in this judge card
-        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // Add selected class to this button
-        option1Btn.classList.add('selected');
-        recordVote(judgeName, 1, voteType);
-        judgeCard.classList.add('voted');
-    });
-    
-    // Mixed option (proxy contestant judges only)
-    // Only enabled when at least one guest judge votes tie or no contest,
-    // AND at least one guest judge voted for a specific contestant (1 or 2).
-    // If all guest votes are only tie/no contest, mixed is disabled since there's no winner to base the split on.
-    let mixedBtn = null;
-    if (isProxyContestantJudges) {
-        mixedBtn = document.createElement('button');
-        mixedBtn.className = 'vote-btn vote-option-mixed';
-        mixedBtn.textContent = 'Mixed';
-        mixedBtn.disabled = true; // Initially disabled, enabled dynamically by updateMixedButtonState()
-        mixedBtn.addEventListener('click', () => {
-            if (votingLocked[voteType]) return;
-            if (mixedBtn.disabled) return;
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            mixedBtn.classList.add('selected');
-            recordVote(judgeName, VOTE_MIXED, voteType);
-            judgeCard.classList.add('voted');
-        });
+        if (chip.disabled) return;
+        voteChips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+        row.classList.add('voted');
+        avatar.classList.add('voted');
+        recordVote(judgeName, voteValue, voteType);
     }
 
-    // Option 2 button
-    const option2Btn = document.createElement('button');
-    option2Btn.className = 'vote-btn vote-option-2';
-    option2Btn.textContent = option2Name;
-    option2Btn.addEventListener('click', () => {
-        // If voting is locked, don't allow changes
-        if (votingLocked[voteType]) return;
-        
-        // Remove selected class from all buttons in this judge card
-        voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // Add selected class to this button
-        option2Btn.classList.add('selected');
-        recordVote(judgeName, 2, voteType);
-        judgeCard.classList.add('voted');
-    });
-    
-    voteOptions.appendChild(option1Btn);
-    if (mixedBtn) voteOptions.appendChild(mixedBtn);
-    voteOptions.appendChild(option2Btn);
-    
-    // Tie and No Contest options for guest judges
-    if (isGuest) {
-        const tieBtn = document.createElement('button');
-        tieBtn.className = 'vote-btn vote-option-tie';
-        tieBtn.textContent = 'Tie';
-        tieBtn.addEventListener('click', () => {
-            // If voting is locked, don't allow changes
-            if (votingLocked[voteType]) return;
-            
-            // Remove selected class from all buttons in this judge card
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            // Add selected class to this button
-            tieBtn.classList.add('selected');
-            recordVote(judgeName, 3, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
-        const noContestBtn = document.createElement('button');
-        noContestBtn.className = 'vote-btn vote-option-nocontest';
-        noContestBtn.textContent = 'No Contest';
-        noContestBtn.addEventListener('click', () => {
-            // If voting is locked, don't allow changes
-            if (votingLocked[voteType]) return;
-            
-            // Remove selected class from all buttons in this judge card
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            // Add selected class to this button
-            noContestBtn.classList.add('selected');
-            recordVote(judgeName, 4, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
-        voteOptions.appendChild(tieBtn);
-        voteOptions.appendChild(noContestBtn);
+    // Option 1 chip
+    const option1Chip = document.createElement('button');
+    option1Chip.className = 'vote-chip';
+    option1Chip.textContent = option1Name;
+    option1Chip.addEventListener('click', () => onChipClick(option1Chip, 1));
+
+    // Mixed chip (proxy contestant judges only)
+    let mixedChip = null;
+    if (isProxyContestantJudges) {
+        mixedChip = document.createElement('button');
+        mixedChip.className = 'vote-chip vote-option-mixed';
+        mixedChip.textContent = 'Mixed';
+        mixedChip.disabled = true;
+        mixedChip.style.display = 'none'; // Hidden until a guest judge picks Tie or NC
+        mixedChip.addEventListener('click', () => onChipClick(mixedChip, VOTE_MIXED));
     }
-    
-    judgeCard.appendChild(judgeNameEl);
-    judgeCard.appendChild(voteOptions);
-    
-    return judgeCard;
+
+    // Option 2 chip
+    const option2Chip = document.createElement('button');
+    option2Chip.className = 'vote-chip';
+    option2Chip.textContent = option2Name;
+    option2Chip.addEventListener('click', () => onChipClick(option2Chip, 2));
+
+    voteChips.appendChild(option1Chip);
+    if (mixedChip) voteChips.appendChild(mixedChip);
+    voteChips.appendChild(option2Chip);
+
+    // Tie and No Contest chips for guest judges
+    if (isGuest) {
+        const tieChip = document.createElement('button');
+        tieChip.className = 'vote-chip tie-chip';
+        tieChip.textContent = 'Tie';
+        tieChip.addEventListener('click', () => onChipClick(tieChip, 3));
+
+        const ncChip = document.createElement('button');
+        ncChip.className = 'vote-chip nc-chip';
+        ncChip.textContent = 'NC';
+        ncChip.addEventListener('click', () => onChipClick(ncChip, 4));
+
+        voteChips.appendChild(tieChip);
+        voteChips.appendChild(ncChip);
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(judgeNameEl);
+    row.appendChild(voteChips);
+
+    return row;
 }
 
 function recordVote(judgeName, voteOption, voteType) {
@@ -1784,10 +1863,26 @@ function recordVote(judgeName, voteOption, voteType) {
         followVotes[judgeName] = voteOption;
     }
     console.log(`${voteType} vote recorded for ${judgeName}: ${voteOption}`);
-    
+
+    // Demo mode hook: advance once ALL votes for a role are cast
+    if (demoMode) {
+        const currentStep = DEMO_STEPS[demoStep];
+        if (currentStep && (
+            (currentStep.action === 'wait-for-lead-vote' && voteType === 'lead') ||
+            (currentStep.action === 'wait-for-follow-vote' && voteType === 'follow')
+        )) {
+            const votes = voteType === 'lead' ? leadVotes : followVotes;
+            const allJudges = buildJudgeRoster();
+            const allVoted = allJudges.every(j => votes[j] !== undefined);
+            if (allVoted) {
+                enableDemoNextButton();
+            }
+        }
+    }
+
     // Update mixed button availability based on tie/no contest votes
     updateMixedButtonState(voteType);
-    
+
     // Update submit button state based on voting progress
     updateSubmitButtonState();
 }
@@ -1831,7 +1926,8 @@ function updateMixedButtonState(voteType) {
     const allOnlyTieOrNoContest = allGuestsOnlyTieOrNoContest(voteType);
     const shouldEnable = hasTieOrNoContest && !allOnlyTieOrNoContest;
     mixedBtn.disabled = !shouldEnable;
-    
+    mixedBtn.style.display = shouldEnable ? '' : 'none';
+
     // If mixed was selected but is now disabled, clear the selection
     if (!shouldEnable && mixedBtn.classList.contains('selected')) {
         mixedBtn.classList.remove('selected');
@@ -1842,6 +1938,8 @@ function updateMixedButtonState(voteType) {
             delete followVotes[PROXY_CONTESTANT_JUDGES_NAME];
         }
         proxyCard.classList.remove('voted');
+        const avatar = proxyCard.querySelector('.avatar');
+        if (avatar) avatar.classList.remove('voted');
     }
 }
 
@@ -2036,20 +2134,22 @@ function hideWinnerPreview(voteType) {
 function lockVoting(voteType) {
     votingLocked[voteType] = true;
     
-    // Get all judge cards for this vote type
+    // Get all judge rows for this vote type
     const container = voteType === 'lead' ? leadJudgesContainer : followJudgesContainer;
-    const judgeCards = container.querySelectorAll('.judge-card');
-    
-    // Add a 'locked' class to all judge cards and vote buttons
-    judgeCards.forEach(card => {
-        card.classList.add('locked');
-        card.querySelectorAll('.vote-btn').forEach(btn => {
-            btn.classList.add('locked');
+    const judgeRows = container.querySelectorAll('.judge-row');
+
+    // Add a 'locked' class to all judge rows and vote chips
+    judgeRows.forEach(row => {
+        row.classList.add('locked');
+        row.querySelectorAll('.vote-chip').forEach(chip => {
+            chip.classList.add('locked');
         });
     });
 }
 
 async function submitCombinedVotes(options = {}) {
+    if (isSubmitting) return;
+    isSubmitting = true;
     const allJudges = buildJudgeRoster();
     
     // Check if all judges have voted for both lead and follow
@@ -2063,11 +2163,12 @@ async function submitCombinedVotes(options = {}) {
         if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             showVoteConfirmError(msg);
         } else {
-            alert(msg);
+            showToast(msg, 'error');
         }
+        isSubmitting = false;
         return;
     }
-    
+
     // Convert votes to arrays for API, expanding the proxy judge when simple contestant judges is enabled.
     const leadVotesArray = buildEffectiveVotesArray('lead');
     const followVotesArray = buildEffectiveVotesArray('follow');
@@ -2096,9 +2197,9 @@ async function submitCombinedVotes(options = {}) {
     // Lock voting and disable the button to prevent further changes
     lockVoting('lead');
     lockVoting('follow');
-    submitVotesBtn.disabled = true;
+    setButtonLoading(submitVotesBtn, true);
     if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = true;
-    
+
     try {
         const response = await fetch('/api/judge_combined', {
             method: 'POST',
@@ -2123,6 +2224,14 @@ async function submitCombinedVotes(options = {}) {
         
         // Close the modal on successful submit
         closeVoteConfirmModal();
+
+        // Demo mode hook: advance past the "Submit" step
+        if (demoMode) {
+            const currentStep = DEMO_STEPS[demoStep];
+            if (currentStep && currentStep.action === 'wait-for-submit') {
+                enableDemoNextButton();
+            }
+        }
 
         const shouldAutoAdvance = options && options.autoAdvance === true;
         const showResultsInRound = !shouldAutoAdvance || data.game_finished;
@@ -2162,7 +2271,10 @@ async function submitCombinedVotes(options = {}) {
         // Update live graphic immediately with the latest canonical state
         try {
             const state = await fetchCanonicalState();
-            if (state) updateLiveGraphicFromState(state);
+            if (state) {
+                updateLiveGraphicFromState(state);
+                updateMiniLeaderboard();
+            }
         } catch (_) {}
 
         // Auto-advance to the next round (unless game finished)
@@ -2173,7 +2285,7 @@ async function submitCombinedVotes(options = {}) {
                 // If next round fails, allow the user to try again
                 votingLocked.lead = false;
                 votingLocked.follow = false;
-                submitVotesBtn.disabled = false;
+                setButtonLoading(submitVotesBtn, false);
                 if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
             }
         }
@@ -2183,12 +2295,15 @@ async function submitCombinedVotes(options = {}) {
         if (voteConfirmModal && !voteConfirmModal.classList.contains('hidden')) {
             showVoteConfirmError(msg);
         } else {
-            alert(msg);
+            showToast('Error submitting votes', 'error');
         }
         votingLocked.lead = false; // Unlock voting if there's an error
         votingLocked.follow = false;
-        submitVotesBtn.disabled = false;
+        setButtonLoading(submitVotesBtn, false);
         if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.disabled = false;
+    } finally {
+        isSubmitting = false;
+        setButtonLoading(submitVotesBtn, false);
     }
 }
 
@@ -2209,13 +2324,13 @@ async function goToNextRound() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
         console.error('Error starting next round:', error);
-        alert('Failed to start the next round. Please try again.');
+        showToast('Failed to advance round', 'error');
     }
 }
 
 async function undoLastRound() {
     if (!sessionId) {
-        alert('No active session to undo.');
+        showToast('No active session to undo.', 'error');
         return;
     }
 
@@ -2232,7 +2347,7 @@ async function undoLastRound() {
         const data = await response.json();
 
         if (!response.ok) {
-            alert(data.error || 'Failed to undo round.');
+            showToast(data.error || 'Failed to undo round.', 'error');
             return;
         }
 
@@ -2256,7 +2371,7 @@ async function undoLastRound() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
         console.error('Error undoing round:', error);
-        alert('Failed to undo round. Please try again.');
+        showToast('Failed to undo round', 'error');
         isUndoInProgress = false;
     } finally {
         // Re-enable button will happen via renderFromState after refreshCanonicalState
@@ -2606,6 +2721,8 @@ async function displayResults(data) {
     } else {
         console.warn('No round history data available');
     }
+
+    showToast('Battle complete!', 'success');
 }
 
 // Update the displayRoundHistory function
@@ -2629,15 +2746,15 @@ function displayRoundHistory(rounds) {
         // Add click handler for accordion functionality
         header.addEventListener('click', () => {
             const content = header.nextElementSibling;
-            const isActive = header.classList.contains('active');
-            
-            // Toggle active state
+            const isOpen = content.classList.contains('open');
+
+            // Toggle open state
             header.classList.toggle('active');
-            content.classList.toggle('active');
-            
+            content.classList.toggle('open');
+
             // Update the plus/minus symbol
             const symbol = header.querySelector('span:last-child');
-            symbol.textContent = isActive ? '+' : '-';
+            symbol.textContent = isOpen ? '+' : '-';
         });
         
         // Create the content
@@ -2890,7 +3007,7 @@ async function preparePlaylistSongForRound(roundNum) {
             currentRoundTrack = null;
             disablePlaylistMode('No more unused tracks available.');
             if (localStorage.getItem('spotify.enabled') === 'true') {
-                try { alert('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.'); } catch (_) {}
+                try { showToast('No more unused tracks left in the playlist. Please enter a song URL manually for remaining rounds.', 'error', 5000); } catch (_) {}
             }
             return;
         }
@@ -3009,7 +3126,7 @@ async function downloadBattleData() {
         
     } catch (error) {
         console.error('Error downloading battle data:', error);
-        alert('Failed to download battle data. Please try again.');
+        showToast('Failed to download battle data', 'error');
     }
 }
 
@@ -3048,7 +3165,7 @@ function endGame() {
     })
     .catch(error => {
         console.error('Error ending game:', error);
-        alert('Failed to end the competition. Please try again.');
+        showToast('Failed to end the competition', 'error');
     });
 } 
 
@@ -3096,7 +3213,7 @@ async function maybeEnablePlaylistMode(url) {
     } catch (e) {
         console.warn('Failed to enable playlist mode:', e);
         disablePlaylistMode('Could not fetch playlist tracks. Falling back to manual song input.');
-        try { alert('Could not load Spotify playlist. Falling back to manual song input.'); } catch (_) {}
+        try { showToast('Could not load Spotify playlist. Falling back to manual song input.', 'error'); } catch (_) {}
     }
 }
 
@@ -3211,7 +3328,7 @@ async function playCurrentRoundTrackViaSpotify() {
             } else {
                 const err = await resp.json().catch(() => ({}));
                 console.warn('Failed to start playback:', err);
-                alert('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.');
+                showToast('Unable to start Spotify playback. Please ensure a Premium account and open Spotify on this device.', 'error', 5000);
             }
         }
     } catch (e) {
@@ -3282,4 +3399,403 @@ async function ensureUserAuthForPlayback() {
             }).catch(() => {});
         }
     } catch (_) {}
+})();
+
+// ============================================================
+// Demo Mode
+// ============================================================
+
+const DEMO_STEPS = [
+    {
+        title: 'Welcome to Hustle n\' Tussle!',
+        content: 'This guided demo will walk you through setting up and running a dance battle. We\'ve pre-filled some sample data so you can try the full flow. Click Next to get started.',
+        screen: 'setup',
+        position: 'center'
+    },
+    {
+        title: 'Lead & Follow Names',
+        content: 'Enter the names of your lead and follow dancers, separated by commas. We\'ve filled in 4 of each for this demo.',
+        screen: 'setup',
+        target: '#lead-names',
+        position: 'bottom'
+    },
+    {
+        title: 'Guest Judges',
+        content: 'Guest judges award 2 points per vote and can vote Tie or No Contest. We\'ve added 2 judges for this demo.',
+        screen: 'setup',
+        target: '#judge-names',
+        position: 'bottom'
+    },
+    {
+        title: 'Contestant Judging',
+        content: 'When enabled, non-competing dancers also judge (1 point each). Simple mode lets them vote as a single group. Try toggling these options!',
+        screen: 'setup',
+        target: '#simple-contestant-judges',
+        position: 'bottom'
+    },
+    {
+        title: 'Points to Win',
+        content: 'Set the threshold to win. Default is 7 points. Auto-calculate uses (contestants - 1). For this quick demo, we\'ll use a low value.',
+        screen: 'setup',
+        target: '#points-to-win-mode',
+        position: 'bottom'
+    },
+    {
+        title: 'Start the Competition',
+        content: 'Everything looks good! Click "Start Competition" to begin the battle.',
+        screen: 'setup',
+        target: '#start-competition',
+        position: 'top',
+        action: 'wait-for-start'
+    },
+    {
+        title: 'The Matchup',
+        content: 'Two pairs are competing. Pair 1 vs Pair 2 — each has a lead and a follow. Judges vote on leads and follows separately.',
+        screen: 'battle',
+        target: '#current-matchup',
+        position: 'bottom'
+    },
+    {
+        title: 'Cast Your Lead Votes',
+        content: 'Each judge votes for who danced better as a lead. Guest judges can also vote Tie or No Contest. Try casting a vote now!',
+        screen: 'battle',
+        target: '#lead-voting',
+        position: 'bottom',
+        action: 'wait-for-lead-vote'
+    },
+    {
+        title: 'Cast Your Follow Votes',
+        content: 'Now vote for the follows. Same rules apply — guest judges get Tie/NC options, contestant judges must pick a winner.',
+        screen: 'battle',
+        target: '#follow-voting',
+        position: 'top',
+        action: 'wait-for-follow-vote'
+    },
+    {
+        title: 'Submit Your Votes',
+        content: 'Once all judges have voted for both leads and follows, click "Confirm Votes" to submit. The round results will appear and the next round starts automatically.',
+        screen: 'battle',
+        target: '#submit-votes',
+        position: 'top',
+        action: 'wait-for-submit'
+    },
+    {
+        title: 'Round 2 — Try the Mixed Vote',
+        content: 'Now try this: have one guest judge vote Tie or No Contest for a lead, while the other guest judge picks a winner. When you do, the "Mixed" button will appear on the contestant judge row — use it when contestants are split (not unanimously voting for one dancer).',
+        screen: 'battle',
+        target: '#lead-voting',
+        position: 'bottom',
+        action: 'wait-for-lead-vote'
+    },
+    {
+        title: 'Finish Round 2 Follows',
+        content: 'Cast the follow votes for round 2 as well.',
+        screen: 'battle',
+        target: '#follow-voting',
+        position: 'top',
+        action: 'wait-for-follow-vote'
+    },
+    {
+        title: 'Submit Round 2',
+        content: 'Submit your votes to see the results and battle graphic update.',
+        screen: 'battle',
+        target: '#submit-votes',
+        position: 'top',
+        action: 'wait-for-submit'
+    },
+    {
+        title: 'The Battle Graphic',
+        content: 'The battle graphic shows each dancer\'s score progression across rounds. It updates in real-time as you submit votes. This is also visible in Display Mode for audiences.',
+        screen: 'battle',
+        target: '.scores-display',
+        position: 'left'
+    },
+    {
+        title: 'Demo Complete!',
+        content: 'You now know the basics of running a Hustle n\' Tussle battle. You can continue exploring this demo battle, or exit to start a real one. Have fun!',
+        screen: 'battle',
+        position: 'center'
+    }
+];
+
+function startDemo() {
+    demoMode = true;
+    demoStep = 0;
+
+    // Pre-fill setup form with sample data
+    showScreen(setupScreen);
+    if (leadNamesInput) leadNamesInput.value = 'Alex, Blake, Casey, Dana';
+    if (followNamesInput) followNamesInput.value = 'Jordan, Morgan, Riley, Skyler';
+    if (judgeNamesInput) judgeNamesInput.value = 'Sam, Pat';
+    if (contestantJudgingToggle) contestantJudgingToggle.checked = true;
+    if (simpleContestantJudgesInput) {
+        simpleContestantJudgesInput.checked = true;
+        simpleContestantJudgesInput.disabled = false;
+    }
+    // Set points to win to custom low value for quick demo
+    if (pointsToWinModeSelect) {
+        pointsToWinModeSelect.value = 'custom';
+        if (customPointsContainer) customPointsContainer.style.display = '';
+        if (pointsToWinInput) pointsToWinInput.value = '3';
+        if (pointsToWinHelper) pointsToWinHelper.textContent = 'First contestant to reach 3 points wins.';
+    }
+
+    createDemoOverlay();
+    showDemoStep(0);
+}
+
+function createDemoOverlay() {
+    // Remove existing if any
+    removeDemoOverlay();
+
+    demoOverlay = document.createElement('div');
+    demoOverlay.id = 'demo-overlay';
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'demo-backdrop';
+    backdrop.addEventListener('click', (e) => e.stopPropagation());
+    demoOverlay.appendChild(backdrop);
+
+    const hint = document.createElement('div');
+    hint.className = 'demo-hint';
+    hint.id = 'demo-hint';
+    demoOverlay.appendChild(hint);
+
+    document.body.appendChild(demoOverlay);
+}
+
+function removeDemoOverlay() {
+    if (demoOverlay) {
+        demoOverlay.remove();
+        demoOverlay = null;
+    }
+    // Clean up any highlights
+    document.querySelectorAll('.demo-highlight').forEach(el => el.classList.remove('demo-highlight'));
+}
+
+function showDemoStep(index) {
+    demoStep = index;
+    const step = DEMO_STEPS[index];
+    if (!step) return;
+
+    // Switch to the correct screen if needed
+    if (step.screen) {
+        const screenMap = { setup: setupScreen, battle: roundScreen, results: resultsScreen };
+        const targetScreen = screenMap[step.screen];
+        if (targetScreen) {
+            const activeScreen = document.querySelector('.screen.active');
+            if (activeScreen !== targetScreen) {
+                showScreen(targetScreen);
+            }
+        }
+    }
+
+    const hint = document.getElementById('demo-hint');
+    if (!hint) return;
+
+    // Clear old highlights
+    document.querySelectorAll('.demo-highlight').forEach(el => el.classList.remove('demo-highlight'));
+
+    // Check if this step has a wait-for action
+    const isInteractive = !!step.action;
+    demoWaitingForAction = isInteractive;
+
+    // Show/hide backdrop: hide on interactive steps so user can interact with the page
+    const backdrop = demoOverlay ? demoOverlay.querySelector('.demo-backdrop') : null;
+    if (backdrop) {
+        backdrop.style.display = isInteractive ? 'none' : '';
+    }
+
+    // Build hint content
+    const totalSteps = DEMO_STEPS.length;
+    const isFirst = index === 0;
+    const isLast = index === totalSteps - 1;
+
+    hint.innerHTML = `
+        <div class="demo-hint-drag-handle">
+            <div class="demo-hint-step">Step ${index + 1} of ${totalSteps}</div>
+            <span class="demo-drag-icon">⠿</span>
+        </div>
+        <h4>${step.title}</h4>
+        <p>${step.content}</p>
+        <div class="demo-hint-actions">
+            <button class="btn secondary" id="demo-exit-btn">Exit Demo</button>
+            ${!isFirst ? '<button class="btn secondary" id="demo-prev-btn">Previous</button>' : ''}
+            ${isLast
+                ? '<button class="btn primary" id="demo-finish-btn">Finish</button>'
+                : (isInteractive ? '' : '<button class="btn primary" id="demo-next-btn">Next</button>')
+            }
+        </div>
+    `;
+
+    // Position the hint
+    positionDemoHint(step);
+
+    // Make hint draggable
+    makeDemoHintDraggable(hint);
+
+    // Wire up buttons
+    const exitBtn = document.getElementById('demo-exit-btn');
+    const prevBtn = document.getElementById('demo-prev-btn');
+    const nextBtn = document.getElementById('demo-next-btn');
+    const finishBtn = document.getElementById('demo-finish-btn');
+
+    if (exitBtn) exitBtn.addEventListener('click', exitDemo);
+    if (prevBtn) prevBtn.addEventListener('click', () => showDemoStep(demoStep - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => showDemoStep(demoStep + 1));
+    if (finishBtn) finishBtn.addEventListener('click', exitDemo);
+}
+
+function positionDemoHint(step) {
+    const hint = document.getElementById('demo-hint');
+    if (!hint) return;
+
+    // Remove any old arrow
+    const oldArrow = hint.querySelector('.demo-arrow');
+    if (oldArrow) oldArrow.remove();
+
+    if (!step.target || step.position === 'center') {
+        // Center the hint on screen
+        hint.style.top = '50%';
+        hint.style.left = '50%';
+        hint.style.transform = 'translate(-50%, -50%)';
+        return;
+    }
+
+    const targetEl = document.querySelector(step.target);
+    if (!targetEl) {
+        // Fallback to center
+        hint.style.top = '50%';
+        hint.style.left = '50%';
+        hint.style.transform = 'translate(-50%, -50%)';
+        return;
+    }
+
+    // Highlight the target
+    targetEl.classList.add('demo-highlight');
+
+    // Scroll target into view
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Wait a tick for scroll to settle, then position
+    requestAnimationFrame(() => {
+        const rect = targetEl.getBoundingClientRect();
+        const hintRect = hint.getBoundingClientRect();
+        const margin = 16;
+
+        hint.style.transform = '';
+        let top, left;
+
+        switch (step.position) {
+            case 'bottom':
+                top = rect.bottom + margin;
+                left = rect.left + rect.width / 2 - hintRect.width / 2;
+                break;
+            case 'top':
+                top = rect.top - hintRect.height - margin;
+                left = rect.left + rect.width / 2 - hintRect.width / 2;
+                break;
+            case 'left':
+                top = rect.top + rect.height / 2 - hintRect.height / 2;
+                left = rect.left - hintRect.width - margin;
+                break;
+            case 'right':
+                top = rect.top + rect.height / 2 - hintRect.height / 2;
+                left = rect.right + margin;
+                break;
+            default:
+                top = rect.bottom + margin;
+                left = rect.left;
+        }
+
+        // Clamp to viewport
+        left = Math.max(8, Math.min(left, window.innerWidth - hintRect.width - 8));
+        top = Math.max(8, Math.min(top, window.innerHeight - hintRect.height - 8));
+
+        hint.style.top = top + 'px';
+        hint.style.left = left + 'px';
+
+        // Add arrow
+        const arrow = document.createElement('div');
+        arrow.className = 'demo-arrow';
+        switch (step.position) {
+            case 'bottom': arrow.classList.add('demo-arrow--bottom'); break;
+            case 'top': arrow.classList.add('demo-arrow--top'); break;
+            case 'left': arrow.classList.add('demo-arrow--left'); break;
+            case 'right': arrow.classList.add('demo-arrow--right'); break;
+        }
+        hint.appendChild(arrow);
+    });
+}
+
+function makeDemoHintDraggable(hint) {
+    const handle = hint.querySelector('.demo-hint-drag-handle');
+    if (!handle) return;
+
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+
+    function onPointerDown(e) {
+        // Don't drag if clicking a button
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = hint.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        hint.style.transform = '';
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', onPointerUp);
+        e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        hint.style.left = (startLeft + dx) + 'px';
+        hint.style.top = (startTop + dy) + 'px';
+        // Remove arrow when user manually moves the hint
+        const arrow = hint.querySelector('.demo-arrow');
+        if (arrow) arrow.remove();
+    }
+
+    function onPointerUp() {
+        isDragging = false;
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+    }
+
+    handle.addEventListener('pointerdown', onPointerDown);
+}
+
+function enableDemoNextButton() {
+    if (!demoMode || !demoWaitingForAction) return;
+    demoWaitingForAction = false;
+    // Auto-advance to the next step
+    showDemoStep(demoStep + 1);
+}
+
+function exitDemo() {
+    demoMode = false;
+    demoStep = 0;
+    demoWaitingForAction = false;
+    removeDemoOverlay();
+    resetAndGoHome();
+}
+
+// Wire up the "Try Demo" button when DOM is ready
+(function initDemoButton() {
+    function wireDemo() {
+        const tryDemoBtn = document.getElementById('try-demo');
+        if (tryDemoBtn) {
+            tryDemoBtn.addEventListener('click', startDemo);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireDemo);
+    } else {
+        wireDemo();
+    }
 })();

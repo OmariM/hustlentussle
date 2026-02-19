@@ -622,97 +622,75 @@ class DebugTools {
     
     // Helper method to create judge voting card
     createJudgeVotingCard(judgeName, isGuest, voteType) {
-        const judgeCard = document.createElement('div');
-        judgeCard.className = 'judge-card';
-        judgeCard.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
-        
-        const judgeNameEl = document.createElement('div');
+        const row = document.createElement('div');
+        row.className = 'judge-row';
+        row.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
+
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        const initials = judgeName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+        avatar.textContent = initials;
+
+        const judgeNameEl = document.createElement('span');
         judgeNameEl.className = 'judge-name';
         judgeNameEl.textContent = judgeName + (isGuest ? ' (Guest)' : '');
-        
-        const voteOptions = document.createElement('div');
-        voteOptions.className = 'vote-options';
-        
-        const option1Name = voteType === 'lead' ? 
-            document.getElementById('lead1-name').textContent : 
+
+        const voteChips = document.createElement('div');
+        voteChips.className = 'vote-chips';
+
+        const option1Name = voteType === 'lead' ?
+            document.getElementById('lead1-name').textContent :
             document.getElementById('follow1-name').textContent;
-        const option2Name = voteType === 'lead' ? 
-            document.getElementById('lead2-name').textContent : 
+        const option2Name = voteType === 'lead' ?
+            document.getElementById('lead2-name').textContent :
             document.getElementById('follow2-name').textContent;
-        
-        // Option 1 button
-        const option1Btn = document.createElement('button');
-        option1Btn.className = 'vote-btn vote-option-1';
-        option1Btn.textContent = option1Name;
-        option1Btn.addEventListener('click', () => {
+
+        const self = this;
+        function onChipClick(chip, voteValue) {
             if (window.votingLocked && window.votingLocked[voteType]) return;
-            
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            option1Btn.classList.add('selected');
-            this.recordVote(judgeName, 1, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
-        // Option 2 button
-        const option2Btn = document.createElement('button');
-        option2Btn.className = 'vote-btn vote-option-2';
-        option2Btn.textContent = option2Name;
-        option2Btn.addEventListener('click', () => {
-            if (window.votingLocked && window.votingLocked[voteType]) return;
-            
-            voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            option2Btn.classList.add('selected');
-            this.recordVote(judgeName, 2, voteType);
-            judgeCard.classList.add('voted');
-        });
-        
+            voteChips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
+            chip.classList.add('selected');
+            row.classList.add('voted');
+            avatar.classList.add('voted');
+            self.recordVote(judgeName, voteValue, voteType);
+        }
+
+        // Option 1 chip
+        const option1Chip = document.createElement('button');
+        option1Chip.className = 'vote-chip';
+        option1Chip.textContent = option1Name;
+        option1Chip.addEventListener('click', () => onChipClick(option1Chip, 1));
+
+        // Option 2 chip
+        const option2Chip = document.createElement('button');
+        option2Chip.className = 'vote-chip';
+        option2Chip.textContent = option2Name;
+        option2Chip.addEventListener('click', () => onChipClick(option2Chip, 2));
+
+        voteChips.appendChild(option1Chip);
+        voteChips.appendChild(option2Chip);
+
         // Add guest judge options if applicable
         if (isGuest) {
-            // Tie button
-            const tieBtn = document.createElement('button');
-            tieBtn.className = 'vote-btn vote-option-3';
-            tieBtn.textContent = 'Tie';
-            tieBtn.addEventListener('click', () => {
-                if (window.votingLocked && window.votingLocked[voteType]) return;
-                
-                voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                    btn.classList.remove('selected');
-                });
-                tieBtn.classList.add('selected');
-                this.recordVote(judgeName, 3, voteType);
-                judgeCard.classList.add('voted');
-            });
-            
-            // No Contest button
-            const noContestBtn = document.createElement('button');
-            noContestBtn.className = 'vote-btn vote-option-4';
-            noContestBtn.textContent = 'No Contest';
-            noContestBtn.addEventListener('click', () => {
-                if (window.votingLocked && window.votingLocked[voteType]) return;
-                
-                voteOptions.querySelectorAll('.vote-btn').forEach(btn => {
-                    btn.classList.remove('selected');
-                });
-                noContestBtn.classList.add('selected');
-                this.recordVote(judgeName, 4, voteType);
-                judgeCard.classList.add('voted');
-            });
-            
-            voteOptions.appendChild(tieBtn);
-            voteOptions.appendChild(noContestBtn);
+            const tieChip = document.createElement('button');
+            tieChip.className = 'vote-chip tie-chip';
+            tieChip.textContent = 'Tie';
+            tieChip.addEventListener('click', () => onChipClick(tieChip, 3));
+
+            const ncChip = document.createElement('button');
+            ncChip.className = 'vote-chip nc-chip';
+            ncChip.textContent = 'NC';
+            ncChip.addEventListener('click', () => onChipClick(ncChip, 4));
+
+            voteChips.appendChild(tieChip);
+            voteChips.appendChild(ncChip);
         }
-        
-        voteOptions.appendChild(option1Btn);
-        voteOptions.appendChild(option2Btn);
-        
-        judgeCard.appendChild(judgeNameEl);
-        judgeCard.appendChild(voteOptions);
-        
-        return judgeCard;
+
+        row.appendChild(avatar);
+        row.appendChild(judgeNameEl);
+        row.appendChild(voteChips);
+
+        return row;
     }
     
     // Helper method to record votes
@@ -760,14 +738,14 @@ class DebugTools {
                 return;
             }
             
-            // Get all judge cards
-            const judgeCards = Array.from(container.querySelectorAll('.judge-card'));
+            // Get all judge rows
+            const judgeCards = Array.from(container.querySelectorAll('.judge-row'));
             if (judgeCards.length === 0) {
-                alert('No judge cards found.');
+                alert('No judge rows found.');
                 return;
             }
-            
-            console.log(`Found ${judgeCards.length} judge cards for ${isLead ? 'leads' : 'follows'}`);
+
+            console.log(`Found ${judgeCards.length} judge rows for ${isLead ? 'leads' : 'follows'}`);
             
             // Initialize vote tracking if needed
             if (!window.leadVotes) window.leadVotes = {};
@@ -781,7 +759,7 @@ class DebugTools {
                     const judgeName = card.querySelector('.judge-name').textContent.replace(' (Guest)', '');
                     console.log(`Processing judge ${i + 1}/${judgeCards.length}: ${judgeName}`);
                     
-                    const buttons = Array.from(card.querySelectorAll('.vote-btn'));
+                    const buttons = Array.from(card.querySelectorAll('.vote-chip'));
                     console.log(`Found ${buttons.length} buttons for judge ${judgeName}`);
                     
                     if (buttons.length > 0) {

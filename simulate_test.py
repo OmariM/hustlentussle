@@ -1,5 +1,6 @@
 from game_logic import Game
 
+
 def simulate_simple_game():
     leads = ["Logan", "Ian", "Rob", "Zane"]
     follows = ["Emma", "Tati", "Reina", "Diane"]
@@ -29,6 +30,6 @@ def simulate_simple_game():
     # Round 3
     print_pairs()
 
+
 if __name__ == "__main__":
     simulate_simple_game()
-
