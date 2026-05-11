@@ -1296,6 +1296,10 @@ input[type="checkbox"] {
     border-color: var(--accent);
 }
 
+[data-color="dark"] .badge.win {
+    color: #fff;
+}
+
 /* ============================================================
    19. Toast Notifications
    ============================================================ */
