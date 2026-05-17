@@ -1296,6 +1296,10 @@ input[type="checkbox"] {
     border-color: var(--accent);
 }
 
+[data-color="dark"] .badge.win {
+    color: #fff;
+}
+
 /* ============================================================
    19. Toast Notifications
    ============================================================ */
@@ -1414,6 +1418,46 @@ input[type="checkbox"] {
     max-width: 1400px;
 }
 
+/* Display mode: lock to viewport height on desktop — no scrolling or zooming needed */
+@media (min-width: 641px) {
+    [data-mode="display"] body { overflow: hidden; }
+
+    [data-mode="display"] .container {
+        height: 100vh;
+        box-sizing: border-box;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding-top: max(12px, 1.5vh);
+        padding-bottom: max(12px, 1.5vh);
+    }
+
+    [data-mode="display"] #battle-screen {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    [data-mode="display"] .round-header-new {
+        flex-shrink: 0;
+        margin-bottom: clamp(8px, 1.5vh, 20px);
+    }
+
+    [data-mode="display"] .round-header {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    [data-mode="display"] .round-info-container {
+        height: 100%;
+        overflow: hidden;
+    }
+}
+
 /* Round transition overlay */
 .round-transition-overlay {
     position: fixed;
@@ -1477,6 +1521,57 @@ input[type="checkbox"] {
 /* Hide old informational judge name lists — redundant with judge vote rows */
 .judges-section {
     display: none;
+}
+
+/* Show contestant judges in admin view */
+[data-mode="admin"] .judges-section:last-child {
+    display: block;
+}
+
+/* Admin: contestant judges + next-up side by side as cards */
+[data-mode="admin"] .round-context {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+[data-mode="admin"] .judges {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg);
+}
+
+/* Display mode: strip the wrapper so .judges and #next-up-section
+   remain direct grid children of .round-info-container */
+[data-mode="display"] .round-context {
+    display: contents;
+}
+
+[data-mode="admin"] .judges-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+[data-mode="admin"] .judges-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+[data-mode="admin"] .judge-item {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-secondary);
 }
 
 /* ============================================================
@@ -1558,7 +1653,7 @@ input[type="checkbox"] {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto auto;
-    gap: var(--space-lg);
+    gap: clamp(8px, 2.2vh, 24px);
 }
 
 [data-mode="display"] .round-content {
@@ -1578,7 +1673,7 @@ input[type="checkbox"] {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px 24px;
+    padding: clamp(10px, 1.85vh, 20px) 24px;
     align-self: stretch;
 }
 
@@ -1586,7 +1681,7 @@ input[type="checkbox"] {
     grid-column: 2;
     grid-row: 2;
     align-self: stretch;
-    padding: 20px 24px;
+    padding: clamp(10px, 1.85vh, 20px) 24px;
 }
 
 /* Row 3: battle graphic spans full width */
@@ -1597,7 +1692,7 @@ input[type="checkbox"] {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px 24px;
+    padding: clamp(10px, 1.85vh, 20px) 24px;
 }
 
 /* Hide elements not needed on projector display */
@@ -1611,52 +1706,54 @@ input[type="checkbox"] {
     display: block;
 }
 
-/* Display mode: show next-up section */
-[data-mode="display"] #next-up-section {
+/* Show next-up section in both admin and display mode */
+[data-mode="display"] #next-up-section,
+[data-mode="admin"] #next-up-section {
     display: block !important;
 }
 
-/* Display mode: consistent typography scale for projector legibility
-   Card headings: 20px uppercase  |  Content: 22px  |  Pills: 22px / 10px 24px  |  Matchup: 36px */
+/* Display mode: typography scales with viewport height via clamp()
+   At 1080px: matchup 36px, pills 22px, headings 20px, graphic rows 22px
+   Gracefully compresses on shorter screens down to readable minimums */
 
 [data-mode="display"] .round-badge {
-    font-size: 18px;
+    font-size: clamp(13px, 1.67vh, 18px);
     padding: 6px 20px;
 }
 
 /* -- Matchup card -- */
 [data-mode="display"] .matchups.matchup-card .matchup {
-    padding: var(--space-xl) 24px;
+    padding: clamp(10px, 3vh, 32px) 24px;
 }
 
 [data-mode="display"] .matchups.matchup-card .matchup h3 {
-    font-size: 16px;
+    font-size: clamp(12px, 1.48vh, 16px);
 }
 
 [data-mode="display"] .matchups.matchup-card .pair {
-    font-size: 36px;
+    font-size: clamp(20px, 3.3vh, 36px);
 }
 
 [data-mode="display"] .matchups.matchup-card .vs {
-    font-size: 36px;
+    font-size: clamp(20px, 3.3vh, 36px);
     width: 80px;
 }
 
 /* -- Contestant Judges card -- */
 [data-mode="display"] .judges-section h3 {
-    font-size: 20px;
-    margin-bottom: var(--space-md);
+    font-size: clamp(13px, 1.85vh, 20px);
+    margin-bottom: clamp(8px, 1.1vh, 16px);
 }
 
 [data-mode="display"] .judges-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: clamp(6px, 1.1vh, 12px);
 }
 
 [data-mode="display"] .judge-item {
-    font-size: 22px;
-    padding: 10px 24px;
+    font-size: clamp(14px, 2vh, 22px);
+    padding: clamp(6px, 0.9vh, 10px) clamp(14px, 2.2vw, 24px);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -1664,27 +1761,27 @@ input[type="checkbox"] {
 
 /* -- Battle Graphic card -- */
 [data-mode="display"] .scores-display h3 {
-    font-size: 20px;
+    font-size: clamp(13px, 1.85vh, 20px);
 }
 
 [data-mode="display"] .graphic-column h4 {
-    font-size: 18px;
+    font-size: clamp(12px, 1.67vh, 18px);
 }
 
 [data-mode="display"] .graphic-row {
-    font-size: 22px;
-    padding: 10px 0;
+    font-size: clamp(13px, 2vh, 22px);
+    padding: clamp(5px, 0.9vh, 10px) 0;
 }
 
 [data-mode="display"] .graphic-rank {
-    min-width: 36px;
-    font-size: 22px;
+    min-width: clamp(22px, 3.3vh, 36px);
+    font-size: clamp(13px, 2vh, 22px);
 }
 
 [data-mode="display"] .badge {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
+    width: clamp(20px, 3vh, 32px);
+    height: clamp(20px, 3vh, 32px);
+    font-size: clamp(10px, 1.3vh, 14px);
 }
 
 /* Next Up section styling */
@@ -1706,8 +1803,8 @@ input[type="checkbox"] {
 
 /* -- Next Up card -- */
 [data-mode="display"] .next-up-section h3 {
-    font-size: 20px;
-    margin-bottom: var(--space-md);
+    font-size: clamp(13px, 1.85vh, 20px);
+    margin-bottom: clamp(8px, 1.1vh, 16px);
 }
 
 .next-up-container {
@@ -1740,11 +1837,11 @@ input[type="checkbox"] {
 [data-mode="display"] .next-up-container {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: clamp(6px, 1.1vh, 12px);
 }
 
 [data-mode="display"] .next-up-item {
-    padding: 10px 24px;
+    padding: clamp(6px, 0.9vh, 10px) clamp(14px, 2.2vw, 24px);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -1752,12 +1849,12 @@ input[type="checkbox"] {
 }
 
 [data-mode="display"] .next-up-role {
-    font-size: 16px;
+    font-size: clamp(11px, 1.48vh, 16px);
     min-width: unset;
 }
 
 [data-mode="display"] .next-up-name {
-    font-size: 22px;
+    font-size: clamp(14px, 2vh, 22px);
 }
 
 .scores-display h3 {
@@ -2048,6 +2145,8 @@ a {
 @media (max-width: 640px) {
     .matchup-card { flex-direction: column; }
     .matchup-divider { width: 100%; height: 40px; }
+    .matchups.matchup-card .vs,
+    [data-mode="display"] .matchups.matchup-card .vs { width: 100%; padding: 8px 0; }
     .judge-row { flex-wrap: wrap; }
     .judge-row .vote-chips { width: 100%; justify-content: flex-start; }
     .vote-chip { flex: 1; text-align: center; min-width: calc(50% - 3px); }
