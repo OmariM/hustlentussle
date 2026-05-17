@@ -170,6 +170,18 @@ class Game:
         self.tie_lead_pair = None
         self.tie_follow_pair = None
 
+        # Tie-break mode state
+        self.tiebreak_active = False
+        self.tiebreak_lead_needed = False
+        self.tiebreak_follow_needed = False
+        self.tiebreak_leads_tied = []        # list of Contestant objects
+        self.tiebreak_follows_tied = []      # list of Contestant objects
+        self.tiebreak_sub_round = 0          # 0=setup, 1=sr1, 2=sr2, 3=voting
+        self.tiebreak_sub_round_1_pairings = []  # list of (lead_name, follow_name)
+        self.tiebreak_sub_round_2_pairings = []
+        self.tiebreak_lead_winner = None     # Contestant object
+        self.tiebreak_follow_winner = None   # Contestant object
+
         # Initialize previous pairs tracking
         self.previous_pairs = {}
 
@@ -840,6 +852,145 @@ class Game:
         all_follows.sort(key=lambda c: c.points, reverse=True)
 
         return all_leads, all_follows
+
+    # ------------------------------------------------------------------
+    # Tie-break methods
+    # ------------------------------------------------------------------
+
+    def detect_tiebreak_needs(self):
+        """Check if a tie-break is needed for either role after ending early.
+
+        Skips a role if that role already has a threshold winner
+        (has_winning_lead / has_winning_follow is True).
+        Returns a dict describing which roles need a tie-break and who is tied.
+        """
+        lead_needed = False
+        tied_lead_names = []
+        lead_max = 0
+
+        if not self.has_winning_lead and self.initial_leads:
+            lead_max = max(c.points for c in self.initial_leads)
+            tied = [c for c in self.initial_leads if c.points == lead_max]
+            if len(tied) >= 2:
+                lead_needed = True
+                self.tiebreak_leads_tied = tied
+                tied_lead_names = [c.name for c in tied]
+
+        follow_needed = False
+        tied_follow_names = []
+        follow_max = 0
+
+        if not self.has_winning_follow and self.initial_follows:
+            follow_max = max(c.points for c in self.initial_follows)
+            tied = [c for c in self.initial_follows if c.points == follow_max]
+            if len(tied) >= 2:
+                follow_needed = True
+                self.tiebreak_follows_tied = tied
+                tied_follow_names = [c.name for c in tied]
+
+        self.tiebreak_lead_needed = lead_needed
+        self.tiebreak_follow_needed = follow_needed
+
+        return {
+            'lead_needed': lead_needed,
+            'follow_needed': follow_needed,
+            'tied_leads': tied_lead_names,
+            'tied_follows': tied_follow_names,
+            'lead_max_points': lead_max,
+            'follow_max_points': follow_max,
+        }
+
+    def start_tiebreak(self):
+        """Enter tie-break mode without finishing the game yet."""
+        self.tiebreak_active = True
+        self.tiebreak_sub_round = 0
+        self.tiebreak_sub_round_1_pairings = []
+        self.tiebreak_sub_round_2_pairings = []
+        self.tiebreak_lead_winner = None
+        self.tiebreak_follow_winner = None
+
+    def set_tiebreak_partner_selections(self, lead_selections, follow_selections=None):
+        """Record partner selections and compute sub-round pairings.
+
+        lead_selections: {lead_name: follow_name} for each tied lead.
+        follow_selections: {follow_name: lead_name} for each tied follow (only
+            used when follows are also tied; otherwise ignored).
+
+        Sub-round 1: each tied lead with their chosen follow.
+        Sub-round 2: follows rotated by 1 (direct swap for N=2, cyclic for N>2).
+        Sets tiebreak_sub_round to 1.
+        """
+        tied_lead_names = [c.name for c in self.tiebreak_leads_tied]
+
+        sr1 = [(lead, lead_selections[lead]) for lead in tied_lead_names if lead in lead_selections]
+        self.tiebreak_sub_round_1_pairings = sr1
+
+        leads_in_order = [p[0] for p in sr1]
+        follows_in_order = [p[1] for p in sr1]
+        rotated = follows_in_order[1:] + follows_in_order[:1]
+        self.tiebreak_sub_round_2_pairings = list(zip(leads_in_order, rotated))
+
+        self.tiebreak_sub_round = 1
+
+    def advance_tiebreak_sub_round(self):
+        """Move to the next tie-break phase (1→2→3). Returns the new value."""
+        if self.tiebreak_sub_round < 3:
+            self.tiebreak_sub_round += 1
+        return self.tiebreak_sub_round
+
+    def judge_tiebreak(self, role, votes):
+        """Resolve tie-break voting for one role.
+
+        votes: list of (voter_name, decision) where decision is 1 or 2 only.
+        Guest judges count for 2 points, contestant judges for 1.
+        On equal scores the first contestant in the tied list wins.
+        Sets tiebreak_lead_winner or tiebreak_follow_winner.
+        Returns {'winner': name, 'loser': name, 'vote_tally': {name: score}}.
+        """
+        tied = self.tiebreak_leads_tied if role == 'lead' else self.tiebreak_follows_tied
+        if len(tied) < 2:
+            return None
+
+        c1, c2 = tied[0], tied[1]
+        s1 = s2 = 0
+        for voter, decision in votes:
+            weight = 2 if voter in self.guest_judges else 1
+            if decision == 1:
+                s1 += weight
+            elif decision == 2:
+                s2 += weight
+
+        winner, loser = (c1, c2) if s1 >= s2 else (c2, c1)
+
+        if role == 'lead':
+            self.tiebreak_lead_winner = winner
+        else:
+            self.tiebreak_follow_winner = winner
+
+        return {
+            'winner': winner.name,
+            'loser': loser.name,
+            'vote_tally': {c1.name: s1, c2.name: s2},
+        }
+
+    def finalize_tiebreak_results(self):
+        """Promote tie-break winners to overall winners and mark the game finished.
+
+        Awards +1 point to each tie-break winner so they rank above the
+        tied contestants they beat in the final standings.
+        """
+        if self.tiebreak_lead_needed and self.tiebreak_lead_winner:
+            self.tiebreak_lead_winner.points += 1
+            self.has_winning_lead = True
+            self.winning_lead = self.tiebreak_lead_winner
+
+        if self.tiebreak_follow_needed and self.tiebreak_follow_winner:
+            self.tiebreak_follow_winner.points += 1
+            self.has_winning_follow = True
+            self.winning_follow = self.tiebreak_follow_winner
+
+        self.tiebreak_active = False
+        self.state = 1
 
     def debug_state(self):
         """Print the current state of the game for debugging."""

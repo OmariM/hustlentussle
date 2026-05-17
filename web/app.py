@@ -752,96 +752,174 @@ def end_game():
     if not game:
         return jsonify({"error": "Invalid session ID"}), 400
 
-    # Mark the game as finished so display mode polling detects it
+    # Check for tie-break before marking the game finished
+    tiebreak_info = game.detect_tiebreak_needs()
+    if tiebreak_info['lead_needed'] or tiebreak_info['follow_needed']:
+        game.start_tiebreak()
+        repo.save(session_id, game)
+        judges = getattr(game.current_round, 'judges', {}) if game.current_round else {}
+        return jsonify({
+            'tiebreak_required': True,
+            'lead_needed': tiebreak_info['lead_needed'],
+            'follow_needed': tiebreak_info['follow_needed'],
+            'tied_leads': tiebreak_info['tied_leads'],
+            'tied_follows': tiebreak_info['tied_follows'],
+            'lead_max_points': tiebreak_info['lead_max_points'],
+            'follow_max_points': tiebreak_info['follow_max_points'],
+            'all_leads': [c.name for c in game.initial_leads],
+            'all_follows': [c.name for c in game.initial_follows],
+            'guest_judges': judges.get('guest', []),
+            'contestant_judges': judges.get('contestant', []),
+        })
+
+    # No tie-break needed — mark the game as finished and return results
     game.state = 1
     repo.save(session_id, game)
+    return jsonify(_format_end_game_results(game, session_id))
 
+
+def _format_end_game_results(game, session_id):
+    """Shared results-formatting logic used by end_game and tiebreak/finalize."""
     leads, follows = game.finalize_results()
 
-    # Format the results - include all leads
-    lead_results = []
-    # Get all leads from initial order to ensure we include everyone
     all_leads = [lead.name for lead in game.initial_leads]
-    # Create a dictionary of lead points for easy lookup
     lead_points = {lead.name: lead.points for lead in leads}
-
-    # Sort leads by points (descending) and then by name (ascending) for consistent ordering
     sorted_leads = sorted(all_leads, key=lambda x: (-lead_points.get(x, 0), x))
-
-    for idx, lead_name in enumerate(sorted_leads):
-        points = lead_points.get(lead_name, 0)
+    lead_results = []
+    for idx, name in enumerate(sorted_leads):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, "last_lead_winner") and game.last_lead_winner == lead_name
-        lead_results.append({"name": lead_name, "points": points, "medal": medal, "is_winner": is_winner})
+        is_winner = game.winning_lead and game.winning_lead.name == name
+        lead_results.append({"name": name, "points": lead_points.get(name, 0), "medal": medal, "is_winner": is_winner})
 
-    # Format the results - include all follows
-    follow_results = []
-    # Get all follows from initial order to ensure we include everyone
     all_follows = [follow.name for follow in game.initial_follows]
-    # Create a dictionary of follow points for easy lookup
     follow_points = {follow.name: follow.points for follow in follows}
-
-    # Sort follows by points (descending) and then by name (ascending) for consistent ordering
     sorted_follows = sorted(all_follows, key=lambda x: (-follow_points.get(x, 0), x))
-
-    for idx, follow_name in enumerate(sorted_follows):
-        points = follow_points.get(follow_name, 0)
+    follow_results = []
+    for idx, name in enumerate(sorted_follows):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, "last_follow_winner") and game.last_follow_winner == follow_name
-        follow_results.append({"name": follow_name, "points": points, "medal": medal, "is_winner": is_winner})
+        is_winner = game.winning_follow and game.winning_follow.name == name
+        follow_results.append({"name": name, "points": follow_points.get(name, 0), "medal": medal, "is_winner": is_winner})
 
-    # Collect round metadata
     rounds_data = []
-
-    # Add all completed rounds that belong to this session
     for r in game.rounds:
         if hasattr(r, "session_id") and r.session_id == session_id:
-            round_data = {
-                "round_num": r.round_num,
-                "session_id": session_id,
-                "pairs": r.pairs,
-                "lead_votes": r.lead_votes,
-                "follow_votes": r.follow_votes,
-                "judges": r.judges,
-                "contestant_judges": r.contestant_judges,
-                "win_messages": r.win_messages,
-                "lead_winner": r.lead_winner,
+            rounds_data.append({
+                "round_num": r.round_num, "session_id": session_id,
+                "pairs": r.pairs, "lead_votes": r.lead_votes, "follow_votes": r.follow_votes,
+                "judges": r.judges, "contestant_judges": r.contestant_judges,
+                "win_messages": r.win_messages, "lead_winner": r.lead_winner,
                 "follow_winner": r.follow_winner,
                 "song_info": r.song_info if hasattr(r, "song_info") else None,
-            }
-            rounds_data.append(round_data)
-
-    # Also include the current round if it exists and is not already in the rounds list
+            })
     if game.current_round and game.current_round not in game.rounds:
         if hasattr(game.current_round, "session_id") and game.current_round.session_id == session_id:
-            current_round_data = {
-                "round_num": game.current_round.round_num,
-                "session_id": session_id,
-                "pairs": game.current_round.pairs,
-                "lead_votes": game.current_round.lead_votes,
-                "follow_votes": game.current_round.follow_votes,
-                "judges": game.current_round.judges,
-                "contestant_judges": game.current_round.contestant_judges,
-                "win_messages": game.current_round.win_messages,
-                "lead_winner": game.current_round.lead_winner,
-                "follow_winner": game.current_round.follow_winner,
-                "song_info": game.current_round.song_info if hasattr(game.current_round, "song_info") else None,
-            }
-            rounds_data.append(current_round_data)
-
-    # Sort rounds by round number
+            r = game.current_round
+            rounds_data.append({
+                "round_num": r.round_num, "session_id": session_id,
+                "pairs": r.pairs, "lead_votes": r.lead_votes, "follow_votes": r.follow_votes,
+                "judges": r.judges, "contestant_judges": r.contestant_judges,
+                "win_messages": r.win_messages, "lead_winner": r.lead_winner,
+                "follow_winner": r.follow_winner,
+                "song_info": r.song_info if hasattr(r, "song_info") else None,
+            })
     rounds_data.sort(key=lambda x: x["round_num"])
 
-    return jsonify(
-        {
-            "session_id": session_id,
-            "leads": lead_results,
-            "follows": follow_results,
-            "rounds": rounds_data,
-            "initial_leads": [c.name for c in game.initial_leads],
-            "initial_follows": [c.name for c in game.initial_follows],
-        }
-    )
+    return {
+        "session_id": session_id,
+        "leads": lead_results,
+        "follows": follow_results,
+        "rounds": rounds_data,
+        "initial_leads": [c.name for c in game.initial_leads],
+        "initial_follows": [c.name for c in game.initial_follows],
+    }
+
+
+@app.route("/api/tiebreak/set_partners", methods=["POST"])
+def tiebreak_set_partners():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    session_id = data.get("session_id")
+    lead_selections = data.get("lead_selections", {})
+    follow_selections = data.get("follow_selections", {})
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({"error": "Invalid session ID"}), 400
+    if not game.tiebreak_active:
+        return jsonify({"error": "No tie-break in progress"}), 400
+    game.set_tiebreak_partner_selections(lead_selections, follow_selections)
+    repo.save(session_id, game)
+    return jsonify({
+        "sub_round": game.tiebreak_sub_round,
+        "sr1_pairings": [list(p) for p in game.tiebreak_sub_round_1_pairings],
+        "sr2_pairings": [list(p) for p in game.tiebreak_sub_round_2_pairings],
+    })
+
+
+@app.route("/api/tiebreak/advance", methods=["POST"])
+def tiebreak_advance():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    session_id = data.get("session_id")
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({"error": "Invalid session ID"}), 400
+    if not game.tiebreak_active:
+        return jsonify({"error": "No tie-break in progress"}), 400
+    new_phase = game.advance_tiebreak_sub_round()
+    repo.save(session_id, game)
+    return jsonify({"sub_round": new_phase})
+
+
+@app.route("/api/tiebreak/vote", methods=["POST"])
+def tiebreak_vote():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    session_id = data.get("session_id")
+    lead_votes_raw = data.get("lead_votes", [])
+    follow_votes_raw = data.get("follow_votes", [])
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({"error": "Invalid session ID"}), 400
+    if not game.tiebreak_active:
+        return jsonify({"error": "No tie-break in progress"}), 400
+
+    lead_result = None
+    follow_result = None
+
+    if game.tiebreak_lead_needed and lead_votes_raw:
+        votes = [(v[0], v[1]) for v in lead_votes_raw]
+        lead_result = game.judge_tiebreak('lead', votes)
+
+    if game.tiebreak_follow_needed and follow_votes_raw:
+        votes = [(v[0], v[1]) for v in follow_votes_raw]
+        follow_result = game.judge_tiebreak('follow', votes)
+
+    repo.save(session_id, game)
+    return jsonify({"lead_result": lead_result, "follow_result": follow_result})
+
+
+@app.route("/api/tiebreak/finalize", methods=["POST"])
+def tiebreak_finalize():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    session_id = data.get("session_id")
+    game = repo.get(session_id)
+    if not game:
+        return jsonify({"error": "Invalid session ID"}), 400
+
+    game.finalize_tiebreak_results()
+    repo.save(session_id, game)
+
+    result = _format_end_game_results(game, session_id)
+    result["tiebreak_winners"] = {
+        "lead": game.winning_lead.name if game.winning_lead else None,
+        "follow": game.winning_follow.name if game.winning_follow else None,
+    }
+    return jsonify(result)
 
 
 @app.route("/api/export_battle_data", methods=["GET", "POST"])

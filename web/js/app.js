@@ -33,6 +33,22 @@ let demoStep = 0;
 let demoOverlay = null; // Container for backdrop + hint
 let demoWaitingForAction = false; // True when waiting for user interaction before enabling Next
 
+// Tie-break state
+let tiebreakActive = false;
+let tiebreakLeadNeeded = false;
+let tiebreakFollowNeeded = false;
+let tiedLeads = [];
+let tiedFollows = [];
+let tiebreakAllLeads = [];
+let tiebreakAllFollows = [];
+let tiebreakSubRound = 0;
+let tiebreakSR1Pairings = [];
+let tiebreakSR2Pairings = [];
+let tiebreakLeadVotes = {};
+let tiebreakFollowVotes = {};
+let tiebreakGuestJudges = [];
+let tiebreakContestantJudges = [];
+
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
@@ -3152,14 +3168,19 @@ function endGame() {
     .then(response => response.json())
     .then(data => {
         console.log('Received end game data:', data);
-        
+
+        if (data.tiebreak_required) {
+            startTiebreakFlow(data);
+            return;
+        }
+
         // Ensure we have the initial order data
         if (!data.initial_leads || !data.initial_follows) {
             console.log('Using stored initial order data');
             data.initial_leads = initialLeads;
             data.initial_follows = initialFollows;
         }
-        
+
         // Display final results
         displayResults(data);
     })
@@ -3168,6 +3189,339 @@ function endGame() {
         showToast('Failed to end the competition', 'error');
     });
 } 
+
+// ============================================================
+// Tie-Break Flow
+// ============================================================
+
+function startTiebreakFlow(data) {
+    tiebreakActive = true;
+    tiebreakLeadNeeded = data.lead_needed;
+    tiebreakFollowNeeded = data.follow_needed;
+    tiedLeads = data.tied_leads || [];
+    tiedFollows = data.tied_follows || [];
+    tiebreakAllLeads = data.all_leads || [];
+    tiebreakAllFollows = data.all_follows || [];
+    tiebreakSubRound = 0;
+    tiebreakSR1Pairings = [];
+    tiebreakSR2Pairings = [];
+    tiebreakLeadVotes = {};
+    tiebreakFollowVotes = {};
+    tiebreakGuestJudges = data.guest_judges || [];
+    tiebreakContestantJudges = data.contestant_judges || [];
+    renderTiebreakPhase0();
+    document.getElementById('tiebreak-modal').classList.remove('hidden');
+}
+
+function renderTiebreakPhase0() {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break: Partner Selection';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+
+    let html = '<p class="tiebreak-subtitle">Tied dancers must each choose a partner for the tie-break round.</p>';
+
+    if (tiebreakLeadNeeded) {
+        html += '<div class="tiebreak-partner-grid" id="tiebreak-lead-partner-grid">';
+        tiedLeads.forEach(lead => {
+            const safeId = lead.replace(/\s+/g, '-').toLowerCase();
+            html += `<div class="tiebreak-partner-row">
+                <span class="tiebreak-lead-name contestant lead">${lead}</span>
+                <span class="tiebreak-arrow">→</span>
+                <select class="tiebreak-partner-select" data-role="lead" data-name="${lead}" id="tiebreak-lead-select-${safeId}">
+                    <option value="">Select a follow…</option>
+                    ${tiebreakAllFollows.map(f => `<option value="${f}">${f}</option>`).join('')}
+                </select>
+            </div>`;
+        });
+        html += '</div>';
+    }
+
+    if (tiebreakFollowNeeded) {
+        if (tiebreakLeadNeeded) html += '<hr class="tiebreak-section-divider">';
+        html += '<div class="tiebreak-partner-grid" id="tiebreak-follow-partner-grid">';
+        tiedFollows.forEach(follow => {
+            const safeId = follow.replace(/\s+/g, '-').toLowerCase();
+            html += `<div class="tiebreak-partner-row">
+                <span class="tiebreak-follow-name contestant follow">${follow}</span>
+                <span class="tiebreak-arrow">→</span>
+                <select class="tiebreak-partner-select" data-role="follow" data-name="${follow}" id="tiebreak-follow-select-${safeId}">
+                    <option value="">Select a lead…</option>
+                    ${tiebreakAllLeads.map(l => `<option value="${l}">${l}</option>`).join('')}
+                </select>
+            </div>`;
+        });
+        html += '</div>';
+    }
+
+    body.innerHTML = html;
+    body.querySelectorAll('.tiebreak-partner-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            syncTiebreakSelects();
+            updateTiebreakPartnerConfirmState();
+        });
+    });
+
+    footer.innerHTML = '<button id="tiebreak-confirm-partners" class="btn primary" disabled>Confirm Partners</button>';
+    document.getElementById('tiebreak-confirm-partners').addEventListener('click', submitTiebreakPartnerSelections);
+}
+
+function syncTiebreakSelects() {
+    // Disable options already chosen by sibling selects within the same grid
+    ['lead', 'follow'].forEach(role => {
+        const selects = Array.from(document.querySelectorAll(`.tiebreak-partner-select[data-role="${role}"]`));
+        const chosen = new Set(selects.map(s => s.value).filter(Boolean));
+        selects.forEach(sel => {
+            Array.from(sel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.disabled = chosen.has(opt.value) && sel.value !== opt.value;
+            });
+        });
+    });
+}
+
+function updateTiebreakPartnerConfirmState() {
+    const selects = Array.from(document.querySelectorAll('.tiebreak-partner-select'));
+    const allPicked = selects.length > 0 && selects.every(s => s.value);
+    const btn = document.getElementById('tiebreak-confirm-partners');
+    if (btn) btn.disabled = !allPicked;
+}
+
+async function submitTiebreakPartnerSelections() {
+    const leadSelections = {};
+    const followSelections = {};
+    document.querySelectorAll('.tiebreak-partner-select[data-role="lead"]').forEach(sel => {
+        if (sel.value) leadSelections[sel.dataset.name] = sel.value;
+    });
+    document.querySelectorAll('.tiebreak-partner-select[data-role="follow"]').forEach(sel => {
+        if (sel.value) followSelections[sel.dataset.name] = sel.value;
+    });
+
+    try {
+        const resp = await fetch('/api/tiebreak/set_partners', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, lead_selections: leadSelections, follow_selections: followSelections }),
+        });
+        const data = await resp.json();
+        tiebreakSubRound = data.sub_round;
+        tiebreakSR1Pairings = data.sr1_pairings;
+        tiebreakSR2Pairings = data.sr2_pairings;
+        renderTiebreakPhase1();
+    } catch (e) {
+        showToast('Failed to submit partner selections', 'error');
+    }
+}
+
+function renderTiebreakPairings(pairings) {
+    return pairings.map(([lead, follow]) =>
+        `<div class="tiebreak-pairing-card">
+            <span class="contestant lead">${lead}</span>
+            <span class="tiebreak-vs">+</span>
+            <span class="contestant follow">${follow}</span>
+        </div>`
+    ).join('');
+}
+
+function renderTiebreakPhase1() {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break: Sub-Round 1';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+    body.innerHTML = `
+        <p class="tiebreak-subtitle">Announce these pairings. Dancers compete — no vote yet.</p>
+        <div class="tiebreak-pairings">${renderTiebreakPairings(tiebreakSR1Pairings)}</div>
+        <p class="tiebreak-note">After all pairs have danced, click "Next" to swap partners.</p>`;
+    footer.innerHTML = '<button id="tiebreak-advance-btn" class="btn primary">Next: Partner Swap →</button>';
+    document.getElementById('tiebreak-advance-btn').addEventListener('click', advanceTiebreakSubRound);
+}
+
+function renderTiebreakPhase2() {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break: Sub-Round 2 (Swapped Partners)';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+    body.innerHTML = `
+        <p class="tiebreak-subtitle">Partners have swapped. Announce these pairings.</p>
+        <div class="tiebreak-pairings">${renderTiebreakPairings(tiebreakSR2Pairings)}</div>
+        <p class="tiebreak-note">After all pairs have danced, proceed to voting.</p>`;
+    footer.innerHTML = '<button id="tiebreak-advance-btn" class="btn primary">Proceed to Voting →</button>';
+    document.getElementById('tiebreak-advance-btn').addEventListener('click', advanceTiebreakSubRound);
+}
+
+async function advanceTiebreakSubRound() {
+    try {
+        const resp = await fetch('/api/tiebreak/advance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId }),
+        });
+        const data = await resp.json();
+        tiebreakSubRound = data.sub_round;
+        if (tiebreakSubRound === 2) renderTiebreakPhase2();
+        else if (tiebreakSubRound === 3) renderTiebreakPhase3();
+    } catch (e) {
+        showToast('Failed to advance tie-break', 'error');
+    }
+}
+
+function renderTiebreakPhase3() {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break: Final Vote';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+    tiebreakLeadVotes = {};
+    tiebreakFollowVotes = {};
+
+    body.innerHTML = '<p class="tiebreak-subtitle">Judges vote for the tie-break winner. Tie and No-Contest are not available.</p>';
+
+    const allJudges = [...tiebreakGuestJudges, ...tiebreakContestantJudges];
+
+    if (tiebreakLeadNeeded && tiedLeads.length >= 2) {
+        const section = document.createElement('div');
+        section.className = 'tiebreak-voting-section';
+        section.innerHTML = `<h4>Lead Tie-Break: <span class="contestant lead">${tiedLeads[0]}</span> vs <span class="contestant lead">${tiedLeads[1]}</span></h4>`;
+        const container = document.createElement('div');
+        container.className = 'judges-container';
+        allJudges.forEach(judge => {
+            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-lead', tiedLeads[0], tiedLeads[1]));
+        });
+        section.appendChild(container);
+        body.appendChild(section);
+    }
+
+    if (tiebreakFollowNeeded && tiedFollows.length >= 2) {
+        if (tiebreakLeadNeeded) {
+            const hr = document.createElement('hr');
+            hr.className = 'tiebreak-section-divider';
+            body.appendChild(hr);
+        }
+        const section = document.createElement('div');
+        section.className = 'tiebreak-voting-section';
+        section.innerHTML = `<h4>Follow Tie-Break: <span class="contestant follow">${tiedFollows[0]}</span> vs <span class="contestant follow">${tiedFollows[1]}</span></h4>`;
+        const container = document.createElement('div');
+        container.className = 'judges-container';
+        allJudges.forEach(judge => {
+            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-follow', tiedFollows[0], tiedFollows[1]));
+        });
+        section.appendChild(container);
+        body.appendChild(section);
+    }
+
+    footer.innerHTML = '<button id="tiebreak-submit-votes" class="btn primary" disabled>Submit Tie-Break Votes</button>';
+    document.getElementById('tiebreak-submit-votes').addEventListener('click', submitTiebreakVotes);
+}
+
+function createTiebreakJudgeCard(judgeName, isGuest, voteType, name1, name2) {
+    const row = document.createElement('div');
+    row.className = 'judge-row';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = judgeName.split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2);
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'judge-name';
+    nameEl.textContent = judgeName + (isGuest ? ' (Guest)' : '');
+
+    const chips = document.createElement('div');
+    chips.className = 'vote-chips';
+
+    function onChip(chip, val) {
+        chips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+        row.classList.add('voted');
+        avatar.classList.add('voted');
+        if (voteType === 'tb-lead') tiebreakLeadVotes[judgeName] = val;
+        else tiebreakFollowVotes[judgeName] = val;
+        updateTiebreakSubmitState();
+    }
+
+    const chip1 = document.createElement('button');
+    chip1.className = 'vote-chip';
+    chip1.textContent = name1;
+    chip1.addEventListener('click', () => onChip(chip1, 1));
+
+    const chip2 = document.createElement('button');
+    chip2.className = 'vote-chip';
+    chip2.textContent = name2;
+    chip2.addEventListener('click', () => onChip(chip2, 2));
+
+    chips.appendChild(chip1);
+    chips.appendChild(chip2);
+    row.appendChild(avatar);
+    row.appendChild(nameEl);
+    row.appendChild(chips);
+    return row;
+}
+
+function updateTiebreakSubmitState() {
+    const btn = document.getElementById('tiebreak-submit-votes');
+    if (!btn) return;
+    const allJudges = [...tiebreakGuestJudges, ...tiebreakContestantJudges];
+    const leadOk = !tiebreakLeadNeeded || allJudges.every(j => tiebreakLeadVotes[j] !== undefined);
+    const followOk = !tiebreakFollowNeeded || allJudges.every(j => tiebreakFollowVotes[j] !== undefined);
+    btn.disabled = !(leadOk && followOk);
+}
+
+async function submitTiebreakVotes() {
+    const allJudges = [...tiebreakGuestJudges, ...tiebreakContestantJudges];
+    const leadVotesArray = tiebreakLeadNeeded ? allJudges.filter(j => tiebreakLeadVotes[j] !== undefined).map(j => [j, tiebreakLeadVotes[j]]) : [];
+    const followVotesArray = tiebreakFollowNeeded ? allJudges.filter(j => tiebreakFollowVotes[j] !== undefined).map(j => [j, tiebreakFollowVotes[j]]) : [];
+
+    try {
+        const resp = await fetch('/api/tiebreak/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, lead_votes: leadVotesArray, follow_votes: followVotesArray }),
+        });
+        const data = await resp.json();
+        renderTiebreakResults(data);
+    } catch (e) {
+        showToast('Failed to submit tie-break votes', 'error');
+    }
+}
+
+function renderTiebreakResults(data) {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break Results';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+
+    let html = '<div class="tiebreak-results">';
+    if (data.lead_result) {
+        html += `<div class="tiebreak-winner-banner">
+            <span class="tiebreak-role-label">Lead Winner</span>
+            <span class="tiebreak-winner-name">${data.lead_result.winner} 👑</span>
+        </div>`;
+    }
+    if (data.follow_result) {
+        html += `<div class="tiebreak-winner-banner">
+            <span class="tiebreak-role-label">Follow Winner</span>
+            <span class="tiebreak-winner-name">${data.follow_result.winner} 👑</span>
+        </div>`;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+
+    footer.innerHTML = '<button id="tiebreak-view-results" class="btn primary">View Final Results</button>';
+    document.getElementById('tiebreak-view-results').addEventListener('click', finalizeTiebreakAndShowResults);
+}
+
+async function finalizeTiebreakAndShowResults() {
+    try {
+        const resp = await fetch('/api/tiebreak/finalize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId }),
+        });
+        const data = await resp.json();
+        document.getElementById('tiebreak-modal').classList.add('hidden');
+        tiebreakActive = false;
+        if (!data.initial_leads || !data.initial_follows) {
+            data.initial_leads = initialLeads;
+            data.initial_follows = initialFollows;
+        }
+        displayResults(data);
+    } catch (e) {
+        showToast('Failed to finalize tie-break', 'error');
+    }
+}
 
 function pickNextUnusedTrack() {
     const unused = playlistTracks.filter(t => t && t.id && !usedTrackIds.has(t.id));
