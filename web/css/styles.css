@@ -1523,6 +1523,57 @@ input[type="checkbox"] {
     display: none;
 }
 
+/* Show contestant judges in admin view */
+[data-mode="admin"] .judges-section:last-child {
+    display: block;
+}
+
+/* Admin: contestant judges + next-up side by side as cards */
+[data-mode="admin"] .round-context {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+[data-mode="admin"] .judges {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg);
+}
+
+/* Display mode: strip the wrapper so .judges and #next-up-section
+   remain direct grid children of .round-info-container */
+[data-mode="display"] .round-context {
+    display: contents;
+}
+
+[data-mode="admin"] .judges-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+[data-mode="admin"] .judges-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+[data-mode="admin"] .judge-item {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+}
+
 /* ============================================================
    22. Contestant Order Section
    ============================================================ */
@@ -1655,8 +1706,9 @@ input[type="checkbox"] {
     display: block;
 }
 
-/* Display mode: show next-up section */
-[data-mode="display"] #next-up-section {
+/* Show next-up section in both admin and display mode */
+[data-mode="display"] #next-up-section,
+[data-mode="admin"] #next-up-section {
     display: block !important;
 }
 
