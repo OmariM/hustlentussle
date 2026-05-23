@@ -2808,10 +2808,51 @@ a {
     line-height: 1.5;
 }
 
+.viz-nav-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.viz-nav-wrap > .viz-arena,
+.viz-nav-wrap > .viz-tiebreak-phase,
+.viz-nav-wrap > .viz-outcome-stage {
+    flex: 1;
+    min-width: 0;
+}
+
+.viz-nav-btn {
+    font-size: 18px;
+    line-height: 1;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border);
+    background: var(--bg-card);
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    transition: all 0.2s;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.viz-nav-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.viz-step-counter {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 44px;
+    text-align: center;
+}
+
 .viz-controls {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 10px;
     margin-top: 6px;
 }
 
@@ -2857,7 +2898,16 @@ a {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    min-height: 80px;
+    min-height: 130px;
+}
+
+.viz-outcome-col-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px 10px;
+    align-items: center;
+    justify-items: center;
+    width: 100%;
 }
 
 .viz-outcome-note {
@@ -2922,6 +2972,33 @@ a {
     color: var(--text-muted);
     min-width: 38px;
     text-align: right;
+}
+
+/* ── Vote breakdown grid ── */
+.viz-vote-grid {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
+    gap: 8px 16px;
+    align-items: center;
+    max-width: 420px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.viz-vote-col-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.viz-vote-count {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
 }
 
 /* ── Partner picks ── */
@@ -3013,6 +3090,11 @@ a {
     .viz-arena {
         flex-direction: column;
         align-items: center;
+    }
+
+    .viz-nav-btn {
+        padding: 6px 8px;
+        font-size: 15px;
     }
 
     .viz-stage {
