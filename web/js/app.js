@@ -2855,7 +2855,7 @@ function displayRoundHistory(rounds) {
             content.classList.toggle('open');
 
             // Update the plus/minus symbol
-            const symbol = header.querySelector('span:last-child');
+            const symbol = header.lastElementChild;
             symbol.textContent = isOpen ? '+' : '-';
         });
         
