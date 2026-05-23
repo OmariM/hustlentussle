@@ -2024,11 +2024,15 @@ a {
    28. Rules Grid (Home Page)
    ============================================================ */
 .rules-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    display: flex;
+    flex-direction: row;
     gap: var(--space-md);
     margin: var(--space-lg) 0 var(--space-xl);
     text-align: left;
+}
+
+.rules-grid .rule-card {
+    flex: 1 1 0;
 }
 
 .rule-card {
@@ -2232,7 +2236,16 @@ a {
     .standings-columns { grid-template-columns: 1fr; }
     .modal-summary { grid-template-columns: 1fr; }
     .home-title { font-size: 28px; }
-    .rules-grid { grid-template-columns: 1fr; }
+    .rules-grid {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        padding-bottom: var(--space-xs);
+    }
+    .rules-grid .rule-card {
+        flex: 0 0 280px;
+        scroll-snap-align: start;
+    }
     .demo-hint { max-width: calc(100vw - 32px); }
     .submit-area { position: sticky; bottom: 0; padding: 16px; background: var(--bg); z-index: 10; }
     .round-info-container { flex-direction: column; }
