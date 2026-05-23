@@ -176,6 +176,8 @@ class Game:
         self.tiebreak_follow_needed = False
         self.tiebreak_leads_tied = []        # list of Contestant objects
         self.tiebreak_follows_tied = []      # list of Contestant objects
+        self.tiebreak_original_leads = []    # snapshot at tiebreak start (never narrowed)
+        self.tiebreak_original_follows = []  # snapshot at tiebreak start (never narrowed)
         self.tiebreak_sub_round = 0          # 0=setup, 1=sr1, 2=sr2, 3=voting
         self.tiebreak_sub_round_1_pairings = []  # list of (lead_name, follow_name)
         self.tiebreak_sub_round_2_pairings = []
@@ -906,6 +908,8 @@ class Game:
         self.tiebreak_sub_round = 0
         self.tiebreak_sub_round_1_pairings = []
         self.tiebreak_sub_round_2_pairings = []
+        self.tiebreak_original_leads = list(self.tiebreak_leads_tied)
+        self.tiebreak_original_follows = list(self.tiebreak_follows_tied)
         self.tiebreak_lead_winner = None
         self.tiebreak_follow_winner = None
 

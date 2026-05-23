@@ -836,6 +836,25 @@ def _format_end_game_results(game, session_id):
             })
     rounds_data.sort(key=lambda x: x["round_num"])
 
+    # When a tiebreak was resolved, replace the incomplete pre-tiebreak round entry
+    # with a synthetic entry listing the original tiebreak participants so the battle
+    # graphic badges land on the right people.
+    if (game.tiebreak_lead_winner or game.tiebreak_follow_winner) and game.current_round:
+        last_round_num = game.current_round.round_num
+        rounds_data = [rd for rd in rounds_data if rd.get("round_num") != last_round_num]
+        rounds_data.append({
+            "round_num": last_round_num,
+            "tiebreak": True,
+            "tiebreak_leads": [c.name for c in game.tiebreak_original_leads],
+            "tiebreak_follows": [c.name for c in game.tiebreak_original_follows],
+            "lead_winner": game.tiebreak_lead_winner.name if game.tiebreak_lead_winner else None,
+            "follow_winner": game.tiebreak_follow_winner.name if game.tiebreak_follow_winner else None,
+            "pairs": None, "lead_votes": None, "follow_votes": None,
+            "judges": None, "contestant_judges": None,
+            "win_messages": None, "song_info": None,
+        })
+        rounds_data.sort(key=lambda x: x["round_num"])
+
     return {
         "session_id": session_id,
         "leads": lead_results,

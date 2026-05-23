@@ -2685,13 +2685,24 @@ async function displayResults(data) {
         const followMap = new Map();
         const totalRounds = data.rounds.length;
         data.rounds.forEach(r => {
+            const roundNum = r.round_num;
+            if (r.tiebreak) {
+                (r.tiebreak_leads || []).forEach(name => {
+                    if (!leadMap.has(name)) leadMap.set(name, []);
+                    leadMap.get(name).push({ round: roundNum, win: r.lead_winner === name });
+                });
+                (r.tiebreak_follows || []).forEach(name => {
+                    if (!followMap.has(name)) followMap.set(name, []);
+                    followMap.get(name).push({ round: roundNum, win: r.follow_winner === name });
+                });
+                return;
+            }
             const pair1Lead = r.pairs?.pair_1?.lead;
             const pair1Follow = r.pairs?.pair_1?.follow;
             const pair2Lead = r.pairs?.pair_2?.lead;
             const pair2Follow = r.pairs?.pair_2?.follow;
             const leadWinner = r.lead_winner;
             const followWinner = r.follow_winner;
-            const roundNum = r.round_num;
             if (pair1Lead) {
                 if (!leadMap.has(pair1Lead)) leadMap.set(pair1Lead, []);
                 leadMap.get(pair1Lead).push({ round: roundNum, win: leadWinner === pair1Lead });
