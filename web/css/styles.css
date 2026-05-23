@@ -2561,3 +2561,462 @@ a {
     font-size: clamp(22px, 4vh, 48px);
     font-weight: 800;
 }
+
+/* ============================================================
+   34. Home Page Explainer Visualizations
+   ============================================================ */
+
+.home-explainers {
+    margin: var(--space-2xl) 0;
+}
+
+.home-explainers > h2 {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+.explainer-desc {
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+    max-width: 560px;
+    margin: 0 auto var(--space-lg);
+    line-height: 1.6;
+}
+
+/* Tabs */
+.explainer-tabs {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+}
+
+.explainer-tab {
+    padding: 7px 18px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border);
+    background: var(--bg-card);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+}
+
+.explainer-tab:hover,
+.explainer-tab.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+}
+
+.explainer-panel { display: none; }
+.explainer-panel.active { display: block; }
+
+/* ── Arena (3-column layout) ── */
+.viz-arena {
+    display: flex;
+    gap: var(--space-lg);
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.viz-queue-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 110px;
+    flex: 1;
+    max-width: 160px;
+}
+
+.viz-queue-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 2px;
+}
+
+.viz-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* ── Battle Stage ── */
+.viz-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 2;
+    min-width: 220px;
+    max-width: 320px;
+}
+
+.viz-stage-pairs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.viz-stage-empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+}
+
+/* ── Couple cards ── */
+.viz-couple-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    flex-wrap: wrap;
+}
+
+.viz-couple-card.viz-couple-tied {
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+[data-color="dark"] .viz-couple-card.viz-couple-tied {
+    border-color: #9a3412;
+    background: #431407;
+}
+
+.viz-couple-num {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    min-width: 20px;
+}
+
+.viz-heart {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* ── Pills ── */
+.viz-pill {
+    display: inline-block;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1.5px solid transparent;
+    white-space: nowrap;
+    transition: opacity 0.3s, box-shadow 0.3s;
+}
+
+.viz-pill.lead {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.viz-pill.follow {
+    background: #fff1f2;
+    color: #e11d48;
+    border-color: #fda4af;
+}
+
+[data-color="dark"] .viz-pill.follow {
+    background: #3f0d1a;
+    color: #fb7185;
+    border-color: #9f1239;
+}
+
+.viz-pill.winner {
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.viz-pill.loser {
+    opacity: 0.38;
+}
+
+.viz-pill.tied {
+    background: #fff7ed;
+    color: #c2410c;
+    border-color: #fdba74;
+}
+
+[data-color="dark"] .viz-pill.tied {
+    background: #431407;
+    color: #fb923c;
+    border-color: #9a3412;
+}
+
+/* ── Outcome badge ── */
+.viz-outcome-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.viz-outcome-badge.tie,
+.viz-outcome-badge.tied {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fdba74;
+}
+
+[data-color="dark"] .viz-outcome-badge.tie,
+[data-color="dark"] .viz-outcome-badge.tied {
+    background: #431407;
+    color: #fb923c;
+    border-color: #9a3412;
+}
+
+.viz-outcome-badge.no-contest {
+    background: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.viz-outcome-badge.winner {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+/* ── Caption and controls ── */
+.viz-caption {
+    text-align: center;
+    margin-top: var(--space-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-height: 40px;
+    line-height: 1.5;
+}
+
+.viz-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+.viz-play-btn {
+    font-size: 12px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    transition: all 0.2s;
+}
+
+.viz-play-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ── Special Outcomes grid ── */
+.viz-outcomes-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.viz-outcome-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+}
+
+.viz-outcome-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: var(--space-md);
+    color: var(--accent);
+}
+
+.viz-outcome-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 80px;
+}
+
+.viz-outcome-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 4px 0;
+}
+
+/* ── Tie-break phase area ── */
+.viz-tiebreak-phase {
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    justify-content: center;
+}
+
+/* ── Score list (scoreboard + vote) ── */
+.viz-score-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.viz-score-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.viz-score-row.tied .viz-score-pts {
+    color: #c2410c;
+    font-weight: 600;
+}
+
+.viz-score-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.viz-score-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+
+.viz-score-fill.tied {
+    background: #f97316;
+}
+
+.viz-score-pts {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 38px;
+    text-align: right;
+}
+
+/* ── Partner picks ── */
+.viz-picks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+    margin: 0 auto;
+}
+
+.viz-pick-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.viz-arrow {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ── Winner banner ── */
+.viz-winner-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: var(--space-lg);
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-lg);
+    max-width: 280px;
+    margin: 0 auto;
+}
+
+.viz-winner-crown {
+    font-size: 28px;
+}
+
+.viz-winner-pill {
+    font-size: 15px !important;
+    padding: 7px 20px !important;
+}
+
+.viz-winner-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+}
+
+.viz-others {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+/* ── Reuse existing keyframes ── */
+.viz-pill.anim-in,
+.viz-couple-card.anim-in,
+.viz-pick-row.anim-in {
+    animation: slideInRight 0.35s ease both;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+    .viz-outcomes-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .viz-queue-col {
+        max-width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .viz-queue-list {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .viz-arena {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .viz-stage {
+        width: 100%;
+        max-width: 100%;
+    }
+}
