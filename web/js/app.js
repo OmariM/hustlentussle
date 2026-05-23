@@ -2835,12 +2835,15 @@ function displayRoundHistory(rounds) {
     // Create an accordion item for each round
     rounds.forEach(round => {
         const accordionItem = document.createElement('div');
-        accordionItem.className = 'accordion-item';
-        
+        accordionItem.className = 'accordion-item' + (round.tiebreak ? ' tiebreak' : '');
+
         // Create the header
         const header = document.createElement('div');
-        header.className = 'accordion-header';
-        header.innerHTML = `<span>Round ${round.round_num}</span><span>+</span>`;
+        header.className = 'accordion-header' + (round.tiebreak ? ' tiebreak' : '');
+        const headerLabel = round.tiebreak
+            ? `Round ${round.round_num} <span class="tiebreak-history-badge">Tie-Break</span>`
+            : `Round ${round.round_num}`;
+        header.innerHTML = `<span>${headerLabel}</span><span>+</span>`;
         
         // Add click handler for accordion functionality
         header.addEventListener('click', () => {
@@ -2912,42 +2915,66 @@ function displayRoundHistory(rounds) {
         // Participants section
         const participants = document.createElement('div');
         participants.className = 'round-participants';
-        
-        let participantsHTML = '<h4>Participants</h4>';
-        
-        if (round.pairs && Object.keys(round.pairs).length > 0) {
-            // First pair
-            participantsHTML += `
-                <div class="match-pair">
-                    <div>Couple 1:</div>
-                    <div><span class="lead">${round.pairs.pair_1.lead}</span> (Lead) & 
-                    <span class="follow">${round.pairs.pair_1.follow}</span> (Follow)</div>
-                </div>
-                <div class="match-pair">
-                    <div>Couple 2:</div>
-                    <div><span class="lead">${round.pairs.pair_2.lead}</span> (Lead) & 
-                    <span class="follow">${round.pairs.pair_2.follow}</span> (Follow)</div>
-                </div>
-            `;
-            
-            // Add winners if available
-            if (round.lead_winner) {
-                participantsHTML += `<div class="winner">Lead Winner: ${round.lead_winner}</div>`;
-            }
-            
-            if (round.follow_winner) {
-                participantsHTML += `<div class="winner">Follow Winner: ${round.follow_winner}</div>`;
-            }
-        } else {
-            participantsHTML += '<p>No participant data available for this round.</p>';
-        }
-        
-        participants.innerHTML = participantsHTML;
-        topRow.appendChild(participants);
-        // Ensure the top row (participants + song) is above judge votes
-        details.appendChild(topRow);
 
-        // Add judge votes section
+        if (round.tiebreak) {
+            let html = '<h4>Tie-Break</h4>';
+            if (round.tiebreak_leads?.length) {
+                html += `<div class="tiebreak-history-group">
+                    <span class="tiebreak-history-role-label">Leads</span>
+                    <span class="tiebreak-history-names">
+                        ${round.tiebreak_leads.map(n =>
+                            `<span class="contestant lead${round.lead_winner === n ? ' tiebreak-history-winner' : ''}">${n}${round.lead_winner === n ? ' 🏆' : ''}</span>`
+                        ).join('<span class="tiebreak-history-vs">vs</span>')}
+                    </span>
+                </div>`;
+            }
+            if (round.tiebreak_follows?.length) {
+                html += `<div class="tiebreak-history-group">
+                    <span class="tiebreak-history-role-label">Follows</span>
+                    <span class="tiebreak-history-names">
+                        ${round.tiebreak_follows.map(n =>
+                            `<span class="contestant follow${round.follow_winner === n ? ' tiebreak-history-winner' : ''}">${n}${round.follow_winner === n ? ' 🏆' : ''}</span>`
+                        ).join('<span class="tiebreak-history-vs">vs</span>')}
+                    </span>
+                </div>`;
+            }
+            participants.innerHTML = html;
+            topRow.appendChild(participants);
+            details.appendChild(topRow);
+        } else {
+            let participantsHTML = '<h4>Participants</h4>';
+            if (round.pairs && Object.keys(round.pairs).length > 0) {
+                participantsHTML += `
+                    <div class="match-pair">
+                        <div>Couple 1:</div>
+                        <div><span class="lead">${round.pairs.pair_1.lead}</span> (Lead) &
+                        <span class="follow">${round.pairs.pair_1.follow}</span> (Follow)</div>
+                    </div>
+                    <div class="match-pair">
+                        <div>Couple 2:</div>
+                        <div><span class="lead">${round.pairs.pair_2.lead}</span> (Lead) &
+                        <span class="follow">${round.pairs.pair_2.follow}</span> (Follow)</div>
+                    </div>
+                `;
+                if (round.lead_winner) participantsHTML += `<div class="winner">Lead Winner: ${round.lead_winner}</div>`;
+                if (round.follow_winner) participantsHTML += `<div class="winner">Follow Winner: ${round.follow_winner}</div>`;
+            } else {
+                participantsHTML += '<p>No participant data available for this round.</p>';
+            }
+            participants.innerHTML = participantsHTML;
+            topRow.appendChild(participants);
+            details.appendChild(topRow);
+        }
+
+        // Add judge votes section (normal rounds only)
+        if (round.tiebreak) {
+            content.appendChild(details);
+            accordionItem.appendChild(header);
+            accordionItem.appendChild(content);
+            roundsContainer.appendChild(accordionItem);
+            return;
+        }
+
         const judgeVotes = document.createElement('div');
         judgeVotes.className = 'judge-votes';
         let judgeVotesHTML = '<h4>Judge Votes</h4>';

@@ -1410,6 +1410,58 @@ input[type="checkbox"] {
     margin-bottom: 4px;
 }
 
+.accordion-header.tiebreak {
+    border-left: 3px solid var(--accent);
+}
+
+.tiebreak-history-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 1px 7px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+.tiebreak-history-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.tiebreak-history-role-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    min-width: 48px;
+}
+
+.tiebreak-history-names {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tiebreak-history-vs {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.tiebreak-history-winner {
+    font-weight: 700;
+}
+
 /* ============================================================
    21. Display Mode Specific
    ============================================================ */
