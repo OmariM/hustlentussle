@@ -21,6 +21,11 @@ import traceback
 from battle_rules_test_suite import BattleRulesTestSuite, StressTestSuite, BattleRulesValidator
 from voting_rules_tests import VotingRulesTestSuite
 from pairing_rules_tests import PairingRulesTestSuite
+from tiebreak_tests import (
+    TestDetectTiebreakNeeds, TestStartTiebreak, TestPartnerSelections,
+    TestAdvanceTiebreakSubRound, TestJudgeTiebreak, TestFinalizeTiebreakResults,
+    TestEndToEndTiebreakFlow,
+)
 from game_logic import Game
 
 
@@ -44,6 +49,13 @@ class TestSuiteRunner:
             ("Voting Rules", VotingRulesTestSuite),
             ("Pairing Rules", PairingRulesTestSuite),
             ("Stress Tests", StressTestSuite),
+            ("Tie-Break: Detection", TestDetectTiebreakNeeds),
+            ("Tie-Break: Start", TestStartTiebreak),
+            ("Tie-Break: Partner Selections", TestPartnerSelections),
+            ("Tie-Break: Sub-Round Advance", TestAdvanceTiebreakSubRound),
+            ("Tie-Break: Judge Voting", TestJudgeTiebreak),
+            ("Tie-Break: Finalize", TestFinalizeTiebreakResults),
+            ("Tie-Break: End-to-End", TestEndToEndTiebreakFlow),
         ]
 
         print("=" * 60)

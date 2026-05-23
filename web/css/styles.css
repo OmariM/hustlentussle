@@ -1410,6 +1410,58 @@ input[type="checkbox"] {
     margin-bottom: 4px;
 }
 
+.accordion-header.tiebreak {
+    border-left: 3px solid var(--accent);
+}
+
+.tiebreak-history-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 1px 7px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+.tiebreak-history-group {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.tiebreak-history-role-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    min-width: 48px;
+}
+
+.tiebreak-history-names {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tiebreak-history-vs {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.tiebreak-history-winner {
+    font-weight: 700;
+}
+
 /* ============================================================
    21. Display Mode Specific
    ============================================================ */
@@ -1432,7 +1484,7 @@ input[type="checkbox"] {
         padding-bottom: max(12px, 1.5vh);
     }
 
-    [data-mode="display"] #battle-screen {
+    [data-mode="display"] #battle-screen.active {
         flex: 1;
         min-height: 0;
         display: flex;
@@ -1455,6 +1507,30 @@ input[type="checkbox"] {
     [data-mode="display"] .round-info-container {
         height: 100%;
         overflow: hidden;
+    }
+
+    [data-mode="display"] #results-screen.active {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    [data-mode="display"] #results-screen .battle-graphic-section {
+        flex: 1;
+        min-height: 0;
+        margin-bottom: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    [data-mode="display"] #results-screen .battle-graphic {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        align-content: start;
     }
 }
 
@@ -2165,4 +2241,323 @@ a {
 
 @media (min-width: 1400px) {
     [data-mode="display"] .round-number-large { font-size: 16rem; }
+}
+
+/* ============================================================
+   31. Tie-Break Mode
+   ============================================================ */
+.modal--tiebreak {
+    max-width: 600px;
+}
+
+.tiebreak-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+}
+
+.tiebreak-partner-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: var(--space-lg);
+}
+
+.tiebreak-partner-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tiebreak-lead-name,
+.tiebreak-follow-name {
+    min-width: 110px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.tiebreak-arrow {
+    color: var(--text-muted);
+    font-size: 18px;
+}
+
+.tiebreak-partner-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.tiebreak-partner-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.tiebreak-pairings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: var(--space-lg);
+}
+
+.tiebreak-pairing-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.tiebreak-vs {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.tiebreak-note {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+.tiebreak-voting-section {
+    margin-bottom: var(--space-lg);
+}
+
+.tiebreak-voting-section h4 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+.tiebreak-section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-lg) 0;
+}
+
+.tiebreak-results {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: var(--space-sm) 0;
+}
+
+.tiebreak-winner-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 20px;
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-md);
+}
+
+.tiebreak-role-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.tiebreak-winner-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.tiebreak-still-tied-section {
+    margin-bottom: var(--space-md);
+}
+
+.tiebreak-still-tied-section h4 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.tiebreak-vote-tally {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tiebreak-tally-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.tiebreak-tally-row.tiebreak-tally-tied {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.tiebreak-tally-score {
+    margin-left: auto;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.tiebreak-tally-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    padding: 2px 6px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+}
+
+/* ============================================================
+   32. Results Screen — Display Mode
+   ============================================================ */
+
+[data-mode="display"] #results-screen > h2,
+[data-mode="display"] #results-screen .leaderboard,
+[data-mode="display"] #results-screen .round-history,
+[data-mode="display"] #results-screen .results-actions {
+    display: none;
+}
+
+[data-mode="display"] #results-screen .graphic-column h4 {
+    font-size: clamp(14px, 2vh, 20px);
+    margin-bottom: clamp(8px, 1.2vh, 16px);
+}
+
+[data-mode="display"] #results-screen .graphic-row {
+    padding: clamp(6px, 1vh, 12px) clamp(8px, 1.2vh, 16px);
+}
+
+[data-mode="display"] #results-screen .graphic-name,
+[data-mode="display"] #results-screen .badge {
+    font-size: clamp(14px, 2vh, 22px);
+}
+
+/* ============================================================
+   33. Tie-Break Display Mode (projector / audience view)
+   ============================================================ */
+
+[data-mode="display"] #tiebreak-display-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(12px, 2vh, 28px);
+    padding: clamp(8px, 1.5vh, 20px);
+}
+
+.tiebreak-display-phase {
+    font-size: clamp(18px, 3vh, 32px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-align: center;
+}
+
+.tiebreak-display-contestants {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(10px, 1.8vh, 20px);
+}
+
+.tiebreak-display-role-group {
+    display: flex;
+    align-items: center;
+    gap: clamp(8px, 1.5vh, 20px);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.tiebreak-display-role-label {
+    font-size: clamp(11px, 1.5vh, 16px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.tiebreak-display-name {
+    font-size: clamp(20px, 3.5vh, 40px);
+    font-weight: 700;
+}
+
+.tiebreak-display-vs {
+    font-size: clamp(14px, 2vh, 22px);
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.tiebreak-display-pairings {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1.5vh, 16px);
+    width: 100%;
+    max-width: 640px;
+}
+
+.tiebreak-display-pairing-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 1.5vh, 20px);
+    padding: clamp(10px, 1.8vh, 20px) clamp(16px, 2.5vh, 32px);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    font-size: clamp(18px, 3vh, 34px);
+    font-weight: 700;
+}
+
+.tiebreak-display-plus {
+    color: var(--text-muted);
+    font-size: clamp(16px, 2.5vh, 28px);
+}
+
+.tiebreak-display-winners {
+    display: flex;
+    gap: clamp(12px, 2vh, 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.tiebreak-display-winner-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: clamp(12px, 2vh, 24px) clamp(20px, 3vh, 40px);
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-lg);
+}
+
+.tiebreak-display-winner-name {
+    font-size: clamp(22px, 4vh, 48px);
+    font-weight: 800;
 }

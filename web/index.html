@@ -214,6 +214,13 @@
                 <p class="vote-progress" id="vote-progress"></p>
             </div>
 
+            <div id="tiebreak-display-section" style="display:none;">
+                <div id="tiebreak-display-phase-label" class="tiebreak-display-phase"></div>
+                <div id="tiebreak-display-contestants" class="tiebreak-display-contestants"></div>
+                <div id="tiebreak-display-pairings" class="tiebreak-display-pairings"></div>
+                <div id="tiebreak-display-winners" class="tiebreak-display-winners"></div>
+            </div>
+
             <div class="round-header">
                 <div class="round-info-container">
                     <div class="round-content">
@@ -374,6 +381,17 @@
                             <button id="end-early-cancel" class="btn secondary">Cancel</button>
                             <button id="end-early-confirm" class="btn warning">End Battle</button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Tie-break modal -->
+                <div id="tiebreak-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="tiebreak-modal-title">
+                    <div class="modal modal--tiebreak">
+                        <div class="modal-header">
+                            <h3 id="tiebreak-modal-title">Tie-Break</h3>
+                        </div>
+                        <div class="modal-body" id="tiebreak-modal-body"></div>
+                        <div class="modal-footer" id="tiebreak-modal-footer"></div>
                     </div>
                 </div>
 
