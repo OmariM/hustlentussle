@@ -2301,3 +2301,55 @@ a {
     font-weight: 700;
     color: var(--text-primary);
 }
+
+.tiebreak-still-tied-section {
+    margin-bottom: var(--space-md);
+}
+
+.tiebreak-still-tied-section h4 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.tiebreak-vote-tally {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tiebreak-tally-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.tiebreak-tally-row.tiebreak-tally-tied {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.tiebreak-tally-score {
+    margin-left: auto;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.tiebreak-tally-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    padding: 2px 6px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+}

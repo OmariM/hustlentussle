@@ -48,6 +48,8 @@ let tiebreakLeadVotes = {};
 let tiebreakFollowVotes = {};
 let tiebreakGuestJudges = [];
 let tiebreakContestantJudges = [];
+let tiebreakResolvedLeadWinner = null;
+let tiebreakResolvedFollowWinner = null;
 
 // Voting constants (frontend-only)
 const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
@@ -3209,6 +3211,8 @@ function startTiebreakFlow(data) {
     tiebreakFollowVotes = {};
     tiebreakGuestJudges = data.guest_judges || [];
     tiebreakContestantJudges = data.contestant_judges || [];
+    tiebreakResolvedLeadWinner = null;
+    tiebreakResolvedFollowWinner = null;
     renderTiebreakPhase0();
     document.getElementById('tiebreak-modal').classList.remove('hidden');
 }
@@ -3376,11 +3380,12 @@ function renderTiebreakPhase3() {
     if (tiebreakLeadNeeded && tiedLeads.length >= 2) {
         const section = document.createElement('div');
         section.className = 'tiebreak-voting-section';
-        section.innerHTML = `<h4>Lead Tie-Break: <span class="contestant lead">${tiedLeads[0]}</span> vs <span class="contestant lead">${tiedLeads[1]}</span></h4>`;
+        const leadVsList = tiedLeads.map(n => `<span class="contestant lead">${n}</span>`).join(' vs ');
+        section.innerHTML = `<h4>Lead Tie-Break: ${leadVsList}</h4>`;
         const container = document.createElement('div');
         container.className = 'judges-container';
         allJudges.forEach(judge => {
-            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-lead', tiedLeads[0], tiedLeads[1]));
+            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-lead', tiedLeads));
         });
         section.appendChild(container);
         body.appendChild(section);
@@ -3394,11 +3399,12 @@ function renderTiebreakPhase3() {
         }
         const section = document.createElement('div');
         section.className = 'tiebreak-voting-section';
-        section.innerHTML = `<h4>Follow Tie-Break: <span class="contestant follow">${tiedFollows[0]}</span> vs <span class="contestant follow">${tiedFollows[1]}</span></h4>`;
+        const followVsList = tiedFollows.map(n => `<span class="contestant follow">${n}</span>`).join(' vs ');
+        section.innerHTML = `<h4>Follow Tie-Break: ${followVsList}</h4>`;
         const container = document.createElement('div');
         container.className = 'judges-container';
         allJudges.forEach(judge => {
-            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-follow', tiedFollows[0], tiedFollows[1]));
+            container.appendChild(createTiebreakJudgeCard(judge, tiebreakGuestJudges.includes(judge), 'tb-follow', tiedFollows));
         });
         section.appendChild(container);
         body.appendChild(section);
@@ -3408,7 +3414,7 @@ function renderTiebreakPhase3() {
     document.getElementById('tiebreak-submit-votes').addEventListener('click', submitTiebreakVotes);
 }
 
-function createTiebreakJudgeCard(judgeName, isGuest, voteType, name1, name2) {
+function createTiebreakJudgeCard(judgeName, isGuest, voteType, names) {
     const row = document.createElement('div');
     row.className = 'judge-row';
 
@@ -3423,28 +3429,24 @@ function createTiebreakJudgeCard(judgeName, isGuest, voteType, name1, name2) {
     const chips = document.createElement('div');
     chips.className = 'vote-chips';
 
-    function onChip(chip, val) {
+    function onChip(chip, chosenName) {
         chips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
         chip.classList.add('selected');
         row.classList.add('voted');
         avatar.classList.add('voted');
-        if (voteType === 'tb-lead') tiebreakLeadVotes[judgeName] = val;
-        else tiebreakFollowVotes[judgeName] = val;
+        if (voteType === 'tb-lead') tiebreakLeadVotes[judgeName] = chosenName;
+        else tiebreakFollowVotes[judgeName] = chosenName;
         updateTiebreakSubmitState();
     }
 
-    const chip1 = document.createElement('button');
-    chip1.className = 'vote-chip';
-    chip1.textContent = name1;
-    chip1.addEventListener('click', () => onChip(chip1, 1));
+    names.forEach(name => {
+        const chip = document.createElement('button');
+        chip.className = 'vote-chip';
+        chip.textContent = name;
+        chip.addEventListener('click', () => onChip(chip, name));
+        chips.appendChild(chip);
+    });
 
-    const chip2 = document.createElement('button');
-    chip2.className = 'vote-chip';
-    chip2.textContent = name2;
-    chip2.addEventListener('click', () => onChip(chip2, 2));
-
-    chips.appendChild(chip1);
-    chips.appendChild(chip2);
     row.appendChild(avatar);
     row.appendChild(nameEl);
     row.appendChild(chips);
@@ -3472,10 +3474,69 @@ async function submitTiebreakVotes() {
             body: JSON.stringify({ session_id: sessionId, lead_votes: leadVotesArray, follow_votes: followVotesArray }),
         });
         const data = await resp.json();
-        renderTiebreakResults(data);
+
+        if (data.lead_result?.resolved) {
+            tiebreakLeadNeeded = false;
+            tiebreakResolvedLeadWinner = data.lead_result.winner;
+        }
+        if (data.follow_result?.resolved) {
+            tiebreakFollowNeeded = false;
+            tiebreakResolvedFollowWinner = data.follow_result.winner;
+        }
+
+        if (data.needs_another_round) {
+            tiedLeads = data.tied_leads || tiedLeads;
+            tiedFollows = data.tied_follows || tiedFollows;
+            renderTiebreakStillTied(data);
+        } else {
+            renderTiebreakResults(data);
+        }
     } catch (e) {
         showToast('Failed to submit tie-break votes', 'error');
     }
+}
+
+function renderTiebreakStillTied(data) {
+    document.getElementById('tiebreak-modal-title').textContent = 'Tie-Break: Votes Tied';
+    const body = document.getElementById('tiebreak-modal-body');
+    const footer = document.getElementById('tiebreak-modal-footer');
+
+    let html = '<p class="tiebreak-subtitle">The vote ended in a tie. Another round is needed.</p>';
+
+    const buildTallyHtml = (result, role) => {
+        const colorClass = role === 'lead' ? 'lead' : 'follow';
+        let h = '<div class="tiebreak-vote-tally">';
+        Object.entries(result.vote_tally).sort((a, b) => b[1] - a[1]).forEach(([name, score]) => {
+            const tied = result.still_tied && result.still_tied.includes(name);
+            h += `<div class="tiebreak-tally-row${tied ? ' tiebreak-tally-tied' : ''}">
+                <span class="contestant ${colorClass}">${name}</span>
+                <span class="tiebreak-tally-score">${score} pt${score !== 1 ? 's' : ''}</span>
+                ${tied ? '<span class="tiebreak-tally-badge">tied</span>' : ''}
+            </div>`;
+        });
+        h += '</div>';
+        return h;
+    };
+
+    if (data.lead_result && !data.lead_result.resolved) {
+        html += `<div class="tiebreak-still-tied-section"><h4>Lead Vote — Still Tied</h4>${buildTallyHtml(data.lead_result, 'lead')}</div>`;
+    } else if (tiebreakResolvedLeadWinner) {
+        html += `<div class="tiebreak-winner-banner"><span class="tiebreak-role-label">Lead Winner</span><span class="tiebreak-winner-name contestant lead">${tiebreakResolvedLeadWinner}</span></div>`;
+    }
+
+    if (data.lead_result && !data.lead_result.resolved && data.follow_result) {
+        html += '<hr class="tiebreak-section-divider">';
+    }
+
+    if (data.follow_result && !data.follow_result.resolved) {
+        html += `<div class="tiebreak-still-tied-section"><h4>Follow Vote — Still Tied</h4>${buildTallyHtml(data.follow_result, 'follow')}</div>`;
+    } else if (tiebreakResolvedFollowWinner) {
+        html += `<div class="tiebreak-winner-banner"><span class="tiebreak-role-label">Follow Winner</span><span class="tiebreak-winner-name contestant follow">${tiebreakResolvedFollowWinner}</span></div>`;
+    }
+
+    body.innerHTML = html;
+    footer.innerHTML = '<button id="tiebreak-next-round-btn" class="btn primary">Continue Tie-Break →</button>';
+    document.getElementById('tiebreak-next-round-btn').addEventListener('click', renderTiebreakPhase0);
 }
 
 function renderTiebreakResults(data) {
@@ -3484,16 +3545,16 @@ function renderTiebreakResults(data) {
     const footer = document.getElementById('tiebreak-modal-footer');
 
     let html = '<div class="tiebreak-results">';
-    if (data.lead_result) {
+    if (tiebreakResolvedLeadWinner) {
         html += `<div class="tiebreak-winner-banner">
             <span class="tiebreak-role-label">Lead Winner</span>
-            <span class="tiebreak-winner-name">${data.lead_result.winner} 👑</span>
+            <span class="tiebreak-winner-name contestant lead">${tiebreakResolvedLeadWinner}</span>
         </div>`;
     }
-    if (data.follow_result) {
+    if (tiebreakResolvedFollowWinner) {
         html += `<div class="tiebreak-winner-banner">
             <span class="tiebreak-role-label">Follow Winner</span>
-            <span class="tiebreak-winner-name">${data.follow_result.winner} 👑</span>
+            <span class="tiebreak-winner-name contestant follow">${tiebreakResolvedFollowWinner}</span>
         </div>`;
     }
     html += '</div>';

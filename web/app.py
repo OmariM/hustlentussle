@@ -757,7 +757,7 @@ def end_game():
     if tiebreak_info['lead_needed'] or tiebreak_info['follow_needed']:
         game.start_tiebreak()
         repo.save(session_id, game)
-        judges = getattr(game.current_round, 'judges', {}) if game.current_round else {}
+        r = game.current_round
         return jsonify({
             'tiebreak_required': True,
             'lead_needed': tiebreak_info['lead_needed'],
@@ -768,8 +768,8 @@ def end_game():
             'follow_max_points': tiebreak_info['follow_max_points'],
             'all_leads': [c.name for c in game.initial_leads],
             'all_follows': [c.name for c in game.initial_follows],
-            'guest_judges': judges.get('guest', []),
-            'contestant_judges': judges.get('contestant', []),
+            'guest_judges': (r.judges if r else []) or game.guest_judges,
+            'contestant_judges': (r.contestant_judges if r else []),
         })
 
     # No tie-break needed — mark the game as finished and return results
@@ -898,7 +898,18 @@ def tiebreak_vote():
         follow_result = game.judge_tiebreak('follow', votes)
 
     repo.save(session_id, game)
-    return jsonify({"lead_result": lead_result, "follow_result": follow_result})
+
+    needs_another_round = (
+        (lead_result is not None and not lead_result.get('resolved')) or
+        (follow_result is not None and not follow_result.get('resolved'))
+    )
+    return jsonify({
+        "lead_result": lead_result,
+        "follow_result": follow_result,
+        "needs_another_round": needs_another_round,
+        "tied_leads": [c.name for c in game.tiebreak_leads_tied],
+        "tied_follows": [c.name for c in game.tiebreak_follows_tied],
+    })
 
 
 @app.route("/api/tiebreak/finalize", methods=["POST"])
