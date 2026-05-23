@@ -1508,6 +1508,30 @@ input[type="checkbox"] {
         height: 100%;
         overflow: hidden;
     }
+
+    [data-mode="display"] #results-screen {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    [data-mode="display"] #results-screen .battle-graphic-section {
+        flex: 1;
+        min-height: 0;
+        margin-bottom: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    [data-mode="display"] #results-screen .battle-graphic {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        align-content: start;
+    }
 }
 
 /* Round transition overlay */
@@ -2410,35 +2434,11 @@ a {
    32. Results Screen — Display Mode
    ============================================================ */
 
-[data-mode="display"] #results-screen {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
 [data-mode="display"] #results-screen > h2,
 [data-mode="display"] #results-screen .leaderboard,
 [data-mode="display"] #results-screen .round-history,
 [data-mode="display"] #results-screen .results-actions {
     display: none;
-}
-
-[data-mode="display"] #results-screen .battle-graphic-section {
-    flex: 1;
-    min-height: 0;
-    margin-bottom: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-[data-mode="display"] #results-screen .battle-graphic {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    align-content: start;
 }
 
 [data-mode="display"] #results-screen .graphic-column h4 {
