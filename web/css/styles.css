@@ -1484,7 +1484,7 @@ input[type="checkbox"] {
         padding-bottom: max(12px, 1.5vh);
     }
 
-    [data-mode="display"] #battle-screen {
+    [data-mode="display"] #battle-screen.active {
         flex: 1;
         min-height: 0;
         display: flex;
@@ -1509,7 +1509,7 @@ input[type="checkbox"] {
         overflow: hidden;
     }
 
-    [data-mode="display"] #results-screen {
+    [data-mode="display"] #results-screen.active {
         flex: 1;
         min-height: 0;
         display: flex;
