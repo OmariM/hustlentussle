@@ -2407,7 +2407,56 @@ a {
 }
 
 /* ============================================================
-   32. Tie-Break Display Mode (projector / audience view)
+   32. Results Screen — Display Mode
+   ============================================================ */
+
+[data-mode="display"] #results-screen {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+[data-mode="display"] #results-screen > h2,
+[data-mode="display"] #results-screen .leaderboard,
+[data-mode="display"] #results-screen .round-history,
+[data-mode="display"] #results-screen .results-actions {
+    display: none;
+}
+
+[data-mode="display"] #results-screen .battle-graphic-section {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+[data-mode="display"] #results-screen .battle-graphic {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    align-content: start;
+}
+
+[data-mode="display"] #results-screen .graphic-column h4 {
+    font-size: clamp(14px, 2vh, 20px);
+    margin-bottom: clamp(8px, 1.2vh, 16px);
+}
+
+[data-mode="display"] #results-screen .graphic-row {
+    padding: clamp(6px, 1vh, 12px) clamp(8px, 1.2vh, 16px);
+}
+
+[data-mode="display"] #results-screen .graphic-name,
+[data-mode="display"] #results-screen .badge {
+    font-size: clamp(14px, 2vh, 22px);
+}
+
+/* ============================================================
+   33. Tie-Break Display Mode (projector / audience view)
    ============================================================ */
 
 [data-mode="display"] #tiebreak-display-section {
