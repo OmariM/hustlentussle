@@ -2353,3 +2353,110 @@ a {
     border: 1px solid var(--accent);
     border-radius: 999px;
 }
+
+/* ============================================================
+   32. Tie-Break Display Mode (projector / audience view)
+   ============================================================ */
+
+[data-mode="display"] #tiebreak-display-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(12px, 2vh, 28px);
+    padding: clamp(8px, 1.5vh, 20px);
+}
+
+.tiebreak-display-phase {
+    font-size: clamp(18px, 3vh, 32px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-align: center;
+}
+
+.tiebreak-display-contestants {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(10px, 1.8vh, 20px);
+}
+
+.tiebreak-display-role-group {
+    display: flex;
+    align-items: center;
+    gap: clamp(8px, 1.5vh, 20px);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.tiebreak-display-role-label {
+    font-size: clamp(11px, 1.5vh, 16px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.tiebreak-display-name {
+    font-size: clamp(20px, 3.5vh, 40px);
+    font-weight: 700;
+}
+
+.tiebreak-display-vs {
+    font-size: clamp(14px, 2vh, 22px);
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.tiebreak-display-pairings {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1.5vh, 16px);
+    width: 100%;
+    max-width: 640px;
+}
+
+.tiebreak-display-pairing-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 1.5vh, 20px);
+    padding: clamp(10px, 1.8vh, 20px) clamp(16px, 2.5vh, 32px);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    font-size: clamp(18px, 3vh, 34px);
+    font-weight: 700;
+}
+
+.tiebreak-display-plus {
+    color: var(--text-muted);
+    font-size: clamp(16px, 2.5vh, 28px);
+}
+
+.tiebreak-display-winners {
+    display: flex;
+    gap: clamp(12px, 2vh, 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.tiebreak-display-winner-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: clamp(12px, 2vh, 24px) clamp(20px, 3vh, 40px);
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-lg);
+}
+
+.tiebreak-display-winner-name {
+    font-size: clamp(22px, 4vh, 48px);
+    font-weight: 800;
+}

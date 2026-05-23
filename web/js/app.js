@@ -862,8 +862,78 @@ async function fetchCanonicalState() {
     return await resp.json();
 }
 
+function renderDisplayModeTiebreak(tb) {
+    document.getElementById('tiebreak-display-section').style.display = '';
+    document.querySelector('.round-header').style.display = 'none';
+
+    const phaseEl = document.getElementById('tiebreak-display-phase-label');
+    const contestantsEl = document.getElementById('tiebreak-display-contestants');
+    const pairingsEl = document.getElementById('tiebreak-display-pairings');
+    const winnersEl = document.getElementById('tiebreak-display-winners');
+
+    const phaseLabels = {
+        0: 'Tie-Break — Selecting Partners',
+        1: 'Tie-Break — Sub-Round 1',
+        2: 'Tie-Break — Sub-Round 2',
+        3: 'Tie-Break — Final Vote',
+    };
+    phaseEl.textContent = phaseLabels[tb.sub_round] ?? 'Tie-Break';
+
+    if (tb.sub_round === 0 || tb.sub_round === 3) {
+        let html = '';
+        if (tb.lead_needed && tb.tied_leads.length && !tb.lead_winner) {
+            html += `<div class="tiebreak-display-role-group">
+                <span class="tiebreak-display-role-label">Leads</span>
+                ${tb.tied_leads.map(n => `<span class="contestant lead tiebreak-display-name">${n}</span>`).join('<span class="tiebreak-display-vs">vs</span>')}
+            </div>`;
+        }
+        if (tb.follow_needed && tb.tied_follows.length && !tb.follow_winner) {
+            html += `<div class="tiebreak-display-role-group">
+                <span class="tiebreak-display-role-label">Follows</span>
+                ${tb.tied_follows.map(n => `<span class="contestant follow tiebreak-display-name">${n}</span>`).join('<span class="tiebreak-display-vs">vs</span>')}
+            </div>`;
+        }
+        contestantsEl.innerHTML = html;
+        pairingsEl.innerHTML = '';
+    }
+
+    if (tb.sub_round === 1 || tb.sub_round === 2) {
+        const pairings = tb.sub_round === 1 ? tb.sr1_pairings : tb.sr2_pairings;
+        contestantsEl.innerHTML = '';
+        pairingsEl.innerHTML = pairings.map(([lead, follow]) =>
+            `<div class="tiebreak-display-pairing-card">
+                <span class="contestant lead">${lead}</span>
+                <span class="tiebreak-display-plus">+</span>
+                <span class="contestant follow">${follow}</span>
+            </div>`
+        ).join('');
+    }
+
+    let winnerHtml = '';
+    if (tb.lead_winner) winnerHtml += `<div class="tiebreak-display-winner-banner">
+        <span class="tiebreak-display-role-label">Lead Winner</span>
+        <span class="tiebreak-display-winner-name contestant lead">${tb.lead_winner}</span>
+    </div>`;
+    if (tb.follow_winner) winnerHtml += `<div class="tiebreak-display-winner-banner">
+        <span class="tiebreak-display-role-label">Follow Winner</span>
+        <span class="tiebreak-display-winner-name contestant follow">${tb.follow_winner}</span>
+    </div>`;
+    winnersEl.innerHTML = winnerHtml;
+}
+
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
+
+    // Display mode: hand off to tiebreak renderer when a tiebreak is active
+    if (displayMode && state.tiebreak?.active) {
+        renderDisplayModeTiebreak(state.tiebreak);
+        return;
+    }
+    // Restore normal display layout if tiebreak just ended
+    if (displayMode) {
+        document.getElementById('tiebreak-display-section').style.display = 'none';
+        document.querySelector('.round-header').style.display = '';
+    }
 
     // Store initial order for results display (important for display mode)
     if (Array.isArray(state.initial_order?.leads)) initialLeads = state.initial_order.leads;

@@ -358,6 +358,18 @@ def serialize_state(game: Game) -> dict:
             "follows": ([game.pair_1[1].name, game.pair_2[1].name] if game.pair_1 and game.pair_2 else [])
             + [c.name for c in game.follows],
         },
+        "tiebreak": {
+            "active": game.tiebreak_active,
+            "sub_round": game.tiebreak_sub_round,
+            "lead_needed": game.tiebreak_lead_needed,
+            "follow_needed": game.tiebreak_follow_needed,
+            "tied_leads": [c.name for c in game.tiebreak_leads_tied],
+            "tied_follows": [c.name for c in game.tiebreak_follows_tied],
+            "sr1_pairings": [list(p) for p in game.tiebreak_sub_round_1_pairings],
+            "sr2_pairings": [list(p) for p in game.tiebreak_sub_round_2_pairings],
+            "lead_winner": game.tiebreak_lead_winner.name if game.tiebreak_lead_winner else None,
+            "follow_winner": game.tiebreak_follow_winner.name if game.tiebreak_follow_winner else None,
+        },
     }
     return state
 
