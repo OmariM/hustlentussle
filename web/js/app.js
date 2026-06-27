@@ -2613,6 +2613,10 @@ async function displayResults(data) {
     if (leadGraphic) leadGraphic.innerHTML = '';
     if (followGraphic) followGraphic.innerHTML = '';
     
+    // Sync globals so exportSocialImage() has current data
+    currentLeads = data.leads || [];
+    currentFollows = data.follows || [];
+
     // Always use the initial order from the server response
     const initialLeadsData = data.initial_leads || [];
     const initialFollowsData = data.initial_follows || [];
