@@ -3214,7 +3214,7 @@ function _rrect(ctx, x, y, w, h, r) {
 async function exportSocialImage() {
     const W = 1080;
     const H = 1920;
-    const PAD = 80;
+    const PAD = 50;
 
     await document.fonts.ready;
 
@@ -3331,17 +3331,17 @@ async function exportSocialImage() {
 
     // Badge sizing: fit all rounds on a single horizontal line per row
     const rankW = 44;
-    const nameAreaW = 228;
-    const badgeStartX = PAD + rankW + nameAreaW + 16;
+    const nameAreaW = 260;
+    const badgeStartX = PAD + rankW + nameAreaW + 12;
     const badgeAreaW = W - PAD - badgeStartX;
     const badgeGap = 4;
     const badgeSizeFromRounds = numRounds > 0
         ? Math.floor((badgeAreaW + badgeGap) / numRounds) - badgeGap
-        : 40;
+        : 48;
 
     // rowH must satisfy both: fit all dancers and fit badge size
     const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
-    const badgeSize = Math.max(16, Math.min(40, Math.min(maxRowHFromSpace - 18, badgeSizeFromRounds)));
+    const badgeSize = Math.max(16, Math.min(maxRowHFromSpace - 18, badgeSizeFromRounds));
     const rowH = Math.max(36, Math.min(maxRowHFromSpace, badgeSize + 18));
     const nameFontSize = Math.max(20, Math.min(32, rowH - 10));
     const rankFontSize = Math.max(16, nameFontSize - 4);
