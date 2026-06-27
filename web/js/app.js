@@ -3336,42 +3336,49 @@ async function exportSocialImage() {
     const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
     const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
 
-    // --- Layout constants (from design system) ---
+    // --- Layout constants ---
     const CARD_X = 24;
     const CARD_W = W - 48;
-    const CARD_PAD_H = 24;    // horizontal inner padding
+    const CARD_PAD_H = 24;
     const CARD_HEADER_H = 72;
-    const ROW_H = 72;
     const CARD_PAD_BOTTOM = 24;
     const BETWEEN_CARDS = 32;
     const CARD_RADIUS = 20;
-    const TOKEN_SIZE = 44;
     const TOKEN_GAP = 8;
     const CROWN_SIZE = 18;
+
+    const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
+
+    // Fill available vertical space with rows
+    const availForRows = H - contentStartY
+        - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
+        - BETWEEN_CARDS;
+    const ROW_H = Math.max(72, Math.floor(availForRows / (2 * maxDancers)));
 
     const innerLeft = CARD_X + CARD_PAD_H;
     const innerRight = CARD_X + CARD_W - CARD_PAD_H;
 
-    // Row sub-layout: Rank | gap | Name | gap | Tokens (right portion)
-    const RANK_W = 36;
+    // Row sub-layout: Rank | gap | Name | gap | Tokens
+    const RANK_W = 40;
     const RANK_NAME_GAP = 16;
-    const NAME_W = 220;
+    const NAME_W = Math.round(ROW_H * 2.8);  // name column scales with row height
     const NAME_BADGE_GAP = 24;
     const badgeStartX = innerLeft + RANK_W + RANK_NAME_GAP + NAME_W + NAME_BADGE_GAP;
     const badgeAreaW = innerRight - badgeStartX;
 
-    // Token sizing: 44 px target, scale down only when necessary
+    // Token sizing: scale with row height, constrained by horizontal space
     const allRoundCounts = [
         ...[...leadsOrder].map(n => (resultsLeadMap.get(n) || []).length),
         ...[...followsOrder].map(n => (resultsFollowMap.get(n) || []).length),
     ];
     const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
     const tokenSizeFromW = Math.floor((badgeAreaW + TOKEN_GAP) / maxRoundsPerDancer) - TOKEN_GAP;
-    const tokenSize = Math.max(20, Math.min(TOKEN_SIZE, tokenSizeFromW));
+    const tokenSizeFromH = ROW_H - 22;
+    const tokenSize = Math.max(20, Math.min(tokenSizeFromH, tokenSizeFromW));
     const tokenFontSize = Math.max(10, Math.round(tokenSize * 0.46));
 
-    const NAME_SIZE = 34;
-    const RANK_SIZE = 28;
+    const NAME_SIZE = Math.min(48, Math.round(ROW_H * 0.46));
+    const RANK_SIZE = Math.min(40, Math.round(ROW_H * 0.38));
 
     // --- Draw one card section ---
     const drawSection = (order, map, topName, label, startY) => {
@@ -3394,14 +3401,11 @@ async function exportSocialImage() {
         ctx.fillStyle = C.ink;
         ctx.fillRect(CARD_X, startY, CARD_W, CARD_HEADER_H);
 
-        // Crown icon + section label in header
-        const HEADER_CROWN = 26;
-        const crownHCX = innerLeft + HEADER_CROWN * 0.7;
-        drawCrown(crownHCX, startY + CARD_HEADER_H / 2, HEADER_CROWN);
+        // Section label
         ctx.fillStyle = '#FFFFFF';
         ctx.font = `normal 56px "Anton","Bebas Neue","Space Grotesk",sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText(label.toUpperCase(), innerLeft + HEADER_CROWN * 1.4 + 14, startY + CARD_HEADER_H - 14);
+        ctx.fillText(label.toUpperCase(), innerLeft, startY + CARD_HEADER_H - 14);
 
         // Contestant rows
         const rowsStartY = startY + CARD_HEADER_H;
