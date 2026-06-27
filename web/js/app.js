@@ -11,6 +11,15 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Cached data for the social export image (populated by displayResults)
+let resultsLeadMap = new Map();
+let resultsFollowMap = new Map();
+let resultsInitialLeads = [];
+let resultsInitialFollows = [];
+let resultsTopLeadName = null;
+let resultsTopFollowName = null;
+let resultsNumRounds = 0;
+
 // Display mode state (for viewer-only mode without voting controls)
 let displayMode = false;
 let displayPollInterval = null;
@@ -2764,6 +2773,15 @@ async function displayResults(data) {
 
         renderGraphicColumn(initialLeadsData || [], leadMap, topLeadName, leadGraphic);
         renderGraphicColumn(initialFollowsData || [], followMap, topFollowName, followGraphic);
+
+        // Cache for social export
+        resultsLeadMap = leadMap;
+        resultsFollowMap = followMap;
+        resultsInitialLeads = [...(initialLeadsData || [])];
+        resultsInitialFollows = [...(initialFollowsData || [])];
+        resultsTopLeadName = topLeadName;
+        resultsTopFollowName = topFollowName;
+        resultsNumRounds = totalRounds;
     }
     
     console.log('Round history:', data.rounds);
@@ -3184,6 +3202,7 @@ function _rrect(ctx, x, y, w, h, r) {
 async function exportSocialImage() {
     const W = 1080;
     const H = 1920;
+    const PAD = 80;
 
     await document.fonts.ready;
 
@@ -3208,49 +3227,46 @@ async function exportSocialImage() {
 
     const drawDivider = (y) => {
         ctx.beginPath();
-        ctx.moveTo(80, y);
-        ctx.lineTo(W - 80, y);
+        ctx.moveTo(PAD, y);
+        ctx.lineTo(W - PAD, y);
         ctx.strokeStyle = 'rgba(148,163,184,0.15)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
     };
 
-    // Title
+    // --- Header ---
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f1f5f9';
-    ctx.font = 'bold 78px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.font = 'bold 78px "Space Grotesk","DM Sans",sans-serif';
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
     ctx.fillStyle = '#7c3aed';
-    ctx.font = '500 46px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.font = '500 46px "Space Grotesk","DM Sans",sans-serif';
     ctx.fillText('Final Results', W / 2, 200);
 
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     ctx.fillStyle = '#475569';
-    ctx.font = '400 34px "Inter", "DM Sans", sans-serif';
+    ctx.font = '400 34px "Inter","DM Sans",sans-serif';
     ctx.fillText(dateStr, W / 2, 258);
 
     drawDivider(294);
 
-    // Sort by points descending
+    // --- Winner cards ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
     const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
     const topLead = sortedLeads[0] || null;
     const topFollow = sortedFollows[0] || null;
 
-    // Winners section
-    let afterWinnersY = 310;
+    let contentStartY = 310;
     if (topLead || topFollow) {
         ctx.fillStyle = '#64748b';
-        ctx.font = '500 28px "Inter", "DM Sans", sans-serif';
+        ctx.font = '500 26px "Inter","DM Sans",sans-serif';
         ctx.textAlign = 'center';
-        ctx.letterSpacing = '2px';
-        ctx.fillText('WINNERS', W / 2, 340);
-        ctx.letterSpacing = '0px';
+        ctx.fillText('WINNERS', W / 2, 334);
 
         const cardW = 440;
-        const cardH = 220;
-        const cardY = 360;
+        const cardH = 174;
+        const cardY = 348;
         const cardGap = 20;
         const leftCardX = W / 2 - cardW - cardGap / 2;
         const rightCardX = W / 2 + cardGap / 2;
@@ -3260,92 +3276,141 @@ async function exportSocialImage() {
             ctx.fillStyle = 'rgba(124,58,237,0.12)';
             _rrect(ctx, x, cardY, cardW, cardH, 16);
             ctx.fill();
-            ctx.strokeStyle = 'rgba(124,58,237,0.45)';
+            ctx.strokeStyle = 'rgba(124,58,237,0.4)';
             ctx.lineWidth = 1.5;
             _rrect(ctx, x, cardY, cardW, cardH, 16);
             ctx.stroke();
 
             ctx.fillStyle = '#7c3aed';
-            ctx.font = '500 26px "Inter", "DM Sans", sans-serif';
+            ctx.font = '500 24px "Inter","DM Sans",sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(label, x + cardW / 2, cardY + 46);
+            ctx.fillText(label, x + cardW / 2, cardY + 38);
 
             ctx.fillStyle = '#f1f5f9';
-            ctx.font = 'bold 40px "Space Grotesk", "DM Sans", sans-serif';
+            ctx.font = 'bold 38px "Space Grotesk","DM Sans",sans-serif';
             const name = contestant.name.length > 13 ? contestant.name.slice(0, 12) + '…' : contestant.name;
-            ctx.fillText('👑 ' + name, x + cardW / 2, cardY + 114);
+            ctx.fillText('👑 ' + name, x + cardW / 2, cardY + 98);
 
             ctx.fillStyle = '#94a3b8';
-            ctx.font = '500 30px "DM Mono", monospace';
-            ctx.fillText(contestant.points + ' pts', x + cardW / 2, cardY + 162);
+            ctx.font = '500 28px "DM Mono",monospace';
+            ctx.fillText(contestant.points + ' pts', x + cardW / 2, cardY + 144);
         };
 
         drawWinnerCard(topLead, 'Lead', leftCardX);
         drawWinnerCard(topFollow, 'Follow', rightCardX);
-        afterWinnersY = cardY + cardH + 24;
+        contentStartY = cardY + cardH + 18;
     }
 
-    drawDivider(afterWinnersY);
+    drawDivider(contentStartY);
+    contentStartY += 12;
 
-    // Leaderboard
-    const colStartY = afterWinnersY + 16;
-    const PAD = 80;
-    const COL_GAP = 40;
-    const colW = (W - PAD * 2 - COL_GAP) / 2;
-    const leftColX = PAD;
-    const rightColX = PAD + colW + COL_GAP;
+    // --- Battle Graphic ---
+    const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
+    const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
+    const numRounds = resultsNumRounds || 0;
 
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#64748b';
-    ctx.font = '500 30px "Space Grotesk", "DM Sans", sans-serif';
-    ctx.fillText('Leads', leftColX, colStartY + 30);
-    ctx.fillText('Follows', rightColX, colStartY + 30);
+    // Layout: two stacked sections (Leads then Follows), each full width
+    const SECTION_LABEL_H = 44;
+    const SECTION_GAP = 24;
+    const FOOTER_H = 120;
+    const availForRows = (H - FOOTER_H) - contentStartY - 2 * SECTION_LABEL_H - SECTION_GAP;
+    const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
 
-    const rowStartY = colStartY + 46;
-    const maxRows = Math.max(sortedLeads.length, sortedFollows.length);
-    const availH = H - rowStartY - 140;
-    const rowH = Math.max(52, Math.min(72, Math.floor(availH / Math.max(maxRows, 1))));
-    const nameFontSize = rowH >= 66 ? 34 : rowH >= 58 ? 30 : 26;
+    // Badge sizing: fit all rounds on a single horizontal line per row
+    const rankW = 44;
+    const nameAreaW = 228;
+    const badgeStartX = PAD + rankW + nameAreaW + 16;
+    const badgeAreaW = W - PAD - badgeStartX;
+    const badgeGap = 4;
+    const badgeSizeFromRounds = numRounds > 0
+        ? Math.floor((badgeAreaW + badgeGap) / numRounds) - badgeGap
+        : 40;
 
-    const drawRow = (contestant, x, i, isTop) => {
-        if (!contestant) return;
-        const y = rowStartY + i * rowH;
+    // rowH must satisfy both: fit all dancers and fit badge size
+    const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
+    const badgeSize = Math.max(16, Math.min(40, Math.min(maxRowHFromSpace - 18, badgeSizeFromRounds)));
+    const rowH = Math.max(36, Math.min(maxRowHFromSpace, badgeSize + 18));
+    const nameFontSize = Math.max(20, Math.min(32, rowH - 10));
+    const rankFontSize = Math.max(16, nameFontSize - 4);
 
-        if (i % 2 === 0) {
-            ctx.fillStyle = 'rgba(255,255,255,0.025)';
-            ctx.fillRect(x - 8, y, colW + 8, rowH - 2);
-        }
-
-        ctx.fillStyle = '#475569';
-        ctx.font = `400 ${nameFontSize - 4}px "DM Mono", monospace`;
+    const drawSection = (order, map, topName, label, startY) => {
+        ctx.fillStyle = '#64748b';
+        ctx.font = `500 ${rankFontSize + 6}px "Space Grotesk","DM Sans",sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText((i + 1) + '.', x, y + rowH * 0.65);
+        ctx.fillText(label, PAD, startY + SECTION_LABEL_H - 10);
 
-        const maxNameChars = Math.floor(colW / (nameFontSize * 0.58)) - 4;
-        const displayName = contestant.name.length > maxNameChars
-            ? contestant.name.slice(0, maxNameChars - 1) + '…'
-            : contestant.name;
-        ctx.fillStyle = isTop ? '#f1f5f9' : '#94a3b8';
-        ctx.font = isTop
-            ? `bold ${nameFontSize}px "DM Sans", sans-serif`
-            : `400 ${nameFontSize}px "DM Sans", sans-serif`;
-        ctx.fillText(displayName, x + 44, y + rowH * 0.65);
+        const rowsStartY = startY + SECTION_LABEL_H;
 
-        ctx.fillStyle = isTop ? '#7c3aed' : '#475569';
-        ctx.font = `bold ${nameFontSize}px "DM Mono", monospace`;
-        ctx.textAlign = 'right';
-        ctx.fillText(String(contestant.points), x + colW, y + rowH * 0.65);
+        order.forEach((name, idx) => {
+            const rowY = rowsStartY + idx * rowH;
+            const isTop = name === topName;
+            const textBaseY = rowY + rowH * 0.64;
+
+            // Alternating row tint
+            if (idx % 2 === 0) {
+                ctx.fillStyle = 'rgba(255,255,255,0.025)';
+                ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowH - 1);
+            }
+
+            // Rank
+            ctx.fillStyle = '#475569';
+            ctx.font = `400 ${rankFontSize}px "DM Mono",monospace`;
+            ctx.textAlign = 'left';
+            ctx.fillText((idx + 1) + '.', PAD, textBaseY);
+
+            // Name (truncated to fit)
+            const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
+            const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
+            ctx.fillStyle = isTop ? '#f1f5f9' : '#94a3b8';
+            ctx.font = isTop
+                ? `bold ${nameFontSize}px "DM Sans",sans-serif`
+                : `400 ${nameFontSize}px "DM Sans",sans-serif`;
+            ctx.fillText(displayName, PAD + rankW, textBaseY);
+
+            // Crown after name for winner
+            if (isTop) {
+                const nameW2 = ctx.measureText(displayName).width;
+                ctx.font = `${nameFontSize}px serif`;
+                ctx.fillText('👑', PAD + rankW + nameW2 + 5, textBaseY);
+            }
+
+            // Round badges — one row of circles
+            const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
+            const badgeCY = rowY + rowH / 2;
+            rounds.forEach((info, bi) => {
+                const cx = badgeStartX + bi * (badgeSize + badgeGap) + badgeSize / 2;
+                const cy = badgeCY;
+                const r = badgeSize / 2;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fillStyle = info.win ? '#7c3aed' : 'rgba(25,25,46,0.9)';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
+                ctx.strokeStyle = info.win ? 'rgba(167,139,250,0.8)' : 'rgba(100,116,139,0.35)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                const bFontSize = Math.max(9, badgeSize - 13);
+                ctx.fillStyle = info.win ? '#fff' : '#475569';
+                ctx.font = `bold ${bFontSize}px "DM Mono",monospace`;
+                ctx.textAlign = 'center';
+                ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
+            });
+        });
+
+        return rowsStartY + order.length * rowH;
     };
 
-    for (let i = 0; i < maxRows; i++) {
-        drawRow(sortedLeads[i], leftColX, i, i === 0);
-        drawRow(sortedFollows[i], rightColX, i, i === 0);
-    }
+    const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
+    drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + SECTION_GAP);
 
-    // Bottom branding
+    // --- Footer ---
     drawDivider(H - 110);
     ctx.fillStyle = '#334155';
-    ctx.font = '400 28px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.font = '400 28px "Space Grotesk","DM Sans",sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText("hustle n' tussle", W / 2, H - 56);
 
