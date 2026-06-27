@@ -3339,11 +3339,11 @@ async function exportSocialImage() {
         ? Math.floor((badgeAreaW + badgeGap) / numRounds) - badgeGap
         : 48;
 
-    // rowH must satisfy both: fit all dancers and fit badge size
+    // rowH fills all available vertical space; badgeSize is the smaller of the two constraints
     const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
-    const badgeSize = Math.max(16, Math.min(maxRowHFromSpace - 18, badgeSizeFromRounds));
-    const rowH = Math.max(36, Math.min(maxRowHFromSpace, badgeSize + 18));
-    const nameFontSize = Math.max(20, Math.min(32, rowH - 10));
+    const rowH = Math.max(36, maxRowHFromSpace);
+    const badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
+    const nameFontSize = Math.max(20, Math.min(44, rowH - 26));
     const rankFontSize = Math.max(16, nameFontSize - 4);
 
     const drawSection = (order, map, topName, label, startY) => {
