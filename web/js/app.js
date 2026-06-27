@@ -2783,7 +2783,17 @@ async function displayResults(data) {
         resultsTopLeadName = topLeadName;
         resultsTopFollowName = topFollowName;
         resultsNumRounds = totalRounds;
-        resultsGuestJudges = [...guestJudges];
+        resultsGuestJudges = guestJudges.length > 0
+            ? [...guestJudges]
+            : (() => {
+                // Fallback: extract unique judge names from rounds data
+                // (handles page-reload case where guestJudges global was reset)
+                const seen = new Set();
+                (data.rounds || []).forEach(r => {
+                    if (Array.isArray(r.judges)) r.judges.forEach(j => seen.add(j));
+                });
+                return [...seen];
+            })();
     }
     
     console.log('Round history:', data.rounds);
