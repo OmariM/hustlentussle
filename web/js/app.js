@@ -3212,189 +3212,250 @@ function _rrect(ctx, x, y, w, h, r) {
 }
 
 async function exportSocialImage() {
-    const W = 1080;
-    const H = 1920;
-    const PAD = 50;
-
+    const W = 1080, H = 1920;
     await document.fonts.ready;
 
     const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
+    canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Background — white
-    ctx.fillStyle = '#ffffff';
+    // Design tokens
+    const C = {
+        ink:      '#111111',
+        paper:    '#F8F7F4',
+        paperAlt: '#EFEDE9',
+        gray:     '#808080',
+        border:   '#D4D4D4',
+        gold:     '#F5B400',
+    };
+
+    // Background (paper, never pure white)
+    ctx.fillStyle = C.paper;
     ctx.fillRect(0, 0, W, H);
 
-    // Top accent bar — black
-    ctx.fillStyle = '#111111';
+    // Top accent bar
+    ctx.fillStyle = C.ink;
     ctx.fillRect(0, 0, W, 12);
 
+    // Custom crown path — gold, drawn at center (cx, cy), given height `size`
+    const drawCrown = (cx, cy, size) => {
+        const w = size * 1.4;
+        ctx.fillStyle = C.gold;
+        ctx.beginPath();
+        ctx.moveTo(cx - w / 2,    cy + size * 0.42);
+        ctx.lineTo(cx - w / 2,    cy - size * 0.08);
+        ctx.lineTo(cx - w * 0.15, cy + size * 0.22);
+        ctx.lineTo(cx,            cy - size * 0.52);
+        ctx.lineTo(cx + w * 0.15, cy + size * 0.22);
+        ctx.lineTo(cx + w / 2,    cy - size * 0.08);
+        ctx.lineTo(cx + w / 2,    cy + size * 0.42);
+        ctx.closePath();
+        ctx.fill();
+        // Dots at the three tips
+        const dr = size * 0.11;
+        [[cx - w / 2, cy - size * 0.08], [cx, cy - size * 0.52], [cx + w / 2, cy - size * 0.08]].forEach(([dx, dy]) => {
+            ctx.beginPath();
+            ctx.arc(dx, dy - dr * 0.7, dr, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
     // --- Header ---
+    const TITLE_SIZE = 88;
+    const titleY = 12 + 60 + Math.round(TITLE_SIZE * 0.78); // baseline ≈ 141
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 78px "Space Grotesk","DM Sans",sans-serif';
-    ctx.fillText("Hustle n' Tussle", W / 2, 130);
+    ctx.fillStyle = C.ink;
+    ctx.font = `${TITLE_SIZE}px "Permanent Marker","Knewave",cursive`;
+    ctx.fillText("Hustle n' Tussle", W / 2, titleY);
 
+    const EDITION_SIZE = 38;
+    const editionY = titleY + Math.round(TITLE_SIZE * 0.22) + 18 + EDITION_SIZE; // gap 18
     const now = new Date();
-    const monthStr = now.toLocaleDateString('en-US', { month: 'long' });
-    const yearStr = now.getFullYear();
-    ctx.fillStyle = '#888888';
-    ctx.font = '400 38px "Inter","DM Sans",sans-serif';
-    ctx.fillText(`${monthStr} Edition (${yearStr})`, W / 2, 200);
+    const editionText = `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
+    ctx.fillStyle = C.gray;
+    ctx.font = `500 ${EDITION_SIZE}px "Inter","DM Sans",sans-serif`;
+    ctx.fillText(editionText, W / 2, editionY);
 
+    // Gold brush underline below edition
+    const edW = ctx.measureText(editionText).width;
+    const ulY = editionY + 10;
+    ctx.strokeStyle = C.gold;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - edW / 2, ulY);
+    ctx.quadraticCurveTo(W / 2 - edW / 4, ulY + 6, W / 2, ulY + 3);
+    ctx.quadraticCurveTo(W / 2 + edW / 4, ulY, W / 2 + edW / 2, ulY + 5);
+    ctx.stroke();
+
+    // Judges line (8 px below underline)
+    let contentStartY = ulY + 8 + 32; // no judges: 32px gap to cards
     if (resultsGuestJudges.length > 0) {
-        const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
-        ctx.fillStyle = '#222222';
-        ctx.font = '600 40px "Space Grotesk","DM Sans",sans-serif';
-        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
+        const JUDGES_SIZE = 36;
+        const judgesY = ulY + 8 + JUDGES_SIZE;
+        ctx.fillStyle = C.gray;
+        ctx.font = `500 ${JUDGES_SIZE}px "Inter","DM Sans",sans-serif`;
+        ctx.fillText(
+            `${resultsGuestJudges.length === 1 ? 'Judge' : 'Judges'}: ${resultsGuestJudges.join(', ')}`,
+            W / 2, judgesY
+        );
+        contentStartY = judgesY + 32;
     }
 
+    // --- Data ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
     const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
-
-    const contentStartY = 300;
-
-    // --- Battle Graphic ---
     const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
     const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
-    const numRounds = resultsNumRounds || 0;
 
-    // Layout: two card sections (Leads then Follows)
-    const CARD_HEADER_H = 76;   // dark strip at top of each card
-    const CARD_PAD_BOTTOM = 16; // padding below last row inside card
-    const SECTION_GAP = 20;
-    const FOOTER_H = 40;
-    const availForRows = (H - FOOTER_H) - contentStartY
-        - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
-        - SECTION_GAP;
-    const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
+    // --- Layout constants (from design system) ---
+    const CARD_X = 24;
+    const CARD_W = W - 48;
+    const CARD_PAD_H = 24;    // horizontal inner padding
+    const CARD_HEADER_H = 72;
+    const ROW_H = 72;
+    const CARD_PAD_BOTTOM = 24;
+    const BETWEEN_CARDS = 32;
+    const CARD_RADIUS = 20;
+    const TOKEN_SIZE = 44;
+    const TOKEN_GAP = 8;
+    const CROWN_SIZE = 18;
 
-    // Badge sizing: fit all rounds on a single horizontal line per row
-    const rankW = 44;
-    const nameAreaW = 260;
-    const badgeStartX = PAD + rankW + nameAreaW + 24;
-    const badgeAreaW = W - PAD - badgeStartX;
-    const badgeGap = 4;
+    const innerLeft = CARD_X + CARD_PAD_H;
+    const innerRight = CARD_X + CARD_W - CARD_PAD_H;
 
-    // Use the most rounds any individual dancer competed in (not total game rounds)
-    // so the badge row fills the full width for the most active dancer.
+    // Row sub-layout: Rank | gap | Name | gap | Tokens (right portion)
+    const RANK_W = 36;
+    const RANK_NAME_GAP = 16;
+    const NAME_W = 220;
+    const NAME_BADGE_GAP = 24;
+    const badgeStartX = innerLeft + RANK_W + RANK_NAME_GAP + NAME_W + NAME_BADGE_GAP;
+    const badgeAreaW = innerRight - badgeStartX;
+
+    // Token sizing: 44 px target, scale down only when necessary
     const allRoundCounts = [
         ...[...leadsOrder].map(n => (resultsLeadMap.get(n) || []).length),
         ...[...followsOrder].map(n => (resultsFollowMap.get(n) || []).length),
     ];
     const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
-    const badgeSizeFromRounds = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
+    const tokenSizeFromW = Math.floor((badgeAreaW + TOKEN_GAP) / maxRoundsPerDancer) - TOKEN_GAP;
+    const tokenSize = Math.max(20, Math.min(TOKEN_SIZE, tokenSizeFromW));
+    const tokenFontSize = Math.max(10, Math.round(tokenSize * 0.46));
 
-    // rowH fills all available vertical space; badgeSize is the smaller of the two constraints
-    const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
-    const rowH = Math.max(36, maxRowHFromSpace);
-    const badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
-    const bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
-    const nameFontSize = Math.max(20, Math.min(44, rowH - 26));
-    const rankFontSize = Math.max(16, nameFontSize - 4);
+    const NAME_SIZE = 34;
+    const RANK_SIZE = 28;
 
+    // --- Draw one card section ---
     const drawSection = (order, map, topName, label, startY) => {
-        const CARD_RADIUS = 20;
-        const cardX = PAD - 12;
-        const cardW = W - 2 * (PAD - 12);
-        const cardH = CARD_HEADER_H + order.length * rowH + CARD_PAD_BOTTOM;
+        const cardH = CARD_HEADER_H + order.length * ROW_H + CARD_PAD_BOTTOM;
 
-        // Card background (light)
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
-        ctx.fillStyle = '#f4f4f4';
+        // Card base (paper background + border)
+        _rrect(ctx, CARD_X, startY, CARD_W, cardH, CARD_RADIUS);
+        ctx.fillStyle = C.paper;
         ctx.fill();
-
-        // Dark header strip — clipped to card shape so top corners are rounded
-        ctx.save();
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
-        ctx.clip();
-        ctx.fillStyle = '#111111';
-        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
-        ctx.restore();
-
-        // Card border
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = C.border;
+        ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Section label — white bold uppercase in dark strip
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold 52px "Space Grotesk","DM Sans",sans-serif`;
+        // Everything inside the card is clipped to its rounded shape
+        ctx.save();
+        _rrect(ctx, CARD_X, startY, CARD_W, cardH, CARD_RADIUS);
+        ctx.clip();
+
+        // Dark header strip
+        ctx.fillStyle = C.ink;
+        ctx.fillRect(CARD_X, startY, CARD_W, CARD_HEADER_H);
+
+        // Section label — Anton, white, ALL CAPS
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `normal 56px "Anton","Bebas Neue","Space Grotesk",sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
+        ctx.fillText(label.toUpperCase(), innerLeft, startY + CARD_HEADER_H - 14);
 
+        // Contestant rows
         const rowsStartY = startY + CARD_HEADER_H;
-
         order.forEach((name, idx) => {
-            const rowY = rowsStartY + idx * rowH;
+            const rowY = rowsStartY + idx * ROW_H;
             const isTop = name === topName;
-            const textBaseY = rowY + rowH * 0.64;
+            const baseY = rowY + Math.round(ROW_H * 0.625);
 
-            // Alternating row tint
-            if (idx % 2 === 0) {
-                ctx.fillStyle = 'rgba(0,0,0,0.04)';
-                ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowH - 1);
+            // Alternating row background (Paper / PaperAlt)
+            ctx.fillStyle = idx % 2 === 0 ? C.paper : C.paperAlt;
+            ctx.fillRect(CARD_X, rowY, CARD_W, ROW_H);
+
+            // Row separator (almost invisible)
+            if (idx > 0) {
+                ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(innerLeft, rowY);
+                ctx.lineTo(innerRight, rowY);
+                ctx.stroke();
             }
 
-            // Rank
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = `400 ${rankFontSize}px "DM Mono",monospace`;
+            // Rank number
+            ctx.fillStyle = C.gray;
+            ctx.font = `400 ${RANK_SIZE}px "Inter","DM Sans",sans-serif`;
             ctx.textAlign = 'left';
-            ctx.fillText((idx + 1) + '.', PAD, textBaseY);
+            ctx.fillText(`${idx + 1}.`, innerLeft, baseY);
 
-            // Name + crown — clipped to nameAreaW so crown never bleeds into badge area
+            // Name (clipped to name column so it never bleeds into tokens)
+            const nameX = innerLeft + RANK_W + RANK_NAME_GAP;
             ctx.save();
             ctx.beginPath();
-            ctx.rect(PAD + rankW, rowY, nameAreaW, rowH);
+            ctx.rect(nameX, rowY, NAME_W, ROW_H);
             ctx.clip();
-            const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
-            const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
-            ctx.fillStyle = isTop ? '#111111' : '#555555';
-            ctx.font = isTop
-                ? `bold ${nameFontSize}px "DM Sans",sans-serif`
-                : `400 ${nameFontSize}px "DM Sans",sans-serif`;
-            ctx.fillText(displayName, PAD + rankW, textBaseY);
-            if (isTop) {
-                const nameW2 = ctx.measureText(displayName).width;
-                ctx.font = `${nameFontSize}px serif`;
-                ctx.fillText('👑', PAD + rankW + nameW2 + 5, textBaseY);
-            }
+            ctx.fillStyle = isTop ? C.ink : '#444444';
+            ctx.font = `${isTop ? 700 : 600} ${NAME_SIZE}px "Inter","DM Sans",sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText(name, nameX, baseY);
             ctx.restore();
 
-            // Round badges — one row of circles
-            const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
-            const badgeCY = rowY + rowH / 2;
-            rounds.forEach((info, bi) => {
-                const cx = badgeStartX + bi * (badgeSize + badgeGap) + badgeSize / 2;
-                const cy = badgeCY;
-                const r = badgeSize / 2;
+            // Crown icon (custom path, gold) placed after name if champion
+            if (isTop) {
+                ctx.font = `700 ${NAME_SIZE}px "Inter","DM Sans",sans-serif`;
+                const nameTextW = ctx.measureText(name).width;
+                const crownCX = nameX + nameTextW + 12 + CROWN_SIZE * 0.7;
+                if (crownCX + CROWN_SIZE < badgeStartX) {
+                    drawCrown(crownCX, baseY - NAME_SIZE * 0.38, CROWN_SIZE);
+                }
+            }
 
+            // Round tokens
+            const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
+            const tokenCY = rowY + ROW_H / 2;
+            rounds.forEach((info, bi) => {
+                const cx = badgeStartX + bi * (tokenSize + TOKEN_GAP) + tokenSize / 2;
+                const r = tokenSize / 2;
+
+                // Token fill
                 ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.fillStyle = info.win ? '#111111' : '#f0f0f0';
+                ctx.arc(cx, tokenCY, r, 0, Math.PI * 2);
+                ctx.fillStyle = info.win ? C.ink : C.paper;
                 ctx.fill();
 
+                // Token border
                 ctx.beginPath();
-                ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
-                ctx.strokeStyle = info.win ? '#333333' : 'rgba(0,0,0,0.2)';
+                ctx.arc(cx, tokenCY, r - 1, 0, Math.PI * 2);
+                ctx.strokeStyle = info.win ? C.ink : C.border;
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
-                ctx.fillStyle = info.win ? '#ffffff' : '#aaaaaa';
-                ctx.font = `bold ${bFontSize}px "DM Mono",monospace`;
+                // Round number
+                ctx.fillStyle = info.win ? '#FFFFFF' : C.gray;
+                ctx.font = `700 ${tokenFontSize}px "Inter","DM Mono",monospace`;
                 ctx.textAlign = 'center';
-                ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
+                ctx.fillText(String(info.round), cx, tokenCY + tokenFontSize * 0.37);
             });
         });
 
-        return rowsStartY + order.length * rowH + CARD_PAD_BOTTOM;
+        ctx.restore(); // end card clip
+
+        return rowsStartY + order.length * ROW_H + CARD_PAD_BOTTOM;
     };
 
     const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
-    drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + SECTION_GAP);
+    drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + BETWEEN_CARDS);
 
     canvas.toBlob(blob => {
         if (!blob) { showToast('Failed to generate image', 'error'); return; }
