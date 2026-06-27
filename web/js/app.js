@@ -19,6 +19,7 @@ let resultsInitialFollows = [];
 let resultsTopLeadName = null;
 let resultsTopFollowName = null;
 let resultsNumRounds = 0;
+let resultsGuestJudges = [];
 
 // Display mode state (for viewer-only mode without voting controls)
 let displayMode = false;
@@ -2782,6 +2783,7 @@ async function displayResults(data) {
         resultsTopLeadName = topLeadName;
         resultsTopFollowName = topFollowName;
         resultsNumRounds = totalRounds;
+        resultsGuestJudges = [...guestJudges];
     }
     
     console.log('Round history:', data.rounds);
@@ -3247,9 +3249,16 @@ async function exportSocialImage() {
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     ctx.fillStyle = '#475569';
     ctx.font = '400 34px "Inter","DM Sans",sans-serif';
-    ctx.fillText(dateStr, W / 2, 258);
+    ctx.fillText(dateStr, W / 2, 248);
 
-    drawDivider(294);
+    if (resultsGuestJudges.length > 0) {
+        const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
+        ctx.fillStyle = '#475569';
+        ctx.font = '400 26px "Inter","DM Sans",sans-serif';
+        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 278);
+    }
+
+    drawDivider(298);
 
     // --- Winner cards ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
