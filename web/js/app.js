@@ -3282,17 +3282,24 @@ async function exportSocialImage() {
     // Badge sizing: fit all rounds on a single horizontal line per row
     const rankW = 44;
     const nameAreaW = 260;
-    const badgeStartX = PAD + rankW + nameAreaW + 12;
+    const badgeStartX = PAD + rankW + nameAreaW + 24;
     const badgeAreaW = W - PAD - badgeStartX;
     const badgeGap = 4;
-    const badgeSizeFromRounds = numRounds > 0
-        ? Math.floor((badgeAreaW + badgeGap) / numRounds) - badgeGap
-        : 48;
+
+    // Use the most rounds any individual dancer competed in (not total game rounds)
+    // so the badge row fills the full width for the most active dancer.
+    const allRoundCounts = [
+        ...[...leadsOrder].map(n => (resultsLeadMap.get(n) || []).length),
+        ...[...followsOrder].map(n => (resultsFollowMap.get(n) || []).length),
+    ];
+    const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
+    const badgeSizeFromRounds = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
 
     // rowH fills all available vertical space; badgeSize is the smaller of the two constraints
     const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
     const rowH = Math.max(36, maxRowHFromSpace);
     const badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
+    const bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
     const nameFontSize = Math.max(20, Math.min(44, rowH - 26));
     const rankFontSize = Math.max(16, nameFontSize - 4);
 
@@ -3321,7 +3328,11 @@ async function exportSocialImage() {
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', PAD, textBaseY);
 
-            // Name (truncated to fit)
+            // Name + crown — clipped to nameAreaW so crown never bleeds into badge area
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(PAD + rankW, rowY, nameAreaW, rowH);
+            ctx.clip();
             const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
             const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
             ctx.fillStyle = isTop ? '#111111' : '#555555';
@@ -3329,13 +3340,12 @@ async function exportSocialImage() {
                 ? `bold ${nameFontSize}px "DM Sans",sans-serif`
                 : `400 ${nameFontSize}px "DM Sans",sans-serif`;
             ctx.fillText(displayName, PAD + rankW, textBaseY);
-
-            // Crown after name for winner
             if (isTop) {
                 const nameW2 = ctx.measureText(displayName).width;
                 ctx.font = `${nameFontSize}px serif`;
                 ctx.fillText('👑', PAD + rankW + nameW2 + 5, textBaseY);
             }
+            ctx.restore();
 
             // Round badges — one row of circles
             const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
@@ -3356,7 +3366,6 @@ async function exportSocialImage() {
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
-                const bFontSize = Math.max(9, badgeSize - 13);
                 ctx.fillStyle = info.win ? '#ffffff' : '#aaaaaa';
                 ctx.font = `bold ${bFontSize}px "DM Mono",monospace`;
                 ctx.textAlign = 'center';
