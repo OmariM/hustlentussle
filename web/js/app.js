@@ -3223,52 +3223,46 @@ async function exportSocialImage() {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Background
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-    bgGrad.addColorStop(0, '#0d0d1a');
-    bgGrad.addColorStop(1, '#0a0a12');
-    ctx.fillStyle = bgGrad;
+    // Background — white
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
-    // Top accent bar
-    const barGrad = ctx.createLinearGradient(0, 0, W, 0);
-    barGrad.addColorStop(0, '#7c3aed');
-    barGrad.addColorStop(1, '#6d28d9');
-    ctx.fillStyle = barGrad;
-    ctx.fillRect(0, 0, W, 10);
+    // Top accent bar — black
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(0, 0, W, 12);
 
     const drawDivider = (y) => {
         ctx.beginPath();
         ctx.moveTo(PAD, y);
         ctx.lineTo(W - PAD, y);
-        ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
     };
 
     // --- Header ---
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#f1f5f9';
+    ctx.fillStyle = '#000000';
     ctx.font = 'bold 78px "Space Grotesk","DM Sans",sans-serif';
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
-    ctx.fillStyle = '#7c3aed';
+    ctx.fillStyle = '#222222';
     ctx.font = '500 46px "Space Grotesk","DM Sans",sans-serif';
     ctx.fillText('Final Results', W / 2, 200);
 
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = '#888888';
     ctx.font = '400 34px "Inter","DM Sans",sans-serif';
     ctx.fillText(dateStr, W / 2, 248);
 
     if (resultsGuestJudges.length > 0) {
         const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
-        ctx.fillStyle = '#475569';
-        ctx.font = '400 26px "Inter","DM Sans",sans-serif';
-        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 278);
+        ctx.fillStyle = '#222222';
+        ctx.font = '600 40px "Space Grotesk","DM Sans",sans-serif';
+        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 298);
     }
 
-    drawDivider(298);
+    drawDivider(324);
 
     // --- Winner cards ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
@@ -3276,41 +3270,41 @@ async function exportSocialImage() {
     const topLead = sortedLeads[0] || null;
     const topFollow = sortedFollows[0] || null;
 
-    let contentStartY = 310;
+    let contentStartY = 340;
     if (topLead || topFollow) {
-        ctx.fillStyle = '#64748b';
+        ctx.fillStyle = '#888888';
         ctx.font = '500 26px "Inter","DM Sans",sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('WINNERS', W / 2, 334);
+        ctx.fillText('WINNERS', W / 2, 360);
 
         const cardW = 440;
         const cardH = 174;
-        const cardY = 348;
+        const cardY = 374;
         const cardGap = 20;
         const leftCardX = W / 2 - cardW - cardGap / 2;
         const rightCardX = W / 2 + cardGap / 2;
 
         const drawWinnerCard = (contestant, label, x) => {
             if (!contestant) return;
-            ctx.fillStyle = 'rgba(124,58,237,0.12)';
+            ctx.fillStyle = 'rgba(0,0,0,0.04)';
             _rrect(ctx, x, cardY, cardW, cardH, 16);
             ctx.fill();
-            ctx.strokeStyle = 'rgba(124,58,237,0.4)';
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
             ctx.lineWidth = 1.5;
             _rrect(ctx, x, cardY, cardW, cardH, 16);
             ctx.stroke();
 
-            ctx.fillStyle = '#7c3aed';
+            ctx.fillStyle = '#555555';
             ctx.font = '500 24px "Inter","DM Sans",sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(label, x + cardW / 2, cardY + 38);
 
-            ctx.fillStyle = '#f1f5f9';
+            ctx.fillStyle = '#111111';
             ctx.font = 'bold 38px "Space Grotesk","DM Sans",sans-serif';
             const name = contestant.name.length > 13 ? contestant.name.slice(0, 12) + '…' : contestant.name;
             ctx.fillText('👑 ' + name, x + cardW / 2, cardY + 98);
 
-            ctx.fillStyle = '#94a3b8';
+            ctx.fillStyle = '#666666';
             ctx.font = '500 28px "DM Mono",monospace';
             ctx.fillText(contestant.points + ' pts', x + cardW / 2, cardY + 144);
         };
@@ -3331,7 +3325,7 @@ async function exportSocialImage() {
     // Layout: two stacked sections (Leads then Follows), each full width
     const SECTION_LABEL_H = 44;
     const SECTION_GAP = 24;
-    const FOOTER_H = 120;
+    const FOOTER_H = 40;
     const availForRows = (H - FOOTER_H) - contentStartY - 2 * SECTION_LABEL_H - SECTION_GAP;
     const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
 
@@ -3353,7 +3347,7 @@ async function exportSocialImage() {
     const rankFontSize = Math.max(16, nameFontSize - 4);
 
     const drawSection = (order, map, topName, label, startY) => {
-        ctx.fillStyle = '#64748b';
+        ctx.fillStyle = '#888888';
         ctx.font = `500 ${rankFontSize + 6}px "Space Grotesk","DM Sans",sans-serif`;
         ctx.textAlign = 'left';
         ctx.fillText(label, PAD, startY + SECTION_LABEL_H - 10);
@@ -3367,12 +3361,12 @@ async function exportSocialImage() {
 
             // Alternating row tint
             if (idx % 2 === 0) {
-                ctx.fillStyle = 'rgba(255,255,255,0.025)';
+                ctx.fillStyle = 'rgba(0,0,0,0.04)';
                 ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowH - 1);
             }
 
             // Rank
-            ctx.fillStyle = '#475569';
+            ctx.fillStyle = '#aaaaaa';
             ctx.font = `400 ${rankFontSize}px "DM Mono",monospace`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', PAD, textBaseY);
@@ -3380,7 +3374,7 @@ async function exportSocialImage() {
             // Name (truncated to fit)
             const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
             const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
-            ctx.fillStyle = isTop ? '#f1f5f9' : '#94a3b8';
+            ctx.fillStyle = isTop ? '#111111' : '#555555';
             ctx.font = isTop
                 ? `bold ${nameFontSize}px "DM Sans",sans-serif`
                 : `400 ${nameFontSize}px "DM Sans",sans-serif`;
@@ -3403,17 +3397,17 @@ async function exportSocialImage() {
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.fillStyle = info.win ? '#7c3aed' : 'rgba(25,25,46,0.9)';
+                ctx.fillStyle = info.win ? '#111111' : '#f0f0f0';
                 ctx.fill();
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
-                ctx.strokeStyle = info.win ? 'rgba(167,139,250,0.8)' : 'rgba(100,116,139,0.35)';
+                ctx.strokeStyle = info.win ? '#333333' : 'rgba(0,0,0,0.2)';
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
                 const bFontSize = Math.max(9, badgeSize - 13);
-                ctx.fillStyle = info.win ? '#fff' : '#475569';
+                ctx.fillStyle = info.win ? '#ffffff' : '#aaaaaa';
                 ctx.font = `bold ${bFontSize}px "DM Mono",monospace`;
                 ctx.textAlign = 'center';
                 ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
@@ -3425,13 +3419,6 @@ async function exportSocialImage() {
 
     const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
     drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + SECTION_GAP);
-
-    // --- Footer ---
-    drawDivider(H - 110);
-    ctx.fillStyle = '#334155';
-    ctx.font = '400 28px "Space Grotesk","DM Sans",sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText("hustle n' tussle", W / 2, H - 56);
 
     canvas.toBlob(blob => {
         if (!blob) { showToast('Failed to generate image', 'error'); return; }
