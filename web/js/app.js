@@ -3231,15 +3231,6 @@ async function exportSocialImage() {
     ctx.fillStyle = '#111111';
     ctx.fillRect(0, 0, W, 12);
 
-    const drawDivider = (y) => {
-        ctx.beginPath();
-        ctx.moveTo(PAD, y);
-        ctx.lineTo(W - PAD, y);
-        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-    };
-
     // --- Header ---
     ctx.textAlign = 'center';
     ctx.fillStyle = '#000000';
@@ -3260,8 +3251,6 @@ async function exportSocialImage() {
         ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
     }
 
-    drawDivider(288);
-
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
     const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
 
@@ -3272,11 +3261,14 @@ async function exportSocialImage() {
     const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
     const numRounds = resultsNumRounds || 0;
 
-    // Layout: two stacked sections (Leads then Follows), each full width
-    const SECTION_LABEL_H = 44;
-    const SECTION_GAP = 24;
+    // Layout: two card sections (Leads then Follows)
+    const CARD_HEADER_H = 76;   // dark strip at top of each card
+    const CARD_PAD_BOTTOM = 16; // padding below last row inside card
+    const SECTION_GAP = 20;
     const FOOTER_H = 40;
-    const availForRows = (H - FOOTER_H) - contentStartY - 2 * SECTION_LABEL_H - SECTION_GAP;
+    const availForRows = (H - FOOTER_H) - contentStartY
+        - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
+        - SECTION_GAP;
     const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
 
     // Badge sizing: fit all rounds on a single horizontal line per row
@@ -3304,12 +3296,37 @@ async function exportSocialImage() {
     const rankFontSize = Math.max(16, nameFontSize - 4);
 
     const drawSection = (order, map, topName, label, startY) => {
-        ctx.fillStyle = '#888888';
-        ctx.font = `500 ${rankFontSize + 6}px "Space Grotesk","DM Sans",sans-serif`;
-        ctx.textAlign = 'left';
-        ctx.fillText(label, PAD, startY + SECTION_LABEL_H - 10);
+        const CARD_RADIUS = 20;
+        const cardX = PAD - 12;
+        const cardW = W - 2 * (PAD - 12);
+        const cardH = CARD_HEADER_H + order.length * rowH + CARD_PAD_BOTTOM;
 
-        const rowsStartY = startY + SECTION_LABEL_H;
+        // Card background (light)
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.fillStyle = '#f4f4f4';
+        ctx.fill();
+
+        // Dark header strip — clipped to card shape so top corners are rounded
+        ctx.save();
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.clip();
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
+        ctx.restore();
+
+        // Card border
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Section label — white bold uppercase in dark strip
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold 52px "Space Grotesk","DM Sans",sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
+
+        const rowsStartY = startY + CARD_HEADER_H;
 
         order.forEach((name, idx) => {
             const rowY = rowsStartY + idx * rowH;
@@ -3373,7 +3390,7 @@ async function exportSocialImage() {
             });
         });
 
-        return rowsStartY + order.length * rowH;
+        return rowsStartY + order.length * rowH + CARD_PAD_BOTTOM;
     };
 
     const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
