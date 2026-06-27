@@ -3262,58 +3262,10 @@ async function exportSocialImage() {
 
     drawDivider(288);
 
-    // --- Winner cards ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
     const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
-    const topLead = sortedLeads[0] || null;
-    const topFollow = sortedFollows[0] || null;
 
-    let contentStartY = 300;
-    if (topLead || topFollow) {
-        ctx.fillStyle = '#888888';
-        ctx.font = '500 26px "Inter","DM Sans",sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('WINNERS', W / 2, 322);
-
-        const cardW = 440;
-        const cardH = 174;
-        const cardY = 336;
-        const cardGap = 20;
-        const leftCardX = W / 2 - cardW - cardGap / 2;
-        const rightCardX = W / 2 + cardGap / 2;
-
-        const drawWinnerCard = (contestant, label, x) => {
-            if (!contestant) return;
-            ctx.fillStyle = 'rgba(0,0,0,0.04)';
-            _rrect(ctx, x, cardY, cardW, cardH, 16);
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-            ctx.lineWidth = 1.5;
-            _rrect(ctx, x, cardY, cardW, cardH, 16);
-            ctx.stroke();
-
-            ctx.fillStyle = '#555555';
-            ctx.font = '500 24px "Inter","DM Sans",sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(label, x + cardW / 2, cardY + 38);
-
-            ctx.fillStyle = '#111111';
-            ctx.font = 'bold 38px "Space Grotesk","DM Sans",sans-serif';
-            const name = contestant.name.length > 13 ? contestant.name.slice(0, 12) + '…' : contestant.name;
-            ctx.fillText('👑 ' + name, x + cardW / 2, cardY + 98);
-
-            ctx.fillStyle = '#666666';
-            ctx.font = '500 28px "DM Mono",monospace';
-            ctx.fillText(contestant.points + ' pts', x + cardW / 2, cardY + 144);
-        };
-
-        drawWinnerCard(topLead, 'Lead', leftCardX);
-        drawWinnerCard(topFollow, 'Follow', rightCardX);
-        contentStartY = cardY + cardH + 18;
-    }
-
-    drawDivider(contentStartY);
-    contentStartY += 12;
+    const contentStartY = 300;
 
     // --- Battle Graphic ---
     const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
