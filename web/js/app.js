@@ -3246,23 +3246,21 @@ async function exportSocialImage() {
     ctx.font = 'bold 78px "Space Grotesk","DM Sans",sans-serif';
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
-    ctx.fillStyle = '#222222';
-    ctx.font = '500 46px "Space Grotesk","DM Sans",sans-serif';
-    ctx.fillText('Final Results', W / 2, 200);
-
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const now = new Date();
+    const monthStr = now.toLocaleDateString('en-US', { month: 'long' });
+    const yearStr = now.getFullYear();
     ctx.fillStyle = '#888888';
-    ctx.font = '400 34px "Inter","DM Sans",sans-serif';
-    ctx.fillText(dateStr, W / 2, 248);
+    ctx.font = '400 38px "Inter","DM Sans",sans-serif';
+    ctx.fillText(`${monthStr} Edition (${yearStr})`, W / 2, 200);
 
     if (resultsGuestJudges.length > 0) {
         const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
         ctx.fillStyle = '#222222';
         ctx.font = '600 40px "Space Grotesk","DM Sans",sans-serif';
-        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 298);
+        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
     }
 
-    drawDivider(324);
+    drawDivider(288);
 
     // --- Winner cards ---
     const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
@@ -3270,16 +3268,16 @@ async function exportSocialImage() {
     const topLead = sortedLeads[0] || null;
     const topFollow = sortedFollows[0] || null;
 
-    let contentStartY = 340;
+    let contentStartY = 300;
     if (topLead || topFollow) {
         ctx.fillStyle = '#888888';
         ctx.font = '500 26px "Inter","DM Sans",sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('WINNERS', W / 2, 360);
+        ctx.fillText('WINNERS', W / 2, 322);
 
         const cardW = 440;
         const cardH = 174;
-        const cardY = 374;
+        const cardY = 336;
         const cardGap = 20;
         const leftCardX = W / 2 - cardW - cardGap / 2;
         const rightCardX = W / 2 + cardGap / 2;
