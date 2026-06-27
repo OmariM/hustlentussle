@@ -562,6 +562,10 @@ def judge_leads():
     if song_info:
         game.current_round.song_info = song_info
 
+    # Convert dict format [{"judge": name, "vote": val}] → tuple format [(name, val)]
+    if votes and isinstance(votes[0], dict):
+        votes = [(v["judge"], v["vote"]) for v in votes]
+
     # Process votes and determine winner
     result = game.judge_round(game.pair_1[0], game.pair_2[0], "lead", votes)
 
@@ -594,6 +598,10 @@ def judge_follows():
     # Update song info in the current round if not already set
     if song_info and not hasattr(game.current_round, "song_info"):
         game.current_round.song_info = song_info
+
+    # Convert dict format [{"judge": name, "vote": val}] → tuple format [(name, val)]
+    if votes and isinstance(votes[0], dict):
+        votes = [(v["judge"], v["vote"]) for v in votes]
 
     # Process votes and determine winner
     result = game.judge_round(game.pair_1[1], game.pair_2[1], "follow", votes)
@@ -658,6 +666,12 @@ def judge_combined():
             return expanded
         except Exception:
             return votes_list
+
+    # Convert dict format [{"judge": name, "vote": val}] → tuple format [(name, val)]
+    if lead_votes and isinstance(lead_votes[0], dict):
+        lead_votes = [(v["judge"], v["vote"]) for v in lead_votes]
+    if follow_votes and isinstance(follow_votes[0], dict):
+        follow_votes = [(v["judge"], v["vote"]) for v in follow_votes]
 
     # Expand votes when needed
     lead_votes_effective = expand_with_mock_contestant_judges(lead_votes)
