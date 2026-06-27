@@ -142,7 +142,7 @@ let submitVotesBtn, votingResults;
 let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
-let backToHomeFromResultsBtn, downloadBattleDataBtn;
+let backToHomeFromResultsBtn, downloadBattleDataBtn, exportSocialImageBtn;
 // Vote confirmation modal elements
 let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
 let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
@@ -325,6 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
     followsLeaderboard = document.getElementById('follows-leaderboard');
     backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
     downloadBattleDataBtn = document.getElementById('download-battle-data');
+    exportSocialImageBtn = document.getElementById('export-social-image');
     
     // Check if elements exist
     console.log('Checking elements:');
@@ -449,6 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
+    if (exportSocialImageBtn) exportSocialImageBtn.addEventListener('click', exportSocialImage);
 
     // Theme toggles (nav bar + floating for display mode)
     document.querySelectorAll('#theme-toggle, #theme-toggle-floating').forEach(btn => {
@@ -3159,6 +3161,201 @@ function renderPlaylistEmbed(track) {
     iframe.allow = 'encrypted-media';
     iframe.className = 'spotify-embed';
     playlistEmbedContainer.appendChild(iframe);
+}
+
+function _rrect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+async function exportSocialImage() {
+    const W = 1080;
+    const H = 1920;
+
+    await document.fonts.ready;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, '#0d0d1a');
+    bgGrad.addColorStop(1, '#0a0a12');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Top accent bar
+    const barGrad = ctx.createLinearGradient(0, 0, W, 0);
+    barGrad.addColorStop(0, '#7c3aed');
+    barGrad.addColorStop(1, '#6d28d9');
+    ctx.fillStyle = barGrad;
+    ctx.fillRect(0, 0, W, 10);
+
+    const drawDivider = (y) => {
+        ctx.beginPath();
+        ctx.moveTo(80, y);
+        ctx.lineTo(W - 80, y);
+        ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    };
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 78px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.fillText("Hustle n' Tussle", W / 2, 130);
+
+    ctx.fillStyle = '#7c3aed';
+    ctx.font = '500 46px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.fillText('Final Results', W / 2, 200);
+
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    ctx.fillStyle = '#475569';
+    ctx.font = '400 34px "Inter", "DM Sans", sans-serif';
+    ctx.fillText(dateStr, W / 2, 258);
+
+    drawDivider(294);
+
+    // Sort by points descending
+    const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const topLead = sortedLeads[0] || null;
+    const topFollow = sortedFollows[0] || null;
+
+    // Winners section
+    let afterWinnersY = 310;
+    if (topLead || topFollow) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '500 28px "Inter", "DM Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.letterSpacing = '2px';
+        ctx.fillText('WINNERS', W / 2, 340);
+        ctx.letterSpacing = '0px';
+
+        const cardW = 440;
+        const cardH = 220;
+        const cardY = 360;
+        const cardGap = 20;
+        const leftCardX = W / 2 - cardW - cardGap / 2;
+        const rightCardX = W / 2 + cardGap / 2;
+
+        const drawWinnerCard = (contestant, label, x) => {
+            if (!contestant) return;
+            ctx.fillStyle = 'rgba(124,58,237,0.12)';
+            _rrect(ctx, x, cardY, cardW, cardH, 16);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(124,58,237,0.45)';
+            ctx.lineWidth = 1.5;
+            _rrect(ctx, x, cardY, cardW, cardH, 16);
+            ctx.stroke();
+
+            ctx.fillStyle = '#7c3aed';
+            ctx.font = '500 26px "Inter", "DM Sans", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + cardW / 2, cardY + 46);
+
+            ctx.fillStyle = '#f1f5f9';
+            ctx.font = 'bold 40px "Space Grotesk", "DM Sans", sans-serif';
+            const name = contestant.name.length > 13 ? contestant.name.slice(0, 12) + '…' : contestant.name;
+            ctx.fillText('👑 ' + name, x + cardW / 2, cardY + 114);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '500 30px "DM Mono", monospace';
+            ctx.fillText(contestant.points + ' pts', x + cardW / 2, cardY + 162);
+        };
+
+        drawWinnerCard(topLead, 'Lead', leftCardX);
+        drawWinnerCard(topFollow, 'Follow', rightCardX);
+        afterWinnersY = cardY + cardH + 24;
+    }
+
+    drawDivider(afterWinnersY);
+
+    // Leaderboard
+    const colStartY = afterWinnersY + 16;
+    const PAD = 80;
+    const COL_GAP = 40;
+    const colW = (W - PAD * 2 - COL_GAP) / 2;
+    const leftColX = PAD;
+    const rightColX = PAD + colW + COL_GAP;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#64748b';
+    ctx.font = '500 30px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.fillText('Leads', leftColX, colStartY + 30);
+    ctx.fillText('Follows', rightColX, colStartY + 30);
+
+    const rowStartY = colStartY + 46;
+    const maxRows = Math.max(sortedLeads.length, sortedFollows.length);
+    const availH = H - rowStartY - 140;
+    const rowH = Math.max(52, Math.min(72, Math.floor(availH / Math.max(maxRows, 1))));
+    const nameFontSize = rowH >= 66 ? 34 : rowH >= 58 ? 30 : 26;
+
+    const drawRow = (contestant, x, i, isTop) => {
+        if (!contestant) return;
+        const y = rowStartY + i * rowH;
+
+        if (i % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.025)';
+            ctx.fillRect(x - 8, y, colW + 8, rowH - 2);
+        }
+
+        ctx.fillStyle = '#475569';
+        ctx.font = `400 ${nameFontSize - 4}px "DM Mono", monospace`;
+        ctx.textAlign = 'left';
+        ctx.fillText((i + 1) + '.', x, y + rowH * 0.65);
+
+        const maxNameChars = Math.floor(colW / (nameFontSize * 0.58)) - 4;
+        const displayName = contestant.name.length > maxNameChars
+            ? contestant.name.slice(0, maxNameChars - 1) + '…'
+            : contestant.name;
+        ctx.fillStyle = isTop ? '#f1f5f9' : '#94a3b8';
+        ctx.font = isTop
+            ? `bold ${nameFontSize}px "DM Sans", sans-serif`
+            : `400 ${nameFontSize}px "DM Sans", sans-serif`;
+        ctx.fillText(displayName, x + 44, y + rowH * 0.65);
+
+        ctx.fillStyle = isTop ? '#7c3aed' : '#475569';
+        ctx.font = `bold ${nameFontSize}px "DM Mono", monospace`;
+        ctx.textAlign = 'right';
+        ctx.fillText(String(contestant.points), x + colW, y + rowH * 0.65);
+    };
+
+    for (let i = 0; i < maxRows; i++) {
+        drawRow(sortedLeads[i], leftColX, i, i === 0);
+        drawRow(sortedFollows[i], rightColX, i, i === 0);
+    }
+
+    // Bottom branding
+    drawDivider(H - 110);
+    ctx.fillStyle = '#334155';
+    ctx.font = '400 28px "Space Grotesk", "DM Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText("hustle n' tussle", W / 2, H - 56);
+
+    canvas.toBlob(blob => {
+        if (!blob) { showToast('Failed to generate image', 'error'); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'hnt-results.png';
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }, 'image/png');
 }
 
 async function downloadBattleData() {
