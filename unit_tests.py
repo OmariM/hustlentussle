@@ -1,8 +1,6 @@
 import unittest
-import io
 import sys
 import os
-from openpyxl import load_workbook
 from web.app import app, games
 from game_logic import Game
 from web.config import get_config
@@ -499,164 +497,63 @@ class TestExportBattleData(unittest.TestCase):
             self.fail(f"Failed to add test round: {str(e)}")
 
     def test_initial_order_export(self):
-        """Test that the initial order is correctly exported in the Excel file."""
-        try:
-            # Export battle data
-            response = self.client.get(f"/api/export_battle_data?session_id={self.session_id}")
+        """The JSON export lists all participants with their initial order."""
+        response = self.client.get(f"/api/export_battle_data?session_id={self.session_id}")
+        self.assertEqual(response.status_code, 200, f"Export failed with status {response.status_code}")
+        self.assertEqual(response.mimetype, "application/json", "Export should be JSON")
+        data = response.get_json()
+        self.assertEqual(data.get("format"), "hustlentussle.battle")
+        self.assertEqual(data.get("version"), 1)
+        self.assertIn("champions", data)
+        self.assertIn("participants", data)
 
-            # Verify response
-            self.assertEqual(response.status_code, 200, f"Export failed with status {response.status_code}")
-            self.assertEqual(
-                response.mimetype,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "Incorrect mimetype for Excel file",
-            )
-
-            # Load the Excel file from the response
-            excel_data = io.BytesIO(response.data)
-            try:
-                wb = load_workbook(excel_data)
-            except Exception as e:
-                print(f"Error loading Excel file: {str(e)}")
-                self.fail("Failed to load Excel file")
-
-            # Get the Battle Summary sheet
-            self.assertIn("Battle Summary", wb.sheetnames, "Battle Summary sheet not found")
-            summary_sheet = wb["Battle Summary"]
-
-            # Find the initial order section
-            current_row = 7  # Start after "Initial Order" header
-            found_initial_order = False
-
-            # First, find the "Initial Order" section
-            while current_row < summary_sheet.max_row:
-                cell_value = summary_sheet[f"A{current_row}"].value
-                if cell_value == "Initial Order":
-                    found_initial_order = True
-                    current_row += 2  # Skip the header and move to content
-                    break
-                current_row += 1
-
-            self.assertTrue(found_initial_order, "Initial Order section not found in Excel file")
-
-            # Extract leads from Excel
-            excel_leads = []
-            while current_row < summary_sheet.max_row:
-                lead_entry = summary_sheet[f"A{current_row}"].value
-                if not lead_entry or lead_entry == "Follows:":
-                    break
-                if isinstance(lead_entry, str) and ". " in lead_entry:
-                    lead_name = lead_entry.split(". ", 1)[1]
-                    excel_leads.append(lead_name)
-                current_row += 1
-
-            # Extract follows from Excel
-            excel_follows = []
-            # Skip the "Follows:" header
-            current_row += 1
-            while current_row < summary_sheet.max_row:
-                follow_entry = summary_sheet[f"A{current_row}"].value
-                if not follow_entry or follow_entry == "Final Results":
-                    break
-                if isinstance(follow_entry, str) and ". " in follow_entry:
-                    follow_name = follow_entry.split(". ", 1)[1]
-                    excel_follows.append(follow_name)
-                current_row += 1
-
-            # Verify that the exported order matches the initial order
-            self.assertEqual(
-                excel_leads,
-                self.initial_leads,
-                f"Exported leads order does not match initial order.\nExpected: {self.initial_leads}\nGot: {excel_leads}",
-            )
-            self.assertEqual(
-                excel_follows,
-                self.initial_follows,
-                f"Exported follows order does not match initial order.\nExpected: {self.initial_follows}\nGot: {excel_follows}",
-            )
-
-        except Exception as e:
-            print(f"Error in test_initial_order_export: {str(e)}")
-            self.fail(f"Test failed: {str(e)}")
+        leads = data["participants"]["leads"]
+        follows = data["participants"]["follows"]
+        lead_names = {p["name"] for p in leads}
+        follow_names = {p["name"] for p in follows}
+        for name in self.lead_names:
+            self.assertIn(name, lead_names, f"Lead {name} missing from export")
+        for name in self.follow_names:
+            self.assertIn(name, follow_names, f"Follow {name} missing from export")
+        # Every participant carries an integer initial_order (1-indexed).
+        for p in leads + follows:
+            self.assertIsInstance(p.get("initial_order"), int)
 
     def test_song_info_export(self):
-        """Test that song information is correctly extracted and exported."""
-        try:
-            # Add a test round with song information
-            lead_response = self.client.post(
-                "/api/judge_leads",
-                json={
-                    "session_id": self.session_id,
-                    "votes": [{"judge": "Judge1", "vote": 1}, {"judge": "Judge2", "vote": 1}],
-                    "song_info": {
-                        "title": "Test Song Title",
-                        "artist": "Test Artist Name",
-                        "spotify_url": "https://open.spotify.com/track/1234567890",
-                    },
+        """The JSON export records per-round song metadata under rounds[].song."""
+        lead_response = self.client.post(
+            "/api/judge_leads",
+            json={
+                "session_id": self.session_id,
+                "votes": [{"judge": "Judge1", "vote": 1}, {"judge": "Judge2", "vote": 1}],
+                "song_info": {
+                    "title": "Test Song Title",
+                    "artist": "Test Artist Name",
+                    "spotify_url": "https://open.spotify.com/track/1234567890",
                 },
-            )
+            },
+        )
+        self.assertEqual(lead_response.status_code, 200, "Failed to add lead votes")
 
-            if lead_response.status_code != 200:
-                print(f"Error adding lead votes: {lead_response.get_data(as_text=True)}")
-                self.fail("Failed to add lead votes")
+        follow_response = self.client.post(
+            "/api/judge_follows",
+            json={
+                "session_id": self.session_id,
+                "votes": [{"judge": "Judge1", "vote": 2}, {"judge": "Judge2", "vote": 2}],
+            },
+        )
+        self.assertEqual(follow_response.status_code, 200, "Failed to add follow votes")
 
-            # Add follow votes to complete the round
-            follow_response = self.client.post(
-                "/api/judge_follows",
-                json={
-                    "session_id": self.session_id,
-                    "votes": [{"judge": "Judge1", "vote": 2}, {"judge": "Judge2", "vote": 2}],
-                },
-            )
+        response = self.client.get(f"/api/export_battle_data?session_id={self.session_id}")
+        self.assertEqual(response.status_code, 200, f"Export failed with status {response.status_code}")
+        data = response.get_json()
 
-            if follow_response.status_code != 200:
-                print(f"Error adding follow votes: {follow_response.get_data(as_text=True)}")
-                self.fail("Failed to add follow votes")
-
-            # Export battle data
-            response = self.client.get(f"/api/export_battle_data?session_id={self.session_id}")
-
-            # Verify response
-            self.assertEqual(response.status_code, 200, f"Export failed with status {response.status_code}")
-
-            # Load the Excel file
-            excel_data = io.BytesIO(response.data)
-            wb = load_workbook(excel_data)
-
-            # Get the Round History sheet
-            self.assertIn("Round History", wb.sheetnames, "Round History sheet not found")
-            round_sheet = wb["Round History"]
-
-            # Find the row with our test round
-            found_round = False
-            for row in range(2, round_sheet.max_row + 1):
-                if round_sheet.cell(row=row, column=1).value == 1:  # Round 1
-                    found_round = True
-                    # Check song information
-                    song_title = round_sheet.cell(row=row, column=6).value
-                    artist = round_sheet.cell(row=row, column=7).value
-                    spotify_url = round_sheet.cell(row=row, column=8).value
-
-                    self.assertEqual(
-                        song_title,
-                        "Test Song Title",
-                        f"Song title mismatch. Expected: Test Song Title, Got: {song_title}",
-                    )
-                    self.assertEqual(
-                        artist, "Test Artist Name", f"Artist name mismatch. Expected: Test Artist Name, Got: {artist}"
-                    )
-                    self.assertEqual(
-                        spotify_url,
-                        "https://open.spotify.com/track/1234567890",
-                        f"Spotify URL mismatch. Expected: https://open.spotify.com/track/1234567890, Got: {spotify_url}",
-                    )
-                    break
-
-            self.assertTrue(found_round, "Test round not found in exported data")
-
-        except Exception as e:
-            print(f"Error in test_song_info_export: {str(e)}")
-            self.fail(f"Test failed: {str(e)}")
+        round_one = next((r for r in data.get("rounds", []) if r.get("round_num") == 1), None)
+        self.assertIsNotNone(round_one, "Round 1 not found in exported data")
+        song = round_one.get("song") or {}
+        self.assertEqual(song.get("title"), "Test Song Title")
+        self.assertEqual(song.get("artist"), "Test Artist Name")
+        self.assertEqual(song.get("spotify_url"), "https://open.spotify.com/track/1234567890")
 
 
 if __name__ == "__main__":

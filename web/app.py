@@ -1,11 +1,9 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect
+from flask import Flask, render_template, request, jsonify, send_file, redirect, session, abort
+from functools import wraps
 import sys
 import os
-import pandas as pd
 import io
 import datetime
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from werkzeug.utils import secure_filename
 import random
 import requests
@@ -36,6 +34,8 @@ from persistence import (
     PersistenceError,
     MemoryGameRepository,
 )
+from werkzeug.security import check_password_hash
+from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -111,6 +111,26 @@ def init_repository():
 
 
 repo = init_repository()
+
+
+# Initialize the year-to-date stats repository (separate tables, same database).
+# Requires DATABASE_URL; when unset (in-memory dev), YTD features are disabled.
+def init_stats_repository():
+    """Initialize the YTD stats repository if a database is configured."""
+    database_url = getattr(config, "DATABASE_URL", None)
+    if not database_url:
+        logger.warning("DATABASE_URL not set - year-to-date stats features are disabled")
+        return None
+    try:
+        stats = StatsRepository(database_url)
+        logger.info("Stats repository initialized")
+        return stats
+    except Exception as e:  # noqa: BLE001 - never block app startup on stats
+        logger.error(f"Failed to initialize stats repository: {e}")
+        return None
+
+
+stats_repo = init_stats_repository()
 
 # Initialize cleanup scheduler
 cleanup_scheduler = CleanupScheduler(
@@ -219,8 +239,16 @@ def _ensure_user_access_token(key: str) -> Optional[str]:
 def serialize_state(game: Game) -> dict:
     """Build a canonical renderable game state snapshot for the UI."""
 
-    # Determine crown status using current game flags/threshold
+    # Crown = "won the battle." Once finished, use the resolved champion
+    # (threshold / tie-break / early-end points leader). Mid-battle, only a
+    # dancer who has actually reached the threshold is crowned (no premature crown).
+    _finished = getattr(game, "state", 0) == 1 or (hasattr(game, "is_finished") and game.is_finished())
+    _champs = compute_champions(game) if _finished else None
+
     def has_earned_crown(contestant: Contestant, role: str) -> bool:
+        if _champs is not None:
+            champ_name = _champs[role]["name"]
+            return champ_name is not None and contestant.name == champ_name
         if role == "lead":
             return contestant.points >= game.win_threshold and game.has_winning_lead
         return contestant.points >= game.win_threshold and game.has_winning_follow
@@ -344,8 +372,12 @@ def serialize_state(game: Game) -> dict:
             "finished": game.is_finished(),
         },
         "winners": {
-            "lead": getattr(game, "winning_lead", None).name if getattr(game, "winning_lead", None) else None,
-            "follow": getattr(game, "winning_follow", None).name if getattr(game, "winning_follow", None) else None,
+            # When finished, the resolved battle champion (covers early-end/tie-break);
+            # otherwise the threshold winner (or None mid-battle).
+            "lead": (_champs["lead"]["name"] if _champs is not None
+                     else (game.winning_lead.name if getattr(game, "winning_lead", None) else None)),
+            "follow": (_champs["follow"]["name"] if _champs is not None
+                       else (game.winning_follow.name if getattr(game, "winning_follow", None) else None)),
         },
         "initial_order": {
             "leads": [c.name for c in getattr(game, "initial_leads", [])],
@@ -790,9 +822,49 @@ def end_game():
     return jsonify(_format_end_game_results(game, session_id))
 
 
+def _champion_for_role(winner_obj, has_threshold_winner, tiebreak_winner, pool):
+    """Resolve the champion for one role. Order: tie-break winner, then threshold
+    winner, then (battle ended early) the unique top scorer. Returns a dict
+    {name, points, decided_by} where decided_by is threshold|tiebreak|points|None.
+    Non-mutating."""
+    if tiebreak_winner is not None:
+        return {"name": tiebreak_winner.name, "points": tiebreak_winner.points, "decided_by": "tiebreak"}
+    if has_threshold_winner and winner_obj is not None:
+        return {"name": winner_obj.name, "points": winner_obj.points, "decided_by": "threshold"}
+    # Early end (below threshold): the clear points leader wins.
+    if pool:
+        max_points = max(c.points for c in pool)
+        top = [c for c in pool if c.points == max_points]
+        if max_points > 0 and len(top) == 1:
+            return {"name": top[0].name, "points": top[0].points, "decided_by": "points"}
+    return {"name": None, "points": None, "decided_by": None}
+
+
+def compute_champions(game):
+    """Single source of champion truth for both the export file and the live
+    end-of-battle response. See _champion_for_role for resolution order."""
+    return {
+        "lead": _champion_for_role(
+            getattr(game, "winning_lead", None),
+            getattr(game, "has_winning_lead", False),
+            getattr(game, "tiebreak_lead_winner", None),
+            getattr(game, "initial_leads", []),
+        ),
+        "follow": _champion_for_role(
+            getattr(game, "winning_follow", None),
+            getattr(game, "has_winning_follow", False),
+            getattr(game, "tiebreak_follow_winner", None),
+            getattr(game, "initial_follows", []),
+        ),
+    }
+
+
 def _format_end_game_results(game, session_id):
     """Shared results-formatting logic used by end_game and tiebreak/finalize."""
     leads, follows = game.finalize_results()
+    champions = compute_champions(game)
+    lead_champ = champions["lead"]["name"]
+    follow_champ = champions["follow"]["name"]
 
     all_leads = [lead.name for lead in game.initial_leads]
     lead_points = {lead.name: lead.points for lead in leads}
@@ -800,8 +872,9 @@ def _format_end_game_results(game, session_id):
     lead_results = []
     for idx, name in enumerate(sorted_leads):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = game.winning_lead and game.winning_lead.name == name
-        lead_results.append({"name": name, "points": lead_points.get(name, 0), "medal": medal, "is_winner": is_winner})
+        lead_results.append(
+            {"name": name, "points": lead_points.get(name, 0), "medal": medal, "is_winner": name == lead_champ}
+        )
 
     all_follows = [follow.name for follow in game.initial_follows]
     follow_points = {follow.name: follow.points for follow in follows}
@@ -809,8 +882,9 @@ def _format_end_game_results(game, session_id):
     follow_results = []
     for idx, name in enumerate(sorted_follows):
         medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = game.winning_follow and game.winning_follow.name == name
-        follow_results.append({"name": name, "points": follow_points.get(name, 0), "medal": medal, "is_winner": is_winner})
+        follow_results.append(
+            {"name": name, "points": follow_points.get(name, 0), "medal": medal, "is_winner": name == follow_champ}
+        )
 
     rounds_data = []
     for r in game.rounds:
@@ -862,6 +936,7 @@ def _format_end_game_results(game, session_id):
         "rounds": rounds_data,
         "initial_leads": [c.name for c in game.initial_leads],
         "initial_follows": [c.name for c in game.initial_follows],
+        "champions": champions,
     }
 
 
@@ -964,655 +1039,201 @@ def tiebreak_finalize():
     return jsonify(result)
 
 
+def _export_round(r):
+    """Serialize a Round to the clean export shape (song object, no internal fields)."""
+    return {
+        "round_num": r.round_num,
+        "pairs": r.pairs,
+        "lead_winner": r.lead_winner,
+        "follow_winner": r.follow_winner,
+        "lead_votes": r.lead_votes,
+        "follow_votes": r.follow_votes,
+        "judges": r.judges,
+        "contestant_judges": r.contestant_judges,
+        "song": r.song_info if hasattr(r, "song_info") else None,
+    }
+
+
+def _export_participants(sorted_contestants, initial_names, champion_name):
+    """Build participant rows: placement (points desc, ties share), is_champion,
+    initial_order. `sorted_contestants` must already be sorted by points desc."""
+    placements = {}
+    last_points = None
+    last_rank = 0
+    for idx, c in enumerate(sorted_contestants, start=1):
+        if c.points != last_points:
+            last_rank = idx
+            last_points = c.points
+        placements[c.name] = last_rank
+    initial_order = {name: i for i, name in enumerate(initial_names, start=1)}
+    return [
+        {
+            "name": c.name,
+            "points": c.points,
+            "placement": placements[c.name],
+            "is_champion": champion_name is not None and c.name == champion_name,
+            "initial_order": initial_order.get(c.name),
+        }
+        for c in sorted_contestants
+    ]
+
+
+def build_battle_export(game, session_id, posted_rounds=None):
+    """Build the versioned JSON battle payload (hustlentussle.battle v1).
+
+    Single source of truth for the download file and the YTD 'publish live battle'
+    flow. `posted_rounds`, when provided (already in export shape), overrides the
+    rounds derived from the game (used when the client sends Spotify-enriched rounds).
+    """
+    leads, follows = game.finalize_results()
+    champions = compute_champions(game)
+    initial_leads = [c.name for c in game.initial_leads]
+    initial_follows = [c.name for c in game.initial_follows]
+
+    if posted_rounds is not None:
+        rounds_data = list(posted_rounds)
+    else:
+        all_rounds = list(game.rounds)
+        if game.current_round and game.current_round not in game.rounds:
+            all_rounds.append(game.current_round)
+        rounds_data = [_export_round(r) for r in all_rounds]
+    rounds_data.sort(key=lambda x: x.get("round_num", 0))
+
+    finished = game.is_finished() if hasattr(game, "is_finished") else getattr(game, "state", 0) == 1
+
+    return {
+        "format": "hustlentussle.battle",
+        "version": 1,
+        "session_id": session_id,
+        "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "metadata": {
+            "battle_date": datetime.date.today().isoformat(),
+            "total_rounds": len({r.get("round_num") for r in rounds_data}),
+            "win_threshold": getattr(game, "win_threshold", None),
+            "finished": finished,
+            "contestant_judging_enabled": getattr(game, "contestant_judging_enabled", True),
+        },
+        "champions": champions,
+        "participants": {
+            "leads": _export_participants(leads, initial_leads, champions["lead"]["name"]),
+            "follows": _export_participants(follows, initial_follows, champions["follow"]["name"]),
+        },
+        "judges": {"guest": list(getattr(game, "guest_judges", []))},
+        "rounds": rounds_data,
+    }
+
+
 @app.route("/api/export_battle_data", methods=["GET", "POST"])
 def export_battle_data():
-    """Export battle data as an Excel file or JSON."""
+    """Export battle data as a portable JSON file (hustlentussle.battle v1)."""
     session_id = request.args.get("session_id")
-    format_type = request.args.get("format", "excel")  # Default to excel format
 
     if not repo.exists(session_id):
         return jsonify({"error": "Game not found"}), 404
 
     game = repo.get(session_id)
 
-    # Get all rounds data
-    all_rounds = []
-    all_rounds.extend(game.rounds)
-    if game.current_round not in game.rounds:
-        all_rounds.append(game.current_round)
-
-    # Format the results
-    leads, follows = game.finalize_results()
-
-    lead_results = []
-    for idx, lead in enumerate(leads):
-        medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, "last_lead_winner") and game.last_lead_winner == lead.name
-        lead_results.append({"name": lead.name, "points": lead.points, "medal": medal, "is_winner": is_winner})
-
-    follow_results = []
-    for idx, follow in enumerate(follows):
-        medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else ""
-        is_winner = hasattr(game, "last_follow_winner") and game.last_follow_winner == follow.name
-        follow_results.append({"name": follow.name, "points": follow.points, "medal": medal, "is_winner": is_winner})
-
-    # Collect round metadata
-    rounds_data = []
-
-    # Check if we received updated rounds data in the POST request
+    posted_rounds = None
     if request.method == "POST" and request.json and "rounds" in request.json:
-        rounds_data = request.json["rounds"]
-    else:
-        # Add all completed rounds from the game object
-        for r in all_rounds:
-            round_data = {
-                "round_num": r.round_num,
-                "session_id": session_id,
-                "pairs": r.pairs,
-                "lead_votes": r.lead_votes,
-                "follow_votes": r.follow_votes,
-                "judges": r.judges,
-                "contestant_judges": r.contestant_judges,
-                "win_messages": r.win_messages,
-                "lead_winner": r.lead_winner,
-                "follow_winner": r.follow_winner,
-                "song_info": r.song_info if hasattr(r, "song_info") else None,
-            }
-            rounds_data.append(round_data)
+        posted_rounds = request.json["rounds"]
 
-    # Sort rounds by round number
-    rounds_data.sort(key=lambda x: x["round_num"])
+    export = build_battle_export(game, session_id, posted_rounds)
 
-    if format_type == "json":
-        return jsonify(
-            {"session_id": session_id, "leads": lead_results, "follows": follow_results, "rounds": rounds_data}
-        )
-    else:
-        # Create Excel file in the previous multi-sheet format
-        wb = Workbook()
-        summary_sheet = wb.active
-        summary_sheet.title = "Battle Summary"
-
-        # Add game ID, date, and time
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%H:%M:%S")
-        summary_sheet["A1"] = f"Game ID: {session_id}"
-        summary_sheet["A3"] = "Date:"
-        summary_sheet["B3"] = date_str
-        summary_sheet["A4"] = "Time:"
-        summary_sheet["B4"] = time_str
-        summary_sheet["A5"] = "Total Rounds:"
-        summary_sheet["B5"] = len(game.rounds) + (1 if game.current_round not in game.rounds else 0)
-
-        # Initial Order section
-        summary_sheet["A7"] = "Initial Order"
-        summary_sheet["A9"] = "Leads:"
-        initial_leads = [lead.name for lead in game.initial_leads]
-        for i, lead in enumerate(initial_leads, 1):
-            summary_sheet[f"A{9 + i}"] = f"{i}. {lead}"
-        follow_start_row = 9 + len(initial_leads) + 2
-        summary_sheet[f"A{follow_start_row}"] = "Follows:"
-        initial_follows = [follow.name for follow in game.initial_follows]
-        for i, follow in enumerate(initial_follows, 1):
-            summary_sheet[f"A{follow_start_row + i}"] = f"{i}. {follow}"
-
-        # Final Results section
-        results_start_row = follow_start_row + len(initial_follows) + 2
-        summary_sheet[f"A{results_start_row}"] = "Final Results"
-        summary_sheet[f"A{results_start_row + 2}"] = "Lead Winners:"
-        for i, lead in enumerate(leads[:3], 1):
-            medal = ["🥇", "🥈", "🥉"][i - 1]
-            is_winner = hasattr(game, "last_lead_winner") and game.last_lead_winner == lead.name
-            crown = " 👑" if is_winner else ""
-            summary_sheet[f"A{results_start_row + 2 + i}"] = f"{medal} {lead.name}{crown}"
-            summary_sheet[f"B{results_start_row + 2 + i}"] = f"{lead.points} points"
-        follow_winners_start = results_start_row + 2 + len(leads[:3]) + 2
-        summary_sheet["A" + str(follow_winners_start)] = "Follow Winners:"
-        for i, follow in enumerate(follows[:3], 1):
-            medal = ["🥇", "🥈", "🥉"][i - 1]
-            is_winner = hasattr(game, "last_follow_winner") and game.last_follow_winner == follow.name
-            crown = " 👑" if is_winner else ""
-            summary_sheet[f"A{follow_winners_start + i}"] = f"{medal} {follow.name}{crown}"
-            summary_sheet[f"B{follow_winners_start + i}"] = f"{follow.points} points"
-
-        # Lead Leaderboard
-        lead_sheet = wb.create_sheet("Lead Leaderboard")
-        lead_sheet["A1"] = "Lead"
-        lead_sheet["B1"] = "Points"
-        for i, lead in enumerate(leads, 2):
-            lead_sheet[f"A{i}"] = lead.name
-            lead_sheet[f"B{i}"] = lead.points
-
-        # Follow Leaderboard
-        follow_sheet = wb.create_sheet("Follow Leaderboard")
-        follow_sheet["A1"] = "Follow"
-        follow_sheet["B1"] = "Points"
-        for i, follow in enumerate(follows, 2):
-            follow_sheet[f"A{i}"] = follow.name
-            follow_sheet[f"B{i}"] = follow.points
-
-        # Round History
-        round_sheet = wb.create_sheet("Round History")
-        base_headers = ["Round", "Lead 1", "Lead 2", "Follow 1", "Follow 2", "Song Title", "Artist", "Spotify Link"]
-        # Determine the maximum number of judges in any round
-        max_judges_count = 0
-        for round_data in rounds_data:
-            all_judges = set()
-            if "judges" in round_data:
-                all_judges.update(round_data["judges"])
-            if "contestant_judges" in round_data:
-                all_judges.update(round_data["contestant_judges"])
-            max_judges_count = max(max_judges_count, len(all_judges))
-        judge_headers = []
-        for i in range(max_judges_count):
-            judge_headers.append(f"Judge {i + 1}")
-            judge_headers.append(f"Lead Vote {i + 1}")
-            judge_headers.append(f"Follow Vote {i + 1}")
-        headers = base_headers + judge_headers
-        for col, header in enumerate(headers, 1):
-            round_sheet.cell(row=1, column=col).value = header
-        for i, round_data in enumerate(rounds_data, 2):
-            round_sheet.cell(row=i, column=1).value = round_data["round_num"]
-            if "pairs" in round_data and round_data["pairs"]:
-                lead1 = round_data["pairs"].get("pair_1", {}).get("lead", "")
-                lead2 = round_data["pairs"].get("pair_2", {}).get("lead", "")
-                follow1 = round_data["pairs"].get("pair_1", {}).get("follow", "")
-                follow2 = round_data["pairs"].get("pair_2", {}).get("follow", "")
-
-                # Add contestants and set red color for winners
-                lead1_cell = round_sheet.cell(row=i, column=2)
-                lead1_cell.value = lead1
-                if lead1 == round_data.get("lead_winner"):
-                    lead1_cell.font = Font(color="FF0000")
-
-                lead2_cell = round_sheet.cell(row=i, column=3)
-                lead2_cell.value = lead2
-                if lead2 == round_data.get("lead_winner"):
-                    lead2_cell.font = Font(color="FF0000")
-
-                follow1_cell = round_sheet.cell(row=i, column=4)
-                follow1_cell.value = follow1
-                if follow1 == round_data.get("follow_winner"):
-                    follow1_cell.font = Font(color="FF0000")
-
-                follow2_cell = round_sheet.cell(row=i, column=5)
-                follow2_cell.value = follow2
-                if follow2 == round_data.get("follow_winner"):
-                    follow2_cell.font = Font(color="FF0000")
-
-                # Song info
-                if "song_info" in round_data and round_data["song_info"]:
-                    song_info = round_data["song_info"]
-                    round_sheet.cell(row=i, column=6).value = song_info.get("title", "")
-                    round_sheet.cell(row=i, column=7).value = song_info.get("artist", "")
-                    round_sheet.cell(row=i, column=8).value = song_info.get("spotify_url", "")
-                # Judges and votes
-                all_judges = []
-                if "judges" in round_data:
-                    all_judges.extend(round_data["judges"])
-                if "contestant_judges" in round_data:
-                    all_judges.extend(round_data["contestant_judges"])
-                for j in range(max_judges_count):
-                    judge_col = 9 + j * 3
-                    lead_vote_col = judge_col + 1
-                    follow_vote_col = judge_col + 2
-                    judge_name = all_judges[j] if j < len(all_judges) else ""
-                    if judge_name:
-                        lead_vote = round_data["lead_votes"].get(judge_name, "")
-                        follow_vote = round_data["follow_votes"].get(judge_name, "")
-                        round_sheet.cell(row=i, column=judge_col).value = judge_name
-
-                        # Set lead vote and color if it matches winner
-                        lead_vote_cell = round_sheet.cell(row=i, column=lead_vote_col)
-                        # Convert lead vote number to contestant name or special case
-                        if lead_vote == 1:
-                            lead_vote_cell.value = lead1
-                            if lead1 == round_data.get("lead_winner"):
-                                lead_vote_cell.font = Font(color="FF0000")
-                        elif lead_vote == 2:
-                            lead_vote_cell.value = lead2
-                            if lead2 == round_data.get("lead_winner"):
-                                lead_vote_cell.font = Font(color="FF0000")
-                        elif lead_vote == 0:
-                            lead_vote_cell.value = "Tie"
-                        else:
-                            lead_vote_cell.value = "No Contest"
-
-                        # Set follow vote and color if it matches winner
-                        follow_vote_cell = round_sheet.cell(row=i, column=follow_vote_col)
-                        # Convert follow vote number to contestant name or special case
-                        if follow_vote == 1:
-                            follow_vote_cell.value = follow1
-                            if follow1 == round_data.get("follow_winner"):
-                                follow_vote_cell.font = Font(color="FF0000")
-                        elif follow_vote == 2:
-                            follow_vote_cell.value = follow2
-                            if follow2 == round_data.get("follow_winner"):
-                                follow_vote_cell.font = Font(color="FF0000")
-                        elif follow_vote == 0:
-                            follow_vote_cell.value = "Tie"
-                        else:
-                            follow_vote_cell.value = "No Contest"
-        # Voting History
-        voting_sheet = wb.create_sheet("Voting History")
-        voting_headers = ["Round", "Judge", "Lead Vote", "Follow Vote"]
-        for col, header in enumerate(voting_headers, 1):
-            voting_sheet.cell(row=1, column=col).value = header
-        row_index = 2
-        for round_data in rounds_data:
-            if "pairs" in round_data and round_data["pairs"]:
-                all_judges = set()
-                if "judges" in round_data:
-                    all_judges.update(round_data["judges"])
-                if "contestant_judges" in round_data:
-                    all_judges.update(round_data["contestant_judges"])
-                for judge in all_judges:
-                    lead_vote = round_data["lead_votes"].get(judge, "")
-                    follow_vote = round_data["follow_votes"].get(judge, "")
-                    voting_sheet.cell(row=row_index, column=1).value = round_data["round_num"]
-                    voting_sheet.cell(row=row_index, column=2).value = judge
-                    voting_sheet.cell(row=row_index, column=3).value = lead_vote
-                    voting_sheet.cell(row=row_index, column=4).value = follow_vote
-                    row_index += 1
-        # Save the workbook
-        excel_file = io.BytesIO()
-        wb.save(excel_file)
-        excel_file.seek(0)
-        return send_file(
-            excel_file,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=f"battle_results_{session_id}.xlsx",
-        )
+    response = jsonify(export)
+    response.headers["Content-Disposition"] = f'attachment; filename="battle_{session_id}.json"'
+    return response
 
 
 @app.route("/api/process_uploaded_file", methods=["POST"])
 def process_uploaded_file():
-    """Process an uploaded battle history Excel file and return the data for display."""
+    """Load an uploaded battle JSON file and return data for the results display."""
     if "battle_file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["battle_file"]
-
     if not file or file.filename == "":
         return jsonify({"error": "No file selected"}), 400
-
-    if not file.filename.endswith(".xlsx"):
-        return jsonify({"error": "File must be an Excel (.xlsx) file"}), 400
-
-    # Save the file temporarily
-    temp_path = os.path.join("/tmp", secure_filename(file.filename))
-    file.save(temp_path)
+    if not file.filename.endswith(".json"):
+        return jsonify({"error": "File must be a Hustle n' Tussle .json battle file"}), 400
 
     try:
-        # Load the Excel workbook
-        wb = load_workbook(temp_path)
+        payload = json.load(file.stream)
+    except Exception:
+        return jsonify({"error": "File is not valid JSON"}), 400
 
-        # Extract data from relevant sheets
-        data = {}
+    try:
+        data = parse_battle_json(payload)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:  # noqa: BLE001
+        print(f"Error processing battle file: {e}")
+        return jsonify({"error": f"Failed to process file: {e}"}), 500
 
-        # Track all contestants and their points from rounds
-        all_contestants = {"leads": {}, "follows": {}}
+    return jsonify(data)
 
-        # Battle Summary - Process this first to get initial order
-        if "Battle Summary" in wb.sheetnames:
-            summary_sheet = wb["Battle Summary"]
 
-            # Extract date and time
-            date = summary_sheet["B3"].value if "B3" in summary_sheet else None
-            time = summary_sheet["B4"].value if "B4" in summary_sheet else None
-            total_rounds = summary_sheet["B5"].value if "B5" in summary_sheet else 0
+def parse_battle_json(payload):
+    """Validate an exported battle JSON (hustlentussle.battle v1) and convert it
+    into the display shape used by the results screen and YTD ingest:
+    {leads, follows, rounds, initial_leads, initial_follows, champions}."""
+    if not isinstance(payload, dict) or payload.get("format") != "hustlentussle.battle":
+        raise ValueError("Unrecognized file - expected a Hustle n' Tussle battle export.")
+    version = payload.get("version")
+    if version != 1:
+        raise ValueError(f"Unsupported battle file version: {version}")
 
-            print("Processing Battle Summary sheet...")
-            print(f"Date: {date}, Time: {time}, Total Rounds: {total_rounds}")
+    champions = payload.get("champions") or {}
+    participants = payload.get("participants") or {}
 
-            # Extract initial order
-            initial_leads = []
-            initial_follows = []
+    def _display(role_list):
+        ordered = sorted(role_list, key=lambda p: p.get("points", 0) or 0, reverse=True)
+        rows = []
+        for idx, p in enumerate(ordered):
+            medal = ["\U0001F947", "\U0001F948", "\U0001F949"][idx] if idx < 3 else ""
+            rows.append(
+                {
+                    "name": p.get("name"),
+                    "points": p.get("points", 0) or 0,
+                    "medal": medal,
+                    "is_winner": bool(p.get("is_champion")),
+                }
+            )
+        return rows
 
-            # Find the initial order section
-            current_row = 7  # Start after "Initial Order" header
-            found_initial_order = False
+    def _initial_order(role_list):
+        ordered = [p for p in role_list if p.get("initial_order")]
+        if ordered:
+            return [p["name"] for p in sorted(ordered, key=lambda p: p["initial_order"])]
+        return [p.get("name") for p in role_list]
 
-            # First, find the "Initial Order" section
-            while current_row < summary_sheet.max_row:
-                cell_value = summary_sheet[f"A{current_row}"].value
-                print(f"Checking row {current_row}: {cell_value}")
-                if cell_value == "Initial Order":
-                    found_initial_order = True
-                    print("Found Initial Order section")
-                    current_row += 2  # Skip the header and move to content
-                    break
-                current_row += 1
+    leads_part = participants.get("leads") or []
+    follows_part = participants.get("follows") or []
 
-            if found_initial_order:
-                print("Processing initial order section...")
-                # Process leads
-                while current_row < summary_sheet.max_row:
-                    cell_value = summary_sheet[f"A{current_row}"].value
-                    print(f"Processing row {current_row}: {cell_value}")
-                    if cell_value == "Leads:":
-                        print("Found Leads section")
-                        current_row += 1
-                        while current_row < summary_sheet.max_row:
-                            lead_entry = summary_sheet[f"A{current_row}"].value
-                            print(f"Processing lead entry: {lead_entry}")
-                            if not lead_entry or lead_entry == "Follows:":
-                                break
-                            # Extract name from "1. Name" format
-                            if isinstance(lead_entry, str) and ". " in lead_entry:
-                                lead_name = lead_entry.split(". ", 1)[1]
-                                print(f"Added lead: {lead_name}")
-                                initial_leads.append(lead_name)
-                            current_row += 1
-                    elif cell_value == "Follows:":
-                        print("Found Follows section")
-                        current_row += 1
-                        while current_row < summary_sheet.max_row:
-                            follow_entry = summary_sheet[f"A{current_row}"].value
-                            print(f"Processing follow entry: {follow_entry}")
-                            if not follow_entry or follow_entry == "Final Results":
-                                break
-                            # Extract name from "1. Name" format
-                            if isinstance(follow_entry, str) and ". " in follow_entry:
-                                follow_name = follow_entry.split(". ", 1)[1]
-                                print(f"Added follow: {follow_name}")
-                                initial_follows.append(follow_name)
-                            current_row += 1
-                    elif cell_value == "Final Results":
-                        print("Found Final Results section")
-                        break
-                    current_row += 1
+    rounds = []
+    for r in payload.get("rounds") or []:
+        rounds.append(
+            {
+                "round_num": r.get("round_num"),
+                "pairs": r.get("pairs"),
+                "lead_winner": r.get("lead_winner"),
+                "follow_winner": r.get("follow_winner"),
+                "lead_votes": r.get("lead_votes") or {},
+                "follow_votes": r.get("follow_votes") or {},
+                "judges": r.get("judges") or [],
+                "contestant_judges": r.get("contestant_judges") or [],
+                "song_info": r.get("song"),
+            }
+        )
+    rounds.sort(key=lambda x: x.get("round_num") or 0)
 
-            print(f"Final initial leads: {initial_leads}")
-            print(f"Final initial follows: {initial_follows}")
-
-            # Store initial order in data
-            data["initial_leads"] = initial_leads
-            data["initial_follows"] = initial_follows
-
-            # Calculate row numbers for results sections
-            results_start_row = current_row  # This is where "Final Results" was found
-            follow_winners_start = results_start_row + 2 + len(initial_leads) + 2  # Add 2 for headers and spacing
-
-            # Extract top leads
-            top_leads = []
-            for i in range(results_start_row + 2, results_start_row + 5):  # Rows for top 3 leads
-                name_cell = f"A{i}"
-                points_cell = f"B{i}"
-                if name_cell in summary_sheet and summary_sheet[name_cell].value:
-                    name_text = summary_sheet[name_cell].value
-                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
-
-                    # Parse name and medal
-                    parts = name_text.split(" ")
-                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
-                    is_winner = "👑" in name_text
-                    name = name_text.replace(medal, "").replace("👑", "").strip()
-
-                    # Parse points
-                    points = 0
-                    try:
-                        if isinstance(points_text, str):
-                            points = int(points_text.split(" ")[0])
-                        elif isinstance(points_text, (int, float)):
-                            points = int(points_text)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants["leads"]:
-                            points = all_contestants["leads"][name]["points"]
-
-                    # Mark as winner in our tracking dict
-                    if name in all_contestants["leads"] and is_winner:
-                        all_contestants["leads"][name]["is_winner"] = True
-
-                    top_leads.append({"name": name, "points": points, "medal": medal, "is_winner": is_winner})
-
-            # Extract top follows
-            top_follows = []
-            for i in range(follow_winners_start + 1, follow_winners_start + 4):  # Rows for top 3 follows
-                name_cell = f"A{i}"
-                points_cell = f"B{i}"
-                if name_cell in summary_sheet and summary_sheet[name_cell].value:
-                    name_text = summary_sheet[name_cell].value
-                    points_text = summary_sheet[points_cell].value if points_cell in summary_sheet else "0 points"
-
-                    # Parse name and medal
-                    parts = name_text.split(" ")
-                    medal = parts[0] if parts[0] in ["🥇", "🥈", "🥉"] else ""
-                    is_winner = "👑" in name_text
-                    name = name_text.replace(medal, "").replace("👑", "").strip()
-
-                    # Parse points
-                    points = 0
-                    try:
-                        if isinstance(points_text, str):
-                            points = int(points_text.split(" ")[0])
-                        elif isinstance(points_text, (int, float)):
-                            points = int(points_text)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants["follows"]:
-                            points = all_contestants["follows"][name]["points"]
-
-                    # Mark as winner in our tracking dict
-                    if name in all_contestants["follows"] and is_winner:
-                        all_contestants["follows"][name]["is_winner"] = True
-
-                    top_follows.append({"name": name, "points": points, "medal": medal, "is_winner": is_winner})
-
-            data["summary"] = {"date": date, "time": time, "total_rounds": total_rounds}
-
-        # Round History - Process this first to collect all contestant points
-        if "Round History" in wb.sheetnames:
-            round_sheet = wb["Round History"]
-            rounds = []
-
-            # Get column headers to understand the sheet format
-            headers = {}
-            for col in range(1, round_sheet.max_column + 1):
-                header = round_sheet.cell(row=1, column=col).value
-                if header:
-                    headers[col] = header
-
-            # Count how many judges (every 3 columns after column 5)
-            judge_count = (round_sheet.max_column - 5) // 3
-
-            # Extract round data
-            for row in range(2, round_sheet.max_row + 1):
-                round_num = round_sheet.cell(row=row, column=1).value
-                if round_num:
-                    lead1 = round_sheet.cell(row=row, column=2).value
-                    lead2 = round_sheet.cell(row=row, column=3).value
-                    follow1 = round_sheet.cell(row=row, column=4).value
-                    follow2 = round_sheet.cell(row=row, column=5).value
-
-                    # Initialize contestants if they don't exist yet
-                    for lead in [lead1, lead2]:
-                        if lead and lead not in all_contestants["leads"]:
-                            all_contestants["leads"][lead] = {"name": lead, "points": 0, "is_winner": False}
-
-                    for follow in [follow1, follow2]:
-                        if follow and follow not in all_contestants["follows"]:
-                            all_contestants["follows"][follow] = {"name": follow, "points": 0, "is_winner": False}
-
-                    round_data = {
-                        "round_num": round_num,
-                        "pairs": {
-                            "pair_1": {"lead": lead1, "follow": follow1},
-                            "pair_2": {"lead": lead2, "follow": follow2},
-                        },
-                        "lead_votes": {},
-                        "follow_votes": {},
-                    }
-
-                    # Extract song information if available
-                    song_title = round_sheet.cell(row=row, column=6).value
-                    artist = round_sheet.cell(row=row, column=7).value
-                    spotify_url = round_sheet.cell(row=row, column=8).value
-
-                    if song_title or artist or spotify_url:
-                        round_data["song_info"] = {
-                            "title": song_title or "",
-                            "artist": artist or "",
-                            "spotify_url": spotify_url or "",
-                        }
-
-                    # Extract winner information and award points
-                    lead_winner = None
-                    follow_winner = None
-
-                    for col in [2, 3]:  # Lead columns
-                        cell = round_sheet.cell(row=row, column=col)
-                        font_color = cell.font.color
-                        if font_color and font_color.rgb == "FF0000":  # Red color
-                            lead_winner = cell.value
-                            round_data["lead_winner"] = lead_winner
-                            # Award a point to the winner
-                            if lead_winner and lead_winner in all_contestants["leads"]:
-                                all_contestants["leads"][lead_winner]["points"] += 1
-
-                    for col in [4, 5]:  # Follow columns
-                        cell = round_sheet.cell(row=row, column=col)
-                        font_color = cell.font.color
-                        if font_color and font_color.rgb == "FF0000":  # Red color
-                            follow_winner = cell.value
-                            round_data["follow_winner"] = follow_winner
-                            # Award a point to the winner
-                            if follow_winner and follow_winner in all_contestants["follows"]:
-                                all_contestants["follows"][follow_winner]["points"] += 1
-
-                    # Extract judge votes
-                    for j in range(judge_count):
-                        judge_col = 9 + j * 3  # Start after song info columns (6-8)
-                        lead_vote_col = judge_col + 1
-                        follow_vote_col = judge_col + 2
-
-                        judge_name = round_sheet.cell(row=row, column=judge_col).value
-                        if judge_name:
-                            lead_vote = round_sheet.cell(row=row, column=lead_vote_col).value
-                            follow_vote = round_sheet.cell(row=row, column=follow_vote_col).value
-
-                            if lead_vote:
-                                round_data["lead_votes"][judge_name] = lead_vote
-                            if follow_vote:
-                                round_data["follow_votes"][judge_name] = follow_vote
-
-                    rounds.append(round_data)
-
-            data["rounds"] = rounds
-
-        # Lead and Follow Leaderboards
-        if "Lead Leaderboard" in wb.sheetnames:
-            lead_sheet = wb["Lead Leaderboard"]
-            leads = []
-            for row in range(2, lead_sheet.max_row + 1):
-                name = lead_sheet.cell(row=row, column=1).value
-                points_cell = lead_sheet.cell(row=row, column=2).value
-                if name:
-                    # Try to parse points from the cell
-                    points = 0
-                    try:
-                        if isinstance(points_cell, (int, float)):
-                            points = int(points_cell)
-                        elif isinstance(points_cell, str) and points_cell.isdigit():
-                            points = int(points_cell)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants["leads"]:
-                            points = all_contestants["leads"][name]["points"]
-
-                    # Check if this contestant is a winner
-                    is_winner = False
-                    if name in all_contestants["leads"]:
-                        is_winner = all_contestants["leads"][name]["is_winner"]
-
-                    leads.append({"name": name, "points": points, "is_winner": is_winner})
-
-                    # Update our tracking dictionary
-                    if name in all_contestants["leads"]:
-                        all_contestants["leads"][name]["points"] = max(all_contestants["leads"][name]["points"], points)
-            data["all_leads"] = leads
-
-        if "Follow Leaderboard" in wb.sheetnames:
-            follow_sheet = wb["Follow Leaderboard"]
-            follows = []
-            for row in range(2, follow_sheet.max_row + 1):
-                name = follow_sheet.cell(row=row, column=1).value
-                points_cell = follow_sheet.cell(row=row, column=2).value
-                if name:
-                    # Try to parse points from the cell
-                    points = 0
-                    try:
-                        if isinstance(points_cell, (int, float)):
-                            points = int(points_cell)
-                        elif isinstance(points_cell, str) and points_cell.isdigit():
-                            points = int(points_cell)
-                    except (ValueError, TypeError):
-                        # If parsing fails, try to get points from our calculated data
-                        if name in all_contestants["follows"]:
-                            points = all_contestants["follows"][name]["points"]
-
-                    # Check if this contestant is a winner
-                    is_winner = False
-                    if name in all_contestants["follows"]:
-                        is_winner = all_contestants["follows"][name]["is_winner"]
-
-                    follows.append({"name": name, "points": points, "is_winner": is_winner})
-
-                    # Update our tracking dictionary
-                    if name in all_contestants["follows"]:
-                        all_contestants["follows"][name]["points"] = max(
-                            all_contestants["follows"][name]["points"], points
-                        )
-            data["all_follows"] = follows
-
-        # Convert tracking dictionaries to lists and use as final data if not already set
-        if "leads" not in data or not data["leads"]:
-            data["leads"] = list(all_contestants["leads"].values())
-            # Sort by points in descending order
-            data["leads"].sort(key=lambda x: x["points"], reverse=True)
-
-            # Assign medals to top 3
-            for i, lead in enumerate(data["leads"][:3]):
-                if i == 0:
-                    lead["medal"] = "🥇"
-                elif i == 1:
-                    lead["medal"] = "🥈"
-                elif i == 2:
-                    lead["medal"] = "🥉"
-
-        if "follows" not in data or not data["follows"]:
-            data["follows"] = list(all_contestants["follows"].values())
-            # Sort by points in descending order
-            data["follows"].sort(key=lambda x: x["points"], reverse=True)
-
-            # Assign medals to top 3
-            for i, follow in enumerate(data["follows"][:3]):
-                if i == 0:
-                    follow["medal"] = "🥇"
-                elif i == 1:
-                    follow["medal"] = "🥈"
-                elif i == 2:
-                    follow["medal"] = "🥉"
-
-        # Clean up
-        os.remove(temp_path)
-
-        # Log data for debugging
-        print("Processed data:", data)
-        if "leads" in data:
-            for lead in data["leads"]:
-                print(f"Lead: {lead['name']}, Points: {lead['points']}, Type: {type(lead['points'])}")
-
-        return jsonify(data)
-
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        print(f"Error processing Excel file: {str(e)}")
-        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+    return {
+        "leads": _display(leads_part),
+        "follows": _display(follows_part),
+        "rounds": rounds,
+        "initial_leads": _initial_order(leads_part),
+        "initial_follows": _initial_order(follows_part),
+        "champions": champions,
+    }
 
 
 @app.route("/api/get_spotify_token", methods=["GET"])
@@ -2082,6 +1703,228 @@ def spotify_playlist_tracks():
         return jsonify({"tracks": unique})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# =========================================================================
+# Year-to-date stats + admin authentication
+# =========================================================================
+
+
+def admin_required(f):
+    """Guard an endpoint so only a logged-in admin (Flask session) can call it."""
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("admin_id"):
+            return jsonify({"error": "Authentication required"}), 401
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+@app.route("/api/admin/login", methods=["POST"])
+def admin_login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    admin = stats_repo.get_admin_by_email(email)
+    if not admin or not check_password_hash(admin["password_hash"], password):
+        return jsonify({"error": "Invalid credentials"}), 401
+    session["admin_id"] = str(admin["id"])
+    session["admin_email"] = admin["email"]
+    return jsonify({"authenticated": True, "email": admin["email"]})
+
+
+@app.route("/api/admin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("admin_id", None)
+    session.pop("admin_email", None)
+    return jsonify({"success": True})
+
+
+@app.route("/api/admin/me", methods=["GET"])
+def admin_me():
+    if session.get("admin_id"):
+        return jsonify({"authenticated": True, "email": session.get("admin_email")})
+    return jsonify({"authenticated": False})
+
+
+@app.route("/api/stats/years", methods=["GET"])
+def stats_years():
+    if stats_repo is None:
+        return jsonify({"years": []})
+    return jsonify({"years": stats_repo.list_years()})
+
+
+@app.route("/api/stats/year-to-date", methods=["GET"])
+def stats_year_to_date():
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    year = request.args.get("year", type=int)
+    if not year:
+        years = stats_repo.list_years()
+        year = years[0] if years else datetime.datetime.now().year
+    standings = stats_repo.get_ytd_standings(year)
+    for role in ("leads", "follows"):
+        for row in standings[role]:
+            row["dancer_id"] = str(row["dancer_id"])
+            row["total_points"] = int(row["total_points"] or 0)
+            row["crowns"] = int(row["crowns"] or 0)
+            row["battles_entered"] = int(row["battles_entered"] or 0)
+            row["round_wins"] = int(row["round_wins"] or 0)
+    return jsonify({"year": year, **standings})
+
+
+@app.route("/api/stats/battles", methods=["GET"])
+def stats_battles():
+    if stats_repo is None:
+        return jsonify({"battles": []})
+    year = request.args.get("year", type=int)
+    battles = stats_repo.list_battles(year)
+    for b in battles:
+        b["id"] = str(b["id"])
+        b["battle_date"] = b["battle_date"].isoformat() if b.get("battle_date") else None
+        b["created_at"] = b["created_at"].isoformat() if b.get("created_at") else None
+        b["result_count"] = int(b.get("result_count") or 0)
+    return jsonify({"battles": battles})
+
+
+def _resolution_proposal(names):
+    """For each battle name, propose a matching canonical dancer (or 'new')."""
+    proposals = []
+    for name in names:
+        match = stats_repo.find_dancer_by_name(name)
+        proposals.append(
+            {
+                "name": name,
+                "suggested_dancer_id": str(match["id"]) if match else None,
+                "suggested_display_name": match["display_name"] if match else name,
+                "is_new": match is None,
+            }
+        )
+    return proposals
+
+
+@app.route("/api/stats/ingest/preview", methods=["POST"])
+@admin_required
+def stats_ingest_preview():
+    """Normalize an uploaded .json battle file or a finished live battle and propose
+    name mappings. Does not write anything."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+
+    if "battle_file" in request.files:
+        file = request.files["battle_file"]
+        if not file or not file.filename:
+            return jsonify({"error": "No file selected"}), 400
+        if not file.filename.endswith(".json"):
+            return jsonify({"error": "File must be a Hustle n' Tussle .json battle file"}), 400
+        try:
+            payload = json.load(file.stream)
+        except Exception:
+            return jsonify({"error": "File is not valid JSON"}), 400
+        try:
+            parse_battle_json(payload)  # validate format/version (raises ValueError)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        source = "upload"
+        session_id = payload.get("session_id")
+    else:
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if not session_id or not repo.exists(session_id):
+            return jsonify({"error": "Battle not found"}), 404
+        game = repo.get(session_id)
+        payload = build_battle_export(game, session_id)
+        source = "live"
+
+    norm = normalize_battle(payload)
+    dancers = [{"id": str(d["id"]), "display_name": d["display_name"]} for d in stats_repo.list_dancers()]
+    return jsonify(
+        {
+            "source": source,
+            "session_id": session_id,
+            "results": norm["results"],
+            "names": _resolution_proposal(norm["names"]),
+            "dancers": dancers,
+            "raw_payload": payload,
+        }
+    )
+
+
+@app.route("/api/stats/ingest/commit", methods=["POST"])
+@admin_required
+def stats_ingest_commit():
+    """Persist a previewed battle: create/resolve dancers, insert battle + results."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    name = (data.get("battle_name") or "").strip()
+    battle_date = (data.get("battle_date") or "").strip()
+    results = data.get("results")
+    resolutions = data.get("resolutions") or {}
+    raw_payload = data.get("raw_payload") or {}
+    source = data.get("source") if data.get("source") in ("live", "upload") else "upload"
+    session_id = data.get("session_id")
+
+    if not name or not battle_date or not results:
+        return jsonify({"error": "battle_name, battle_date and results are required"}), 400
+
+    meta = {
+        "name": name,
+        "battle_date": battle_date,
+        "source": source,
+        "session_id": session_id,
+        "uploaded_by": session.get("admin_id"),
+    }
+    try:
+        battle_id = stats_repo.create_battle(meta, raw_payload, results, resolutions)
+    except DuplicateBattleError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"success": True, "battle_id": str(battle_id)})
+
+
+@app.route("/api/stats/battles/<battle_id>", methods=["DELETE"])
+@admin_required
+def stats_delete_battle(battle_id):
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    if not stats_repo.delete_battle(battle_id):
+        return jsonify({"error": "Battle not found"}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/api/results", methods=["GET"])
+def get_results():
+    """Read-only battle results for a session (for deep-linking /results/<id>).
+    Non-mutating; reuses the same shape the live end-of-battle response returns."""
+    session_id = request.args.get("session_id")
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+    return jsonify(_format_end_game_results(game, session_id))
+
+
+# SPA fallback: with static_url_path="" Flask's static route greedily matches every root
+# path and 404s on a miss, so a catch-all view never runs. Instead, serve the app shell on
+# any 404 for a client-side-routed path (/setup, /battle/<id>, /results/<id>, /stats, ...).
+# Real /api routes and existing static files resolve normally; genuine asset misses (paths
+# with a file extension) and /api/* keep their 404.
+@app.errorhandler(404)
+def spa_fallback(err):
+    path = request.path or ""
+    if path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    last_segment = path.rsplit("/", 1)[-1]
+    if "." in last_segment:  # looks like a static asset that genuinely doesn't exist
+        return err
+    return render_template("index.html", config=app.config), 200
 
 
 if __name__ == "__main__":

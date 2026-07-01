@@ -208,6 +208,25 @@ class GameSerializer:
             # Contestant judging settings
             "contestant_judging_enabled": getattr(game, "contestant_judging_enabled", True),
             "simple_contestant_judges": getattr(game, "simple_contestant_judges", False),
+            # Tie-break mode state
+            "tiebreak_active": getattr(game, "tiebreak_active", False),
+            "tiebreak_lead_needed": getattr(game, "tiebreak_lead_needed", False),
+            "tiebreak_follow_needed": getattr(game, "tiebreak_follow_needed", False),
+            "tiebreak_sub_round": getattr(game, "tiebreak_sub_round", 0),
+            "tiebreak_leads_tied": [c.name for c in getattr(game, "tiebreak_leads_tied", [])],
+            "tiebreak_follows_tied": [c.name for c in getattr(game, "tiebreak_follows_tied", [])],
+            "tiebreak_original_leads": [c.name for c in getattr(game, "tiebreak_original_leads", [])],
+            "tiebreak_original_follows": [c.name for c in getattr(game, "tiebreak_original_follows", [])],
+            "tiebreak_sub_round_1_pairings": [list(p) for p in getattr(game, "tiebreak_sub_round_1_pairings", [])],
+            "tiebreak_sub_round_2_pairings": [list(p) for p in getattr(game, "tiebreak_sub_round_2_pairings", [])],
+            "tiebreak_lead_winner_name": (
+                getattr(game, "tiebreak_lead_winner", None).name if getattr(game, "tiebreak_lead_winner", None) else None
+            ),
+            "tiebreak_follow_winner_name": (
+                getattr(game, "tiebreak_follow_winner", None).name
+                if getattr(game, "tiebreak_follow_winner", None)
+                else None
+            ),
         }
 
         return json.dumps(game_data)
@@ -401,6 +420,30 @@ class GameSerializer:
         game.contestant_judging_enabled = data.get("contestant_judging_enabled", True)
         simple_flag = data.get("simple_contestant_judges", False)
         game.simple_contestant_judges = bool(simple_flag) if game.contestant_judging_enabled else False
+
+        # Reconstruct tie-break mode state (defaults keep old records loadable)
+        game.tiebreak_active = data.get("tiebreak_active", False)
+        game.tiebreak_lead_needed = data.get("tiebreak_lead_needed", False)
+        game.tiebreak_follow_needed = data.get("tiebreak_follow_needed", False)
+        game.tiebreak_sub_round = data.get("tiebreak_sub_round", 0)
+        game.tiebreak_leads_tied = [
+            lead_contestants[n] for n in data.get("tiebreak_leads_tied", []) if n in lead_contestants
+        ]
+        game.tiebreak_follows_tied = [
+            follow_contestants[n] for n in data.get("tiebreak_follows_tied", []) if n in follow_contestants
+        ]
+        game.tiebreak_original_leads = [
+            lead_contestants[n] for n in data.get("tiebreak_original_leads", []) if n in lead_contestants
+        ]
+        game.tiebreak_original_follows = [
+            follow_contestants[n] for n in data.get("tiebreak_original_follows", []) if n in follow_contestants
+        ]
+        game.tiebreak_sub_round_1_pairings = [tuple(p) for p in data.get("tiebreak_sub_round_1_pairings", [])]
+        game.tiebreak_sub_round_2_pairings = [tuple(p) for p in data.get("tiebreak_sub_round_2_pairings", [])]
+        tb_lead_winner = data.get("tiebreak_lead_winner_name")
+        game.tiebreak_lead_winner = lead_contestants.get(tb_lead_winner) if tb_lead_winner else None
+        tb_follow_winner = data.get("tiebreak_follow_winner_name")
+        game.tiebreak_follow_winner = follow_contestants.get(tb_follow_winner) if tb_follow_winner else None
 
         return game
 

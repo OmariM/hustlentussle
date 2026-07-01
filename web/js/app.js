@@ -1,5 +1,7 @@
 // Global variables
 let sessionId = null;
+let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
+let currentResultsData = null;     // last rendered results payload (for /results hydration)
 let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
@@ -350,17 +352,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Create direct handler functions for better debugging
     function goToHome() {
         console.log('Go to home clicked');
-        showScreen(homeScreen);
+        navigate('/');
     }
-    
+
     function setupBackToHomeHandler() {
         console.log('Setup back to home clicked');
-        showScreen(homeScreen);
+        navigate('/');
     }
-    
+
     // Home screen navigation
-    goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
-    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    goToBattleBtn.addEventListener('click', () => navigate('/setup'));
+    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => navigate('/upload'));
     
     // Upload screen
     battleFileUpload.addEventListener('change', handleFileSelect);
@@ -526,16 +528,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     applySpotifyEnabledUI();
 
-    // Hide nav bar on home screen initially (showScreen isn't called on first load)
+    // Hide nav bar initially to avoid a flash before the router renders the first route.
     const navBar = document.getElementById('nav-bar');
     if (navBar && !displayMode) {
         navBar.style.display = 'none';
     }
 
-    // Initialize display mode if detected (this goes directly to battle screen)
-    if (displayMode) {
-        initDisplayMode();
-    }
+    // Initial screen + display-mode init are driven by the router (js/router.js),
+    // whose DOMContentLoaded handler runs after this one. See hydrateBattleRoute().
 });
 
 // Functions
@@ -549,11 +549,8 @@ function updateNavPills(activeScreen) {
 }
 
 function showScreen(screen) {
-    homeScreen.classList.remove('active');
-    uploadScreen.classList.remove('active');
-    setupScreen.classList.remove('active');
-    roundScreen.classList.remove('active');
-    resultsScreen.classList.remove('active');
+    // Deactivate every screen (includes stats-screen and any future screens)
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
 
     screen.classList.add('active');
 
@@ -1519,7 +1516,7 @@ async function processUploadedFile() {
         }
         
         // Display the results
-        await displayResults(data);
+        showResults(data, { sessionId: null });
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
@@ -1542,8 +1539,7 @@ function updateSessionIdDisplay() {
     }
     const isMinimized = localStorage.getItem('session-info-minimized') !== 'false';
     if (sessionId && !displayMode) {
-        const baseUrl = window.location.origin + window.location.pathname;
-        const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
+        const displayUrl = `${window.location.origin}/battle/${encodeURIComponent(sessionId)}?mode=display`;
         sessionIdDisplay.innerHTML = `
             <div class="session-id-display-header">
                 <span class="session-id-display-label">Session: ${sessionId}</span>
@@ -1690,8 +1686,9 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         // Render from canonical state
         await refreshCanonicalState();
 
-        // Show round screen
-        showScreen(roundScreen);
+        // Navigate to the battle route (shareable/reloadable URL)
+        liveBattleActive = true;
+        navigate('/battle/' + encodeURIComponent(sessionId));
 
         // Demo mode hook: advance past the "Start Competition" step
         if (demoMode) {
@@ -1738,10 +1735,14 @@ function fetchScores() {
 }
 
 function updateScoresDisplay() {
+    // These list containers are not present in the current markup (standings render
+    // via the mini-leaderboard and battle graphic); bail out safely if absent.
+    if (!currentLeadScores || !currentFollowScores) return;
+
     // Clear current lists
     currentLeadScores.innerHTML = '';
     currentFollowScores.innerHTML = '';
-    
+
     // Sort contestants by points (highest first)
     const sortedLeads = [...currentLeads].sort((a, b) => b.points - a.points);
     const sortedFollows = [...currentFollows].sort((a, b) => b.points - a.points);
@@ -2488,9 +2489,10 @@ async function endCompetition() {
 function resetAndGoHome() {
     console.log('resetAndGoHome called');
     resetCompetition();
-    console.log('resetCompetition completed, showing home screen');
-    showScreen(homeScreen);
-    console.log('Home screen should now be visible');
+    liveBattleActive = false;
+    currentResultsData = null;
+    console.log('resetCompetition completed, navigating home');
+    navigate('/');
 }
 
 function resetCompetition() {
@@ -2591,6 +2593,66 @@ function updateScoreTable(leads, follows) {
     });
 }
 
+// --- Router hydration helpers (called by js/router.js) -------------------
+
+// Navigate to the results screen for a given payload, updating the URL.
+function showResults(data, opts) {
+    currentResultsData = data;
+    let sid;
+    if (opts && Object.prototype.hasOwnProperty.call(opts, 'sessionId')) sid = opts.sessionId;
+    else sid = (data && data.session_id) ? data.session_id : sessionId;
+    navigate(sid ? '/results/' + encodeURIComponent(sid) : '/results');
+}
+
+// Enter /battle/<id>: rebuild the interactive (or display) battle from server state.
+function hydrateBattleRoute(sid) {
+    if (!sid) { navigate('/', { replace: true }); return; }
+    // Already live in-memory for this session (e.g. just started) — no refetch needed.
+    if (sessionId === sid && liveBattleActive && !displayMode) {
+        updateSessionIdDisplay();
+        return;
+    }
+    sessionId = sid;
+    try { localStorage.setItem('sessionId', sid); } catch (e) {}
+    fetch(`/api/state?session_id=${encodeURIComponent(sid)}`)
+        .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+        .then(state => {
+            if (state.flags && state.flags.finished) {
+                navigate('/results/' + encodeURIComponent(sid), { replace: true });
+                return;
+            }
+            if (displayMode) { initDisplayMode(); return; }
+            liveBattleActive = true;
+            renderFromState(state);
+            updateSessionIdDisplay();
+            if (typeof fetchScores === 'function') fetchScores();
+        })
+        .catch(() => {
+            try { showToast('That battle was not found or has expired.', 'error'); } catch (e) {}
+            navigate('/', { replace: true });
+        });
+}
+
+// Enter /results/<id> (or /results with in-memory data): render final results.
+function hydrateResultsRoute(sid) {
+    if (!sid) {
+        if (currentResultsData) displayResults(currentResultsData);
+        else navigate('/', { replace: true });
+        return;
+    }
+    if (currentResultsData && currentResultsData.session_id === sid) {
+        displayResults(currentResultsData);
+        return;
+    }
+    fetch(`/api/results?session_id=${encodeURIComponent(sid)}`)
+        .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+        .then(data => { currentResultsData = data; displayResults(data); })
+        .catch(() => {
+            try { showToast('Those results were not found or have expired.', 'error'); } catch (e) {}
+            navigate('/', { replace: true });
+        });
+}
+
 async function displayResults(data) {
     console.log('Displaying results with data:', data);
     
@@ -2636,26 +2698,24 @@ async function displayResults(data) {
     console.log('Lead results:', data.leads);
     console.log('Follow results:', data.follows);
     
-    // Determine the single top-scoring lead and follow for crown display
-    let topLeadName = null;
-    if (Array.isArray(data.leads) && data.leads.length > 0) {
-        const topLead = data.leads.reduce((best, contestant) => {
-            const bestPoints = Number(best.points) || 0;
-            const contestantPoints = Number(contestant.points) || 0;
-            return contestantPoints > bestPoints ? contestant : best;
-        }, data.leads[0]);
-        topLeadName = topLead && topLead.name ? topLead.name : null;
+    // Crown the resolved battle champion (threshold / tie-break / early-end leader).
+    // Falls back to the top scorer only if champion info is absent.
+    const champions = data.champions;
+    function crownName(role, list) {
+        if (champions && champions[role] !== undefined) {
+            // Champion info present: trust it — a null name means no outright winner.
+            return champions[role] && champions[role].name ? champions[role].name : null;
+        }
+        // Legacy payload without champions: fall back to the top scorer.
+        if (Array.isArray(list) && list.length > 0) {
+            const top = list.reduce((best, c) =>
+                (Number(c.points) || 0) > (Number(best.points) || 0) ? c : best, list[0]);
+            return top && top.name ? top.name : null;
+        }
+        return null;
     }
-    
-    let topFollowName = null;
-    if (Array.isArray(data.follows) && data.follows.length > 0) {
-        const topFollow = data.follows.reduce((best, contestant) => {
-            const bestPoints = Number(best.points) || 0;
-            const contestantPoints = Number(contestant.points) || 0;
-            return contestantPoints > bestPoints ? contestant : best;
-        }, data.follows[0]);
-        topFollowName = topFollow && topFollow.name ? topFollow.name : null;
-    }
+    const topLeadName = crownName('lead', data.leads);
+    const topFollowName = crownName('follow', data.follows);
 
     // Display lead results
     if (data.leads && Array.isArray(data.leads)) {
@@ -3512,88 +3572,54 @@ async function downloadBattleData() {
     }
     
     try {
-        // First get the battle data to find all Spotify URLs
-        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=json`);
+        // Fetch the portable JSON battle export (hustlentussle.battle v1)
+        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}`);
         if (!response.ok) {
             throw new Error(`Failed to fetch battle data: ${response.status}`);
         }
-        
-        // Get the battle data as JSON first
         const battleData = await response.json();
-        
-        // If Spotify integration is enabled, enrich with Spotify metadata
+
+        // If Spotify integration is enabled, enrich song title/artist in-place
         const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
-        let access_token = null;
         if (spotifyOn) {
-            access_token = await getSpotifyToken();
-        }
-        
-        // Fetch metadata for all rounds in parallel
-        await Promise.all(battleData.rounds.map(async (round) => {
-            if (spotifyOn && round.song_info && round.song_info.spotify_url) {
+            let access_token = await getSpotifyToken();
+            await Promise.all((battleData.rounds || []).map(async (round) => {
+                const song = round.song;
+                if (!song || !song.spotify_url) return;
                 try {
-                    const spotifyUrl = new URL(round.song_info.spotify_url);
-                    const trackId = spotifyUrl.pathname.split('/').pop();
-                    
-                    if (trackId) {
-                        const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-                            headers: {
-                                'Authorization': `Bearer ${access_token}`
-                            }
+                    const trackId = new URL(song.spotify_url).pathname.split('/').pop();
+                    if (!trackId) return;
+                    let md = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                        headers: { 'Authorization': `Bearer ${access_token}` }
+                    });
+                    if (md.status === 401) {
+                        access_token = await getSpotifyToken();
+                        md = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                            headers: { 'Authorization': `Bearer ${access_token}` }
                         });
-                        
-                        if (metadataResponse.status === 401 && spotifyOn) {
-                            // Token expired, get a new one and retry
-                            const newToken = await getSpotifyToken();
-                            const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-                                headers: {
-                                    'Authorization': `Bearer ${newToken}`
-                                }
-                            });
-                            
-                            if (retryResponse.ok) {
-                                const metadata = await retryResponse.json();
-                                round.song_info.title = metadata.name;
-                                round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                            }
-                        } else if (metadataResponse.ok) {
-                            const metadata = await metadataResponse.json();
-                            round.song_info.title = metadata.name;
-                            round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                        }
+                    }
+                    if (md.ok) {
+                        const meta = await md.json();
+                        song.title = meta.name;
+                        song.artist = meta.artists.map(a => a.name).join(', ');
                     }
                 } catch (e) {
-                    console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                    console.error(`Error fetching metadata for ${song.spotify_url}:`, e);
                 }
-            }
-        }));
-        
-        // Now get the Excel file with the updated metadata
-        const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                rounds: battleData.rounds
-            })
-        });
-        
-        if (!excelResponse.ok) {
-            throw new Error(`Failed to generate Excel file: ${excelResponse.status}`);
+            }));
         }
-        
-        // Download the Excel file
-        const blob = await excelResponse.blob();
+
+        // Download the JSON directly
+        const blob = new Blob([JSON.stringify(battleData, null, 2)], { type: 'application/json' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `battle_data_${sessionId}.xlsx`;
+        a.download = `battle_${sessionId}.json`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
     } catch (error) {
         console.error('Error downloading battle data:', error);
         showToast('Failed to download battle data', 'error');
@@ -3635,8 +3661,8 @@ function endGame() {
             data.initial_follows = initialFollows;
         }
 
-        // Display final results
-        displayResults(data);
+        // Display final results (navigates to /results/<id>)
+        showResults(data);
     })
     .catch(error => {
         console.error('Error ending game:', error);
@@ -4030,7 +4056,7 @@ async function finalizeTiebreakAndShowResults() {
             data.initial_leads = initialLeads;
             data.initial_follows = initialFollows;
         }
-        displayResults(data);
+        showResults(data);
     } catch (e) {
         showToast('Failed to finalize tie-break', 'error');
     }

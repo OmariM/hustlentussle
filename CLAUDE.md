@@ -11,7 +11,8 @@ Hustle n' Tussle is a partner dance competition management app. It randomly pair
 - **Backend:** Python 3.9+ with Flask 3.1.1
 - **Frontend:** Vanilla HTML5/CSS3/ES6+ JavaScript (no npm, no frontend framework)
 - **Database:** PostgreSQL (production) with in-memory fallback (development)
-- **Deployment:** Render.com via Gunicorn
+- **Deployment:** Self-hosted Docker Compose stack (web + Postgres). See `DEPLOY.md`.
+  (Previously Render.com; `render.yaml`/`Procfile` are legacy.)
 
 ## Commands
 
@@ -37,7 +38,12 @@ python voting_rules_tests.py
 # Run simulation
 python simulate_test.py
 
-# Production
+# Production (self-hosted Docker stack — see DEPLOY.md)
+docker compose up -d --build
+docker compose run --rm web python scripts/migrate.py          # apply DB migrations
+docker compose run --rm web python scripts/create_admin.py --email you@example.com
+
+# Production (bare gunicorn, no Docker)
 gunicorn wsgi:application
 ```
 
@@ -51,8 +57,22 @@ RESTful API with session-based game management (UUID `session_id` per game). Key
 - `/api/start_game` — initialize game
 - `/api/judge_leads`, `/api/judge_follows`, `/api/judge_combined` — process votes
 - `/api/next_round`, `/api/undo_round` — round management
-- `/api/export_battle_data` — Excel/JSON export
+- `/api/export_battle_data` — JSON battle export (`hustlentussle.battle` v1, built by reusable `build_battle_export()`; explicit `champions` via `compute_champions()`)
+- `/api/process_uploaded_file` — load an exported `.json` battle for read-only display (validated/converted by reusable `parse_battle_json()`)
 - `/api/spotify/*` — optional Spotify OAuth integration for track metadata
+- `/api/admin/*` — admin login/logout/me (Flask session + `admins` table, werkzeug hashing)
+- `/api/stats/*` — year-to-date stats (public read) + admin ingest (`ingest/preview`, `ingest/commit`, battle delete)
+
+### Year-to-Date Stats (`stats/`)
+Aggregates results across monthly battles, stored in the same Postgres DB but separate
+permanent tables (`dancers`, `battles`, `battle_results`, `admins`; schema in
+`migrations/0001_ytd_stats.sql`). `stats/stats_repository.py` holds DB ops + the YTD
+aggregation (sum of raw points per role per year, with a canonical dancer registry).
+`stats/normalize.py` turns a battle payload into per-dancer/role rows; both ingest paths
+(publish a finished live battle, or upload an exported `.json`) converge on it. Admins log
+in on the stats page to ingest results via a preview → name-resolution → commit flow.
+Frontend lives in `web/js/ytd.js` + the `stats-screen` markup in `index.html`. Requires
+`DATABASE_URL`; disabled (endpoints 503) when unset.
 
 ### Persistence Layer (`persistence/`)
 Factory pattern with interface-based abstraction (`GameRepositoryInterface`). `RepositoryFactory` selects backend based on config. `FallbackRepository` auto-falls back from PostgreSQL to in-memory on failure. Games auto-expire after 6 hours (configurable). `GameSerializer` handles Game object JSON serialization.
@@ -61,7 +81,13 @@ Factory pattern with interface-based abstraction (`GameRepositoryInterface`). `R
 - `app.js` — main application logic with global state management (sessionId, votes, rounds, contestants)
 - `main.js` — entry point
 - `components/DebugTools.js` — debug utilities (enable via env, `?debug=1` query param, or Alt+Shift+D)
-- Screen-based UI flow: home → setup → voting → results
+- `router.js` — client-side History API routing. Clean paths map to screens: `/`, `/setup`,
+  `/upload`, `/stats`, `/battle/<session_id>`, `/results/<session_id>`. `navigate(path)` +
+  `renderRoute()` drive screen switching; `showScreen()` is the low-level render. Session-
+  bearing routes hydrate from the server (`/api/state`, `/api/results`) so they reload/share.
+  A Flask catch-all (`spa_catch_all`) serves `index.html` for these paths. Viewer links are
+  `/battle/<id>?mode=display` (legacy `?mode=display&session_id=` auto-redirects).
+- Screen-based UI flow: home → setup → battle → results (URL-routed)
 
 ### Voting Rules
 - **Guest judges:** Can vote Tie or No Contest
