@@ -481,17 +481,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (editAddLeadBtn) {
         editAddLeadBtn.addEventListener('click', () => {
             document.getElementById('edit-leads-body').appendChild(buildEditParticipantRow({ name: '', points: 0 }));
+            refreshEditConsistencyWarnings();
         });
     }
     if (editAddFollowBtn) {
         editAddFollowBtn.addEventListener('click', () => {
             document.getElementById('edit-follows-body').appendChild(buildEditParticipantRow({ name: '', points: 0 }));
+            refreshEditConsistencyWarnings();
         });
     }
     if (editResultsModal) {
         editResultsModal.addEventListener('click', (e) => {
             if (e.target === editResultsModal) closeEditResultsModal();
         });
+        // Live-refresh the points-vs-round-wins warning as points/round winners are edited
+        editResultsModal.addEventListener('input', refreshEditConsistencyWarnings);
+        editResultsModal.addEventListener('change', refreshEditConsistencyWarnings);
     }
 
     // Theme toggles (nav bar + floating for display mode)
@@ -2643,6 +2648,55 @@ function updateScoreTable(leads, follows) {
 // the display shape (medals, placements) stays in sync with the same rules
 // a fresh upload would get.
 
+// Each round win is worth exactly 1 point (see game_logic.py: `winner.points += 1`,
+// ties/no-contests award none), so a contestant's recorded points should always equal
+// how many rounds they won. Uploaded/edited data can drift from that; flag it rather
+// than silently trusting whichever field was typed in.
+function computeRoundWinCounts(rounds, winnerKey) {
+    const wins = {};
+    (rounds || []).forEach((r) => {
+        const winner = r ? r[winnerKey] : null;
+        if (winner) wins[winner] = (wins[winner] || 0) + 1;
+    });
+    return wins;
+}
+
+function findPointsInconsistencies(leads, follows, rounds) {
+    const leadWins = computeRoundWinCounts(rounds, 'lead_winner');
+    const followWins = computeRoundWinCounts(rounds, 'follow_winner');
+    const issues = [];
+    const check = (list, wins, role) => {
+        (list || []).forEach((p) => {
+            if (!p || !p.name) return;
+            const recordedPoints = Number(p.points) || 0;
+            const roundWins = wins[p.name] || 0;
+            if (recordedPoints !== roundWins) {
+                issues.push({ role, name: p.name, points: recordedPoints, wins: roundWins });
+            }
+        });
+    };
+    check(leads, leadWins, 'Lead');
+    check(follows, followWins, 'Follow');
+    return issues;
+}
+
+function renderConsistencyWarnings(boxId, listId, issues) {
+    const box = document.getElementById(boxId);
+    const list = document.getElementById(listId);
+    if (!box || !list) return;
+    list.innerHTML = '';
+    if (!issues.length) {
+        box.classList.add('hidden');
+        return;
+    }
+    issues.forEach((issue) => {
+        const li = document.createElement('li');
+        li.textContent = `${issue.name} (${issue.role}): ${issue.points} point${issue.points === 1 ? '' : 's'} recorded, but ${issue.wins} round win${issue.wins === 1 ? '' : 's'} in the round history.`;
+        list.appendChild(li);
+    });
+    box.classList.remove('hidden');
+}
+
 // Replace every exact-match occurrence of `oldName` anywhere in the payload
 // tree (pairs, votes, tiebreak lists, champions, etc.) with `newName`, so a
 // contestant rename doesn't leave round history pointing at a stale name.
@@ -2687,12 +2741,30 @@ function openEditResultsModal() {
     renderEditParticipants('edit-follows-body', payload.participants.follows);
     renderEditChampions(payload);
     renderEditRounds(payload);
+    refreshEditConsistencyWarnings();
 
     const errorEl = document.getElementById('edit-results-error');
     if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
 
     const modal = document.getElementById('edit-results-modal');
     if (modal) modal.classList.remove('hidden');
+}
+
+// Recomputes the points-vs-round-wins warning from whatever is currently typed/selected
+// in the modal (not the saved payload), so it updates live as the user edits.
+function refreshEditConsistencyWarnings() {
+    const leadEntries = collectParticipantEdits('edit-leads-body').entries;
+    const followEntries = collectParticipantEdits('edit-follows-body').entries;
+    const rounds = Array.from(document.querySelectorAll('#edit-rounds-body .edit-round-row')).map((rowEl) => {
+        const leadSel = rowEl.querySelector('.edit-round-lead-winner');
+        const followSel = rowEl.querySelector('.edit-round-follow-winner');
+        return {
+            lead_winner: leadSel ? (leadSel.value || null) : null,
+            follow_winner: followSel ? (followSel.value || null) : null,
+        };
+    });
+    const issues = findPointsInconsistencies(leadEntries, followEntries, rounds);
+    renderConsistencyWarnings('edit-consistency-warning', 'edit-consistency-list', issues);
 }
 
 function closeEditResultsModal() {
@@ -2725,7 +2797,7 @@ function buildEditParticipantRow(participant) {
     removeBtn.type = 'button';
     removeBtn.className = 'btn secondary small';
     removeBtn.textContent = 'Remove';
-    removeBtn.addEventListener('click', () => row.remove());
+    removeBtn.addEventListener('click', () => { row.remove(); refreshEditConsistencyWarnings(); });
     removeCell.appendChild(removeBtn);
 
     row.appendChild(nameCell);
@@ -2997,6 +3069,11 @@ async function displayResults(data) {
     if (editResultsBtn) {
         editResultsBtn.style.display = (data.uploaded && currentUploadedBattlePayload) ? '' : 'none';
     }
+
+    // Flag points that don't match the round history — uploaded/edited files can drift;
+    // a live battle's points always come straight from the game engine, so skip the noise there.
+    const resultsIssues = data.uploaded ? findPointsInconsistencies(data.leads, data.follows, data.rounds) : [];
+    renderConsistencyWarnings('results-consistency-warning', 'results-consistency-list', resultsIssues);
 
     // Clear previous results
     const leadResultsBody = document.getElementById('lead-results-body');

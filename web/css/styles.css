@@ -3181,3 +3181,31 @@ a {
     width: auto;
     min-width: 160px;
 }
+
+.consistency-warning {
+    color: var(--accent-gold);
+    border: 1.5px solid var(--accent-gold);
+    background: color-mix(in srgb, var(--accent-gold) 12%, transparent);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+.consistency-warning.hidden {
+    display: none;
+}
+
+.consistency-warning strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.consistency-warning ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.consistency-warning li {
+    margin: 2px 0;
+}
