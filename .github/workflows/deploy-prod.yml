@@ -1,0 +1,57 @@
+name: Test & Deploy → Prod
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip deploy]')"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run tests
+        run: python run_complete_test_suite.py
+
+  deploy:
+    name: Deploy to prod server
+    needs: test
+    runs-on: [self-hosted, prod]
+
+    steps:
+      - name: Sync prod mirror to prod branch
+        run: |
+          cd /home/oat/projects/hustlentussle-prod
+          git fetch origin
+          git checkout prod
+          git reset --hard origin/prod
+
+      - name: Apply DB migrations
+        run: |
+          cd /home/oat/projects/hustlentussle-prod
+          docker compose run --rm web python scripts/migrate.py
+
+      - name: Build and restart containers
+        run: |
+          cd /home/oat/projects/hustlentussle-prod
+          docker compose up -d --build
