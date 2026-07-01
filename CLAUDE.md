@@ -81,7 +81,13 @@ Factory pattern with interface-based abstraction (`GameRepositoryInterface`). `R
 - `app.js` — main application logic with global state management (sessionId, votes, rounds, contestants)
 - `main.js` — entry point
 - `components/DebugTools.js` — debug utilities (enable via env, `?debug=1` query param, or Alt+Shift+D)
-- Screen-based UI flow: home → setup → voting → results
+- `router.js` — client-side History API routing. Clean paths map to screens: `/`, `/setup`,
+  `/upload`, `/stats`, `/battle/<session_id>`, `/results/<session_id>`. `navigate(path)` +
+  `renderRoute()` drive screen switching; `showScreen()` is the low-level render. Session-
+  bearing routes hydrate from the server (`/api/state`, `/api/results`) so they reload/share.
+  A Flask catch-all (`spa_catch_all`) serves `index.html` for these paths. Viewer links are
+  `/battle/<id>?mode=display` (legacy `?mode=display&session_id=` auto-redirects).
+- Screen-based UI flow: home → setup → battle → results (URL-routed)
 
 ### Voting Rules
 - **Guest judges:** Can vote Tie or No Contest

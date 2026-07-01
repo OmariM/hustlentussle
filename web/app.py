@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect, session
+from flask import Flask, render_template, request, jsonify, send_file, redirect, session, abort
 from functools import wraps
 import sys
 import os
@@ -1898,6 +1898,33 @@ def stats_delete_battle(battle_id):
     if not stats_repo.delete_battle(battle_id):
         return jsonify({"error": "Battle not found"}), 404
     return jsonify({"success": True})
+
+
+@app.route("/api/results", methods=["GET"])
+def get_results():
+    """Read-only battle results for a session (for deep-linking /results/<id>).
+    Non-mutating; reuses the same shape the live end-of-battle response returns."""
+    session_id = request.args.get("session_id")
+    game = repo.get(session_id) if session_id else None
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+    return jsonify(_format_end_game_results(game, session_id))
+
+
+# SPA fallback: with static_url_path="" Flask's static route greedily matches every root
+# path and 404s on a miss, so a catch-all view never runs. Instead, serve the app shell on
+# any 404 for a client-side-routed path (/setup, /battle/<id>, /results/<id>, /stats, ...).
+# Real /api routes and existing static files resolve normally; genuine asset misses (paths
+# with a file extension) and /api/* keep their 404.
+@app.errorhandler(404)
+def spa_fallback(err):
+    path = request.path or ""
+    if path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    last_segment = path.rsplit("/", 1)[-1]
+    if "." in last_segment:  # looks like a static asset that genuinely doesn't exist
+        return err
+    return render_template("index.html", config=app.config), 200
 
 
 if __name__ == "__main__":

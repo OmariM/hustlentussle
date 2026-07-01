@@ -1,5 +1,7 @@
 // Global variables
 let sessionId = null;
+let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
+let currentResultsData = null;     // last rendered results payload (for /results hydration)
 let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
@@ -339,17 +341,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Create direct handler functions for better debugging
     function goToHome() {
         console.log('Go to home clicked');
-        showScreen(homeScreen);
+        navigate('/');
     }
-    
+
     function setupBackToHomeHandler() {
         console.log('Setup back to home clicked');
-        showScreen(homeScreen);
+        navigate('/');
     }
-    
+
     // Home screen navigation
-    goToBattleBtn.addEventListener('click', () => showScreen(setupScreen));
-    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => showScreen(uploadScreen));
+    goToBattleBtn.addEventListener('click', () => navigate('/setup'));
+    if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => navigate('/upload'));
     
     // Upload screen
     battleFileUpload.addEventListener('change', handleFileSelect);
@@ -514,16 +516,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     applySpotifyEnabledUI();
 
-    // Hide nav bar on home screen initially (showScreen isn't called on first load)
+    // Hide nav bar initially to avoid a flash before the router renders the first route.
     const navBar = document.getElementById('nav-bar');
     if (navBar && !displayMode) {
         navBar.style.display = 'none';
     }
 
-    // Initialize display mode if detected (this goes directly to battle screen)
-    if (displayMode) {
-        initDisplayMode();
-    }
+    // Initial screen + display-mode init are driven by the router (js/router.js),
+    // whose DOMContentLoaded handler runs after this one. See hydrateBattleRoute().
 });
 
 // Functions
@@ -537,11 +537,8 @@ function updateNavPills(activeScreen) {
 }
 
 function showScreen(screen) {
-    homeScreen.classList.remove('active');
-    uploadScreen.classList.remove('active');
-    setupScreen.classList.remove('active');
-    roundScreen.classList.remove('active');
-    resultsScreen.classList.remove('active');
+    // Deactivate every screen (includes stats-screen and any future screens)
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
 
     screen.classList.add('active');
 
@@ -1507,7 +1504,7 @@ async function processUploadedFile() {
         }
         
         // Display the results
-        await displayResults(data);
+        showResults(data, { sessionId: null });
     } catch (error) {
         console.error('Error processing file:', error);
         showUploadError(`Failed to process the file: ${error.message}`);
@@ -1530,8 +1527,7 @@ function updateSessionIdDisplay() {
     }
     const isMinimized = localStorage.getItem('session-info-minimized') !== 'false';
     if (sessionId && !displayMode) {
-        const baseUrl = window.location.origin + window.location.pathname;
-        const displayUrl = `${baseUrl}?mode=display&session_id=${sessionId}`;
+        const displayUrl = `${window.location.origin}/battle/${encodeURIComponent(sessionId)}?mode=display`;
         sessionIdDisplay.innerHTML = `
             <div class="session-id-display-header">
                 <span class="session-id-display-label">Session: ${sessionId}</span>
@@ -1678,8 +1674,9 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
         // Render from canonical state
         await refreshCanonicalState();
 
-        // Show round screen
-        showScreen(roundScreen);
+        // Navigate to the battle route (shareable/reloadable URL)
+        liveBattleActive = true;
+        navigate('/battle/' + encodeURIComponent(sessionId));
 
         // Demo mode hook: advance past the "Start Competition" step
         if (demoMode) {
@@ -1726,10 +1723,14 @@ function fetchScores() {
 }
 
 function updateScoresDisplay() {
+    // These list containers are not present in the current markup (standings render
+    // via the mini-leaderboard and battle graphic); bail out safely if absent.
+    if (!currentLeadScores || !currentFollowScores) return;
+
     // Clear current lists
     currentLeadScores.innerHTML = '';
     currentFollowScores.innerHTML = '';
-    
+
     // Sort contestants by points (highest first)
     const sortedLeads = [...currentLeads].sort((a, b) => b.points - a.points);
     const sortedFollows = [...currentFollows].sort((a, b) => b.points - a.points);
@@ -2476,9 +2477,10 @@ async function endCompetition() {
 function resetAndGoHome() {
     console.log('resetAndGoHome called');
     resetCompetition();
-    console.log('resetCompetition completed, showing home screen');
-    showScreen(homeScreen);
-    console.log('Home screen should now be visible');
+    liveBattleActive = false;
+    currentResultsData = null;
+    console.log('resetCompetition completed, navigating home');
+    navigate('/');
 }
 
 function resetCompetition() {
@@ -2577,6 +2579,66 @@ function updateScoreTable(leads, follows) {
         row.appendChild(pointsCell);
         followScoreBody.appendChild(row);
     });
+}
+
+// --- Router hydration helpers (called by js/router.js) -------------------
+
+// Navigate to the results screen for a given payload, updating the URL.
+function showResults(data, opts) {
+    currentResultsData = data;
+    let sid;
+    if (opts && Object.prototype.hasOwnProperty.call(opts, 'sessionId')) sid = opts.sessionId;
+    else sid = (data && data.session_id) ? data.session_id : sessionId;
+    navigate(sid ? '/results/' + encodeURIComponent(sid) : '/results');
+}
+
+// Enter /battle/<id>: rebuild the interactive (or display) battle from server state.
+function hydrateBattleRoute(sid) {
+    if (!sid) { navigate('/', { replace: true }); return; }
+    // Already live in-memory for this session (e.g. just started) — no refetch needed.
+    if (sessionId === sid && liveBattleActive && !displayMode) {
+        updateSessionIdDisplay();
+        return;
+    }
+    sessionId = sid;
+    try { localStorage.setItem('sessionId', sid); } catch (e) {}
+    fetch(`/api/state?session_id=${encodeURIComponent(sid)}`)
+        .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+        .then(state => {
+            if (state.flags && state.flags.finished) {
+                navigate('/results/' + encodeURIComponent(sid), { replace: true });
+                return;
+            }
+            if (displayMode) { initDisplayMode(); return; }
+            liveBattleActive = true;
+            renderFromState(state);
+            updateSessionIdDisplay();
+            if (typeof fetchScores === 'function') fetchScores();
+        })
+        .catch(() => {
+            try { showToast('That battle was not found or has expired.', 'error'); } catch (e) {}
+            navigate('/', { replace: true });
+        });
+}
+
+// Enter /results/<id> (or /results with in-memory data): render final results.
+function hydrateResultsRoute(sid) {
+    if (!sid) {
+        if (currentResultsData) displayResults(currentResultsData);
+        else navigate('/', { replace: true });
+        return;
+    }
+    if (currentResultsData && currentResultsData.session_id === sid) {
+        displayResults(currentResultsData);
+        return;
+    }
+    fetch(`/api/results?session_id=${encodeURIComponent(sid)}`)
+        .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+        .then(data => { currentResultsData = data; displayResults(data); })
+        .catch(() => {
+            try { showToast('Those results were not found or have expired.', 'error'); } catch (e) {}
+            navigate('/', { replace: true });
+        });
 }
 
 async function displayResults(data) {
@@ -3255,8 +3317,8 @@ function endGame() {
             data.initial_follows = initialFollows;
         }
 
-        // Display final results
-        displayResults(data);
+        // Display final results (navigates to /results/<id>)
+        showResults(data);
     })
     .catch(error => {
         console.error('Error ending game:', error);
@@ -3650,7 +3712,7 @@ async function finalizeTiebreakAndShowResults() {
             data.initial_leads = initialLeads;
             data.initial_follows = initialFollows;
         }
-        displayResults(data);
+        showResults(data);
     } catch (e) {
         showToast('Failed to finalize tie-break', 'error');
     }

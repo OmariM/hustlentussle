@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- Resolve all relative asset/URL references against the site root so the
+         app shell works when served at deep routes like /battle/<id>. -->
+    <base href="/">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hustle n' Tussle - Dance Competition</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -699,5 +702,6 @@
     <script src="js/app.js?v={{ config.ASSET_VERSION }}"></script>
     <script src="js/explainers.js?v={{ config.ASSET_VERSION }}"></script>
     <script src="js/ytd.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/router.js?v={{ config.ASSET_VERSION }}"></script>
 </body>
 </html> 

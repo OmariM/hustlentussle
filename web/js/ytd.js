@@ -292,13 +292,14 @@
 
     // ---- entry ----
 
-    async function openStatsScreen() {
-        showScreenById('stats-screen');
+    // Called by the router (js/router.js) after it activates the stats screen.
+    async function enterStats() {
         await refreshAdmin();
         await loadYears();
         await loadStandings();
         await loadBattles();
     }
+    window.ytdOnEnterStats = enterStats;
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
@@ -309,8 +310,8 @@
     document.addEventListener('DOMContentLoaded', () => {
         const on = (id, evt, fn) => { const el = $(id); if (el) el.addEventListener(evt, fn); };
 
-        on('go-to-ytd', 'click', openStatsScreen);
-        on('ytd-back-home', 'click', () => showScreenById('home-screen'));
+        on('go-to-ytd', 'click', () => window.navigate('/stats'));
+        on('ytd-back-home', 'click', () => window.navigate('/'));
         on('ytd-year-select', 'change', async () => { await loadStandings(); await loadBattles(); });
 
         // admin login modal
