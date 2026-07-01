@@ -5,6 +5,10 @@ services:
     env: python
     plan: starter  # Starter tier for persistent disk and zero downtime
     buildCommand: pip install -r requirements.prod.txt
+    # Runs after build, before the new version goes live (has DATABASE_URL).
+    # Applies YTD stats migrations idempotently (CREATE ... IF NOT EXISTS).
+    # NOTE: preDeployCommand requires a paid instance type (starter+), not free.
+    preDeployCommand: python scripts/migrate.py
     startCommand: gunicorn wsgi:application
     envVars:
       - key: FLASK_ENV
