@@ -1211,19 +1211,25 @@ def parse_battle_json(payload):
 
     rounds = []
     for r in payload.get("rounds") or []:
-        rounds.append(
-            {
-                "round_num": r.get("round_num"),
-                "pairs": r.get("pairs"),
-                "lead_winner": r.get("lead_winner"),
-                "follow_winner": r.get("follow_winner"),
-                "lead_votes": r.get("lead_votes") or {},
-                "follow_votes": r.get("follow_votes") or {},
-                "judges": r.get("judges") or [],
-                "contestant_judges": r.get("contestant_judges") or [],
-                "song_info": r.get("song"),
-            }
-        )
+        row = {
+            "round_num": r.get("round_num"),
+            "pairs": r.get("pairs"),
+            "lead_winner": r.get("lead_winner"),
+            "follow_winner": r.get("follow_winner"),
+            "lead_votes": r.get("lead_votes") or {},
+            "follow_votes": r.get("follow_votes") or {},
+            "judges": r.get("judges") or [],
+            "contestant_judges": r.get("contestant_judges") or [],
+            "song_info": r.get("song"),
+        }
+        # Tie-break rounds (see _format_end_game_results) have no normal pairs; carry
+        # these through so the results screen renders them as a tie-break, not a
+        # normal round with blank contestant names.
+        if r.get("tiebreak"):
+            row["tiebreak"] = True
+            row["tiebreak_leads"] = r.get("tiebreak_leads") or []
+            row["tiebreak_follows"] = r.get("tiebreak_follows") or []
+        rounds.append(row)
     rounds.sort(key=lambda x: x.get("round_num") or 0)
 
     return {

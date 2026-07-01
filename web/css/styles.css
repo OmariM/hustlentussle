@@ -3115,3 +3115,97 @@ a {
         max-width: 100%;
     }
 }
+
+/* ============================================================
+   32. Edit Results Modal (uploaded battles)
+   ============================================================ */
+.modal--edit-results {
+    max-width: 820px;
+}
+
+.edit-results-section {
+    margin-bottom: var(--space-lg);
+}
+
+.edit-results-section h4 {
+    margin-bottom: 8px;
+}
+
+.edit-results-table td {
+    padding: 4px 6px;
+}
+
+.edit-results-table input[type="text"],
+.edit-results-table input[type="number"] {
+    width: 100%;
+    margin: 0;
+}
+
+.edit-results-champions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.edit-results-champions .form-group {
+    flex: 1 1 200px;
+}
+
+.edit-rounds-list {
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+}
+
+.edit-round-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.edit-round-row:last-child {
+    border-bottom: none;
+}
+
+.edit-round-label {
+    min-width: 140px;
+    font-weight: 600;
+}
+
+.edit-round-row select {
+    width: auto;
+    min-width: 160px;
+}
+
+.consistency-warning {
+    color: var(--accent-gold);
+    border: 1.5px solid var(--accent-gold);
+    background: color-mix(in srgb, var(--accent-gold) 12%, transparent);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+.consistency-warning.hidden {
+    display: none;
+}
+
+.consistency-warning strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.consistency-warning ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.consistency-warning li {
+    margin: 2px 0;
+}
