@@ -8,6 +8,31 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&amp;family=DM+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css?v={{ config.ASSET_VERSION }}">
+    <style>
+        /* Year-to-date stats page + modals (scoped, builds on existing classes) */
+        .ytd-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+        .ytd-admin-bar { display: flex; align-items: center; gap: .5rem; }
+        .ytd-admin-email { opacity: .8; font-size: .9rem; }
+        .ytd-controls { display: flex; align-items: center; gap: .5rem; margin: 1rem 0; }
+        .ytd-controls select { padding: .4rem .6rem; border-radius: 8px; }
+        .btn.small { padding: .35rem .7rem; font-size: .85rem; }
+        .ytd-empty { text-align: center; opacity: .7; margin: 2rem 0; }
+        .ytd-admin-tools { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(128,128,128,.3); }
+        .ytd-upload-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .ytd-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+        .ytd-modal.hidden { display: none; }
+        .ytd-modal-card { background: var(--surface, #1c1c22); color: inherit; border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+        .ytd-modal-wide { max-width: 640px; max-height: 85vh; overflow: auto; }
+        .ytd-modal-card label { display: block; margin: .6rem 0 .2rem; font-size: .85rem; opacity: .85; }
+        .ytd-modal-card input[type=email], .ytd-modal-card input[type=password], .ytd-modal-card input[type=text], .ytd-modal-card input[type=date] {
+            width: 100%; padding: .5rem .6rem; border-radius: 8px; border: 1px solid rgba(128,128,128,.4); background: rgba(255,255,255,.05); color: inherit; box-sizing: border-box;
+        }
+        .ytd-modal-actions { display: flex; gap: .5rem; margin-top: 1.2rem; }
+        .ytd-ingest-meta { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .ytd-ingest-meta > div { flex: 1; min-width: 180px; }
+        .ytd-resolve-wrap { max-height: 40vh; overflow: auto; margin-top: .5rem; }
+        .ytd-resolve-wrap select, .ytd-resolve-wrap input[type=text] { width: 100%; padding: .35rem; border-radius: 6px; box-sizing: border-box; }
+    </style>
 </head>
 <body>
     <div id="toast-container" class="toast-container"></div>
@@ -92,6 +117,7 @@
             <div class="home-actions">
                 <button id="go-to-battle" class="btn primary large">Start Battle</button>
                 <button id="try-demo" class="btn secondary large">Try Demo</button>
+                <button id="go-to-ytd" class="btn secondary large">Year-to-Date Stats</button>
             </div>
         </div>
 
@@ -527,6 +553,115 @@
             <div class="results-actions">
                 <button id="back-to-home-from-results" class="btn primary">Back to Home</button>
                 <button id="download-battle-data" class="btn secondary">Download Battle Data</button>
+                <button id="publish-to-ytd" class="btn secondary" style="display:none;">Publish to Year-to-Date Stats</button>
+            </div>
+        </div>
+
+        <div id="stats-screen" class="screen">
+            <div class="ytd-header">
+                <h2>Year-to-Date Stats</h2>
+                <div class="ytd-admin-bar">
+                    <span id="ytd-admin-email" class="ytd-admin-email"></span>
+                    <button id="ytd-admin-login-btn" class="btn secondary small">Admin Login</button>
+                    <button id="ytd-admin-logout-btn" class="btn secondary small" style="display:none;">Log Out</button>
+                </div>
+            </div>
+
+            <div class="ytd-controls">
+                <label for="ytd-year-select">Year</label>
+                <select id="ytd-year-select"></select>
+            </div>
+
+            <div class="leaderboard">
+                <div class="leads-board">
+                    <h3>Leads</h3>
+                    <table class="results-table ytd-table">
+                        <thead>
+                            <tr><th>#</th><th>Name</th><th>Pts</th><th>👑</th><th>Battles</th></tr>
+                        </thead>
+                        <tbody id="ytd-lead-body"></tbody>
+                    </table>
+                </div>
+                <div class="follows-board">
+                    <h3>Follows</h3>
+                    <table class="results-table ytd-table">
+                        <thead>
+                            <tr><th>#</th><th>Name</th><th>Pts</th><th>👑</th><th>Battles</th></tr>
+                        </thead>
+                        <tbody id="ytd-follow-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="ytd-empty" class="ytd-empty" style="display:none;">No battles recorded for this year yet.</div>
+
+            <div id="ytd-admin-tools" class="ytd-admin-tools" style="display:none;">
+                <h3>Admin Tools</h3>
+                <div class="ytd-upload-row">
+                    <p>Upload an exported battle <strong>.xlsx</strong> to add it to the stats:</p>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="ytd-file-input" accept=".xlsx" class="file-upload-input">
+                        <label for="ytd-file-input" class="file-upload-label">
+                            <span class="file-upload-text">Choose file</span>
+                            <span class="file-upload-btn">Browse</span>
+                        </label>
+                    </div>
+                    <span id="ytd-file-name" class="file-name"></span>
+                    <button id="ytd-upload-btn" class="btn primary small">Upload &amp; Review</button>
+                </div>
+                <h4>Contributed Battles</h4>
+                <table class="results-table">
+                    <thead><tr><th>Date</th><th>Name</th><th>Source</th><th>Results</th><th></th></tr></thead>
+                    <tbody id="ytd-battles-body"></tbody>
+                </table>
+            </div>
+
+            <div class="results-actions">
+                <button id="ytd-back-home" class="btn primary">Back to Home</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin login modal -->
+    <div id="ytd-login-modal" class="ytd-modal hidden">
+        <div class="ytd-modal-card">
+            <h3>Admin Login</h3>
+            <label for="ytd-login-email">Email</label>
+            <input type="email" id="ytd-login-email" autocomplete="username">
+            <label for="ytd-login-password">Password</label>
+            <input type="password" id="ytd-login-password" autocomplete="current-password">
+            <div id="ytd-login-error" class="error-message"></div>
+            <div class="ytd-modal-actions">
+                <button id="ytd-login-submit" class="btn primary">Log In</button>
+                <button id="ytd-login-cancel" class="btn secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ingest / name-resolution modal -->
+    <div id="ytd-ingest-modal" class="ytd-modal hidden">
+        <div class="ytd-modal-card ytd-modal-wide">
+            <h3>Review &amp; Publish Battle</h3>
+            <div class="ytd-ingest-meta">
+                <div>
+                    <label for="ytd-battle-name">Battle name</label>
+                    <input type="text" id="ytd-battle-name" placeholder="e.g. June 2026 Hustle n' Tussle">
+                </div>
+                <div>
+                    <label for="ytd-battle-date">Battle date</label>
+                    <input type="date" id="ytd-battle-date">
+                </div>
+            </div>
+            <p class="note">Match each dancer to an existing person, or create a new one so they aggregate correctly across battles.</p>
+            <div class="ytd-resolve-wrap">
+                <table class="results-table">
+                    <thead><tr><th>From this battle</th><th>Maps to</th></tr></thead>
+                    <tbody id="ytd-resolve-body"></tbody>
+                </table>
+            </div>
+            <div id="ytd-ingest-error" class="error-message"></div>
+            <div class="ytd-modal-actions">
+                <button id="ytd-ingest-commit" class="btn primary">Publish</button>
+                <button id="ytd-ingest-cancel" class="btn secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -573,5 +708,6 @@
     <script src="js/components/DebugTools.js?v={{ config.ASSET_VERSION }}"></script>
     <script src="js/app.js?v={{ config.ASSET_VERSION }}"></script>
     <script src="js/explainers.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/ytd.js?v={{ config.ASSET_VERSION }}"></script>
 </body>
 </html> 

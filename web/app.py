@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect
+from flask import Flask, render_template, request, jsonify, send_file, redirect, session
+from functools import wraps
 import sys
 import os
 import pandas as pd
@@ -36,6 +37,8 @@ from persistence import (
     PersistenceError,
     MemoryGameRepository,
 )
+from werkzeug.security import check_password_hash
+from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -111,6 +114,26 @@ def init_repository():
 
 
 repo = init_repository()
+
+
+# Initialize the year-to-date stats repository (separate tables, same database).
+# Requires DATABASE_URL; when unset (in-memory dev), YTD features are disabled.
+def init_stats_repository():
+    """Initialize the YTD stats repository if a database is configured."""
+    database_url = getattr(config, "DATABASE_URL", None)
+    if not database_url:
+        logger.warning("DATABASE_URL not set - year-to-date stats features are disabled")
+        return None
+    try:
+        stats = StatsRepository(database_url)
+        logger.info("Stats repository initialized")
+        return stats
+    except Exception as e:  # noqa: BLE001 - never block app startup on stats
+        logger.error(f"Failed to initialize stats repository: {e}")
+        return None
+
+
+stats_repo = init_stats_repository()
 
 # Initialize cleanup scheduler
 cleanup_scheduler = CleanupScheduler(
@@ -964,24 +987,17 @@ def tiebreak_finalize():
     return jsonify(result)
 
 
-@app.route("/api/export_battle_data", methods=["GET", "POST"])
-def export_battle_data():
-    """Export battle data as an Excel file or JSON."""
-    session_id = request.args.get("session_id")
-    format_type = request.args.get("format", "excel")  # Default to excel format
+def build_battle_export(game, session_id, posted_rounds=None):
+    """Build the canonical battle payload (session_id, leads, follows, rounds).
 
-    if not repo.exists(session_id):
-        return jsonify({"error": "Game not found"}), 404
-
-    game = repo.get(session_id)
-
-    # Get all rounds data
-    all_rounds = []
-    all_rounds.extend(game.rounds)
+    Shared by the Excel/JSON export endpoint and the YTD 'publish live battle' flow.
+    `posted_rounds`, when provided, overrides the rounds derived from the game object
+    (used when the client sends edited round data).
+    """
+    all_rounds = list(game.rounds)
     if game.current_round not in game.rounds:
         all_rounds.append(game.current_round)
 
-    # Format the results
     leads, follows = game.finalize_results()
 
     lead_results = []
@@ -996,38 +1012,54 @@ def export_battle_data():
         is_winner = hasattr(game, "last_follow_winner") and game.last_follow_winner == follow.name
         follow_results.append({"name": follow.name, "points": follow.points, "medal": medal, "is_winner": is_winner})
 
-    # Collect round metadata
-    rounds_data = []
-
-    # Check if we received updated rounds data in the POST request
-    if request.method == "POST" and request.json and "rounds" in request.json:
-        rounds_data = request.json["rounds"]
+    if posted_rounds is not None:
+        rounds_data = posted_rounds
     else:
-        # Add all completed rounds from the game object
+        rounds_data = []
         for r in all_rounds:
-            round_data = {
-                "round_num": r.round_num,
-                "session_id": session_id,
-                "pairs": r.pairs,
-                "lead_votes": r.lead_votes,
-                "follow_votes": r.follow_votes,
-                "judges": r.judges,
-                "contestant_judges": r.contestant_judges,
-                "win_messages": r.win_messages,
-                "lead_winner": r.lead_winner,
-                "follow_winner": r.follow_winner,
-                "song_info": r.song_info if hasattr(r, "song_info") else None,
-            }
-            rounds_data.append(round_data)
+            rounds_data.append(
+                {
+                    "round_num": r.round_num,
+                    "session_id": session_id,
+                    "pairs": r.pairs,
+                    "lead_votes": r.lead_votes,
+                    "follow_votes": r.follow_votes,
+                    "judges": r.judges,
+                    "contestant_judges": r.contestant_judges,
+                    "win_messages": r.win_messages,
+                    "lead_winner": r.lead_winner,
+                    "follow_winner": r.follow_winner,
+                    "song_info": r.song_info if hasattr(r, "song_info") else None,
+                }
+            )
 
-    # Sort rounds by round number
     rounds_data.sort(key=lambda x: x["round_num"])
+    return {"session_id": session_id, "leads": lead_results, "follows": follow_results, "rounds": rounds_data}
+
+
+@app.route("/api/export_battle_data", methods=["GET", "POST"])
+def export_battle_data():
+    """Export battle data as an Excel file or JSON."""
+    session_id = request.args.get("session_id")
+    format_type = request.args.get("format", "excel")  # Default to excel format
+
+    if not repo.exists(session_id):
+        return jsonify({"error": "Game not found"}), 404
+
+    game = repo.get(session_id)
+
+    posted_rounds = None
+    if request.method == "POST" and request.json and "rounds" in request.json:
+        posted_rounds = request.json["rounds"]
+
+    export = build_battle_export(game, session_id, posted_rounds)
 
     if format_type == "json":
-        return jsonify(
-            {"session_id": session_id, "leads": lead_results, "follows": follow_results, "rounds": rounds_data}
-        )
+        return jsonify(export)
     else:
+        # Excel export needs the finalized contestant objects and the rounds payload
+        leads, follows = game.finalize_results()
+        rounds_data = export["rounds"]
         # Create Excel file in the previous multi-sheet format
         wb = Workbook()
         summary_sheet = wb.active
@@ -1245,6 +1277,20 @@ def process_uploaded_file():
     temp_path = os.path.join("/tmp", secure_filename(file.filename))
     file.save(temp_path)
 
+    try:
+        data = parse_battle_workbook(temp_path)
+        os.remove(temp_path)
+        return jsonify(data)
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        print(f"Error processing Excel file: {str(e)}")
+        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+
+
+def parse_battle_workbook(temp_path):
+    """Parse an exported battle .xlsx workbook into the canonical battle dict
+    (leads/follows/rounds/...). Shared by the resume-battle upload and YTD ingest."""
     try:
         # Load the Excel workbook
         wb = load_workbook(temp_path)
@@ -1597,22 +1643,10 @@ def process_uploaded_file():
                 elif i == 2:
                     follow["medal"] = "🥉"
 
-        # Clean up
-        os.remove(temp_path)
+        return data
 
-        # Log data for debugging
-        print("Processed data:", data)
-        if "leads" in data:
-            for lead in data["leads"]:
-                print(f"Lead: {lead['name']}, Points: {lead['points']}, Type: {type(lead['points'])}")
-
-        return jsonify(data)
-
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        print(f"Error processing Excel file: {str(e)}")
-        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+    except Exception:
+        raise
 
 
 @app.route("/api/get_spotify_token", methods=["GET"])
@@ -2082,6 +2116,202 @@ def spotify_playlist_tracks():
         return jsonify({"tracks": unique})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# =========================================================================
+# Year-to-date stats + admin authentication
+# =========================================================================
+
+
+def admin_required(f):
+    """Guard an endpoint so only a logged-in admin (Flask session) can call it."""
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("admin_id"):
+            return jsonify({"error": "Authentication required"}), 401
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+@app.route("/api/admin/login", methods=["POST"])
+def admin_login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    admin = stats_repo.get_admin_by_email(email)
+    if not admin or not check_password_hash(admin["password_hash"], password):
+        return jsonify({"error": "Invalid credentials"}), 401
+    session["admin_id"] = str(admin["id"])
+    session["admin_email"] = admin["email"]
+    return jsonify({"authenticated": True, "email": admin["email"]})
+
+
+@app.route("/api/admin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("admin_id", None)
+    session.pop("admin_email", None)
+    return jsonify({"success": True})
+
+
+@app.route("/api/admin/me", methods=["GET"])
+def admin_me():
+    if session.get("admin_id"):
+        return jsonify({"authenticated": True, "email": session.get("admin_email")})
+    return jsonify({"authenticated": False})
+
+
+@app.route("/api/stats/years", methods=["GET"])
+def stats_years():
+    if stats_repo is None:
+        return jsonify({"years": []})
+    return jsonify({"years": stats_repo.list_years()})
+
+
+@app.route("/api/stats/year-to-date", methods=["GET"])
+def stats_year_to_date():
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    year = request.args.get("year", type=int)
+    if not year:
+        years = stats_repo.list_years()
+        year = years[0] if years else datetime.datetime.now().year
+    standings = stats_repo.get_ytd_standings(year)
+    for role in ("leads", "follows"):
+        for row in standings[role]:
+            row["dancer_id"] = str(row["dancer_id"])
+            row["total_points"] = int(row["total_points"] or 0)
+            row["crowns"] = int(row["crowns"] or 0)
+            row["battles_entered"] = int(row["battles_entered"] or 0)
+            row["round_wins"] = int(row["round_wins"] or 0)
+    return jsonify({"year": year, **standings})
+
+
+@app.route("/api/stats/battles", methods=["GET"])
+def stats_battles():
+    if stats_repo is None:
+        return jsonify({"battles": []})
+    year = request.args.get("year", type=int)
+    battles = stats_repo.list_battles(year)
+    for b in battles:
+        b["id"] = str(b["id"])
+        b["battle_date"] = b["battle_date"].isoformat() if b.get("battle_date") else None
+        b["created_at"] = b["created_at"].isoformat() if b.get("created_at") else None
+        b["result_count"] = int(b.get("result_count") or 0)
+    return jsonify({"battles": battles})
+
+
+def _resolution_proposal(names):
+    """For each battle name, propose a matching canonical dancer (or 'new')."""
+    proposals = []
+    for name in names:
+        match = stats_repo.find_dancer_by_name(name)
+        proposals.append(
+            {
+                "name": name,
+                "suggested_dancer_id": str(match["id"]) if match else None,
+                "suggested_display_name": match["display_name"] if match else name,
+                "is_new": match is None,
+            }
+        )
+    return proposals
+
+
+@app.route("/api/stats/ingest/preview", methods=["POST"])
+@admin_required
+def stats_ingest_preview():
+    """Normalize an uploaded .xlsx or a finished live battle and propose name mappings.
+    Does not write anything."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+
+    if "battle_file" in request.files:
+        file = request.files["battle_file"]
+        if not file or not file.filename:
+            return jsonify({"error": "No file selected"}), 400
+        if not file.filename.endswith(".xlsx"):
+            return jsonify({"error": "File must be an Excel (.xlsx) file"}), 400
+        temp_path = os.path.join("/tmp", secure_filename(file.filename))
+        file.save(temp_path)
+        try:
+            payload = parse_battle_workbook(temp_path)
+        except Exception as e:  # noqa: BLE001
+            return jsonify({"error": f"Failed to parse file: {e}"}), 400
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        source = "upload"
+        session_id = None
+    else:
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if not session_id or not repo.exists(session_id):
+            return jsonify({"error": "Battle not found"}), 404
+        game = repo.get(session_id)
+        payload = build_battle_export(game, session_id)
+        source = "live"
+
+    norm = normalize_battle(payload)
+    dancers = [{"id": str(d["id"]), "display_name": d["display_name"]} for d in stats_repo.list_dancers()]
+    return jsonify(
+        {
+            "source": source,
+            "session_id": session_id,
+            "results": norm["results"],
+            "names": _resolution_proposal(norm["names"]),
+            "dancers": dancers,
+            "raw_payload": payload,
+        }
+    )
+
+
+@app.route("/api/stats/ingest/commit", methods=["POST"])
+@admin_required
+def stats_ingest_commit():
+    """Persist a previewed battle: create/resolve dancers, insert battle + results."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    name = (data.get("battle_name") or "").strip()
+    battle_date = (data.get("battle_date") or "").strip()
+    results = data.get("results")
+    resolutions = data.get("resolutions") or {}
+    raw_payload = data.get("raw_payload") or {}
+    source = data.get("source") if data.get("source") in ("live", "upload") else "upload"
+    session_id = data.get("session_id")
+
+    if not name or not battle_date or not results:
+        return jsonify({"error": "battle_name, battle_date and results are required"}), 400
+
+    meta = {
+        "name": name,
+        "battle_date": battle_date,
+        "source": source,
+        "session_id": session_id,
+        "uploaded_by": session.get("admin_id"),
+    }
+    try:
+        battle_id = stats_repo.create_battle(meta, raw_payload, results, resolutions)
+    except DuplicateBattleError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"success": True, "battle_id": str(battle_id)})
+
+
+@app.route("/api/stats/battles/<battle_id>", methods=["DELETE"])
+@admin_required
+def stats_delete_battle(battle_id):
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    if not stats_repo.delete_battle(battle_id):
+        return jsonify({"error": "Battle not found"}), 404
+    return jsonify({"success": True})
 
 
 if __name__ == "__main__":
