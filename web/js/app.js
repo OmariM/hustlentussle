@@ -22,6 +22,7 @@ let resultsTopLeadName = null;
 let resultsTopFollowName = null;
 let resultsNumRounds = 0;
 let resultsGuestJudges = [];
+let resultsEventTitle = null; // custom subtitle; falls back to "Month Edition (Year)"
 
 // Display mode state (for viewer-only mode without voting controls)
 let displayMode = false;
@@ -3338,11 +3339,11 @@ async function exportSocialImage() {
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
     const now = new Date();
-    const monthStr = now.toLocaleDateString('en-US', { month: 'long' });
-    const yearStr = now.getFullYear();
+    const subtitleText = resultsEventTitle
+        || `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
     ctx.fillStyle = C.textSecondary;
     ctx.font = `400 38px ${C.fontBody}`;
-    ctx.fillText(`${monthStr} Edition (${yearStr})`, W / 2, 200);
+    ctx.fillText(subtitleText, W / 2, 200);
 
     if (resultsGuestJudges.length > 0) {
         const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
