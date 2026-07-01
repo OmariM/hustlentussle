@@ -174,15 +174,15 @@ class Game:
         self.tiebreak_active = False
         self.tiebreak_lead_needed = False
         self.tiebreak_follow_needed = False
-        self.tiebreak_leads_tied = []        # list of Contestant objects
-        self.tiebreak_follows_tied = []      # list of Contestant objects
-        self.tiebreak_original_leads = []    # snapshot at tiebreak start (never narrowed)
+        self.tiebreak_leads_tied = []  # list of Contestant objects
+        self.tiebreak_follows_tied = []  # list of Contestant objects
+        self.tiebreak_original_leads = []  # snapshot at tiebreak start (never narrowed)
         self.tiebreak_original_follows = []  # snapshot at tiebreak start (never narrowed)
-        self.tiebreak_sub_round = 0          # 0=setup, 1=sr1, 2=sr2, 3=voting
+        self.tiebreak_sub_round = 0  # 0=setup, 1=sr1, 2=sr2, 3=voting
         self.tiebreak_sub_round_1_pairings = []  # list of (lead_name, follow_name)
         self.tiebreak_sub_round_2_pairings = []
-        self.tiebreak_lead_winner = None     # Contestant object
-        self.tiebreak_follow_winner = None   # Contestant object
+        self.tiebreak_lead_winner = None  # Contestant object
+        self.tiebreak_follow_winner = None  # Contestant object
 
         # Initialize previous pairs tracking
         self.previous_pairs = {}
@@ -278,7 +278,7 @@ class Game:
 
             # Save queue snapshot for undo functionality
             self.current_round.queue_snapshot = {
-                "leads": [l.name for l in self._leads],
+                "leads": [lead.name for lead in self._leads],
                 "follows": [f.name for f in self._follows],
             }
 
@@ -314,7 +314,7 @@ class Game:
 
         # Save queue snapshot for undo functionality
         self.current_round.queue_snapshot = {
-            "leads": [l.name for l in self._leads],
+            "leads": [lead.name for lead in self._leads],
             "follows": [f.name for f in self._follows],
         }
 
@@ -651,7 +651,7 @@ class Game:
 
         # Save queue snapshot for undo functionality
         self.current_round.queue_snapshot = {
-            "leads": [l.name for l in self._leads],
+            "leads": [lead.name for lead in self._leads],
             "follows": [f.name for f in self._follows],
         }
 
@@ -894,12 +894,12 @@ class Game:
         self.tiebreak_follow_needed = follow_needed
 
         return {
-            'lead_needed': lead_needed,
-            'follow_needed': follow_needed,
-            'tied_leads': tied_lead_names,
-            'tied_follows': tied_follow_names,
-            'lead_max_points': lead_max,
-            'follow_max_points': follow_max,
+            "lead_needed": lead_needed,
+            "follow_needed": follow_needed,
+            "tied_leads": tied_lead_names,
+            "tied_follows": tied_follow_names,
+            "lead_max_points": lead_max,
+            "follow_max_points": follow_max,
         }
 
     def start_tiebreak(self):
@@ -942,8 +942,7 @@ class Game:
         if self.tiebreak_follows_tied and follow_selections:
             tied_follow_names = [c.name for c in self.tiebreak_follows_tied]
             follow_sr1 = [
-                (follow_selections[follow], follow)
-                for follow in tied_follow_names if follow in follow_selections
+                (follow_selections[follow], follow) for follow in tied_follow_names if follow in follow_selections
             ]
             if follow_sr1:
                 leads_ord = [p[0] for p in follow_sr1]
@@ -974,7 +973,7 @@ class Game:
         Returns {'resolved': bool, 'winner': name | None,
                  'still_tied': [name, ...] | None, 'vote_tally': {name: score}}.
         """
-        tied = self.tiebreak_leads_tied if role == 'lead' else self.tiebreak_follows_tied
+        tied = self.tiebreak_leads_tied if role == "lead" else self.tiebreak_follows_tied
         if len(tied) < 2:
             return None
 
@@ -992,19 +991,19 @@ class Game:
 
         if len(top_scorers) == 1:
             winner = top_scorers[0]
-            if role == 'lead':
+            if role == "lead":
                 self.tiebreak_lead_winner = winner
             else:
                 self.tiebreak_follow_winner = winner
             return {
-                'resolved': True,
-                'winner': winner.name,
-                'still_tied': None,
-                'vote_tally': {c.name: scores[c] for c in tied},
+                "resolved": True,
+                "winner": winner.name,
+                "still_tied": None,
+                "vote_tally": {c.name: scores[c] for c in tied},
             }
 
         # Still tied — narrow the list and reset for another round
-        if role == 'lead':
+        if role == "lead":
             self.tiebreak_leads_tied = top_scorers
         else:
             self.tiebreak_follows_tied = top_scorers
@@ -1012,10 +1011,10 @@ class Game:
         self.tiebreak_sub_round_1_pairings = []
         self.tiebreak_sub_round_2_pairings = []
         return {
-            'resolved': False,
-            'winner': None,
-            'still_tied': [c.name for c in top_scorers],
-            'vote_tally': {c.name: scores[c] for c in tied},
+            "resolved": False,
+            "winner": None,
+            "still_tied": [c.name for c in top_scorers],
+            "vote_tally": {c.name: scores[c] for c in tied},
         }
 
     def finalize_tiebreak_results(self):
@@ -1090,7 +1089,7 @@ class Game:
         # Restore queue from snapshot if available (most accurate restoration)
         if undone_round.queue_snapshot:
             # Build name-to-object maps for lookup
-            lead_map = {l.name: l for l in self.initial_leads}
+            lead_map = {lead.name: lead for lead in self.initial_leads}
             follow_map = {f.name: f for f in self.initial_follows}
 
             # Restore leads queue from snapshot
@@ -1139,7 +1138,7 @@ class Game:
 
             # Remove losers from the queue
             if lead_loser_name:
-                self._leads = [l for l in self._leads if l.name != lead_loser_name]
+                self._leads = [lead for lead in self._leads if lead.name != lead_loser_name]
             if follow_loser_name:
                 self._follows = [f for f in self._follows if f.name != follow_loser_name]
 
@@ -1152,7 +1151,7 @@ class Game:
                     self._follows.insert(0, follow)
 
             # Remove the undone round's pairs from the queue
-            self._leads = [l for l in self._leads if l.name not in undone_pair_leads]
+            self._leads = [lead for lead in self._leads if lead.name not in undone_pair_leads]
             self._follows = [f for f in self._follows if f.name not in undone_pair_follows]
 
         # Subtract points from the round winners

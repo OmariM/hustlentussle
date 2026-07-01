@@ -7,8 +7,7 @@ that battle rules are enforced at every state of the game.
 """
 
 from game_logic import Game
-from battle_rules_test_suite import BattleRulesValidator, GameStateSnapshot
-import random
+from battle_rules_test_suite import BattleRulesValidator
 
 
 def print_separator(title):
@@ -51,7 +50,7 @@ The framework includes:
     state = validator.capture_state()
     violations = validator.validate_all_rules(state)
 
-    print(f"Initial game state validation:")
+    print("Initial game state validation:")
     print(f"  Round: {state.round_num}")
     print(f"  Pair 1: {state.pair_1}")
     print(f"  Pair 2: {state.pair_2}")
@@ -59,11 +58,11 @@ The framework includes:
     print(f"  Win threshold: {state.win_threshold}")
 
     if violations:
-        print(f"\n❌ Rule violations detected:")
+        print("\n❌ Rule violations detected:")
         for violation in violations:
             print(f"  - {violation}")
     else:
-        print(f"\n✅ All rules properly enforced!")
+        print("\n✅ All rules properly enforced!")
 
     # 2. Voting Scenario Validation
     print_subsection("2. Voting Scenario Validation")
@@ -95,7 +94,7 @@ The framework includes:
             for violation in violations[:2]:  # Show first 2
                 print(f"      - {violation}")
         else:
-            print(f"    ✅ Rules maintained")
+            print("    ✅ Rules maintained")
 
     # 3. State Transition Validation
     print_subsection("3. State Transition Validation")
@@ -154,11 +153,11 @@ The framework includes:
             print(f"    Rule violations: {len(violations)}")
 
             if violations:
-                print(f"    ❌ Issues found:")
+                print("    ❌ Issues found:")
                 for violation in violations[:2]:
                     print(f"      - {violation}")
             else:
-                print(f"    ✅ Configuration valid")
+                print("    ✅ Configuration valid")
 
         except Exception as e:
             print(f"\n  {case_name}: ❌ Error - {str(e)}")

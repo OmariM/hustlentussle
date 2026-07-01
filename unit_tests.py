@@ -1,6 +1,4 @@
 import unittest
-import sys
-import os
 from web.app import app, games
 from game_logic import Game
 from web.config import get_config
@@ -255,7 +253,7 @@ class TestGameLogic(unittest.TestCase):
 
         # Simulate round where Lead1 wins
         lead_pair = (initial_lead_1, initial_lead_2)
-        result = game.judge_round(lead_pair[0], lead_pair[1], "lead", [("Judge1", 1), ("Judge2", 1)])
+        game.judge_round(lead_pair[0], lead_pair[1], "lead", [("Judge1", 1), ("Judge2", 1)])
 
         # Check if Lead1 is marked as a winner
         self.assertTrue(
@@ -296,7 +294,7 @@ class TestGameLogic(unittest.TestCase):
 
         # Simulate round where Follow1 wins
         follow_pair = (initial_follow_1, initial_follow_2)
-        result = game.judge_round(follow_pair[0], follow_pair[1], "follow", [("Judge1", 1), ("Judge2", 1)])
+        game.judge_round(follow_pair[0], follow_pair[1], "follow", [("Judge1", 1), ("Judge2", 1)])
 
         # Check if Follow1 is marked as a winner
         self.assertTrue(
@@ -458,8 +456,6 @@ class TestExportBattleData(unittest.TestCase):
             if response.status_code != 200:
                 print(f"Error getting scores: {response.get_data(as_text=True)}")
                 self.fail("Failed to get scores")
-
-            game = games[self.session_id]
 
             # Add lead votes
             lead_response = self.client.post(

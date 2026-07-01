@@ -1,17 +1,12 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect, session, abort
+from flask import Flask, render_template, request, jsonify, redirect, session
 from functools import wraps
 import sys
 import os
-import io
 import datetime
-from werkzeug.utils import secure_filename
 import random
 import requests
 from flask_cors import CORS
 from dotenv import load_dotenv
-import uuid
-import tempfile
-import shutil
 import threading
 import time
 import urllib.parse
@@ -26,16 +21,16 @@ load_dotenv()
 
 # Add parent directory to path to import game_logic and persistence
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from game_logic import Game, Contestant
-from web.config import get_config
-from persistence import (
+from game_logic import Game, Contestant  # noqa: E402
+from web.config import get_config  # noqa: E402
+from persistence import (  # noqa: E402
     RepositoryFactory,
     CleanupScheduler,
     PersistenceError,
     MemoryGameRepository,
 )
-from werkzeug.security import check_password_hash
-from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError
+from werkzeug.security import check_password_hash  # noqa: E402
+from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError  # noqa: E402
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -374,10 +369,16 @@ def serialize_state(game: Game) -> dict:
         "winners": {
             # When finished, the resolved battle champion (covers early-end/tie-break);
             # otherwise the threshold winner (or None mid-battle).
-            "lead": (_champs["lead"]["name"] if _champs is not None
-                     else (game.winning_lead.name if getattr(game, "winning_lead", None) else None)),
-            "follow": (_champs["follow"]["name"] if _champs is not None
-                       else (game.winning_follow.name if getattr(game, "winning_follow", None) else None)),
+            "lead": (
+                _champs["lead"]["name"]
+                if _champs is not None
+                else (game.winning_lead.name if getattr(game, "winning_lead", None) else None)
+            ),
+            "follow": (
+                _champs["follow"]["name"]
+                if _champs is not None
+                else (game.winning_follow.name if getattr(game, "winning_follow", None) else None)
+            ),
         },
         "initial_order": {
             "leads": [c.name for c in getattr(game, "initial_leads", [])],
@@ -798,23 +799,25 @@ def end_game():
 
     # Check for tie-break before marking the game finished
     tiebreak_info = game.detect_tiebreak_needs()
-    if tiebreak_info['lead_needed'] or tiebreak_info['follow_needed']:
+    if tiebreak_info["lead_needed"] or tiebreak_info["follow_needed"]:
         game.start_tiebreak()
         repo.save(session_id, game)
         r = game.current_round
-        return jsonify({
-            'tiebreak_required': True,
-            'lead_needed': tiebreak_info['lead_needed'],
-            'follow_needed': tiebreak_info['follow_needed'],
-            'tied_leads': tiebreak_info['tied_leads'],
-            'tied_follows': tiebreak_info['tied_follows'],
-            'lead_max_points': tiebreak_info['lead_max_points'],
-            'follow_max_points': tiebreak_info['follow_max_points'],
-            'all_leads': [c.name for c in game.initial_leads],
-            'all_follows': [c.name for c in game.initial_follows],
-            'guest_judges': (r.judges if r else []) or game.guest_judges,
-            'contestant_judges': (r.contestant_judges if r else []),
-        })
+        return jsonify(
+            {
+                "tiebreak_required": True,
+                "lead_needed": tiebreak_info["lead_needed"],
+                "follow_needed": tiebreak_info["follow_needed"],
+                "tied_leads": tiebreak_info["tied_leads"],
+                "tied_follows": tiebreak_info["tied_follows"],
+                "lead_max_points": tiebreak_info["lead_max_points"],
+                "follow_max_points": tiebreak_info["follow_max_points"],
+                "all_leads": [c.name for c in game.initial_leads],
+                "all_follows": [c.name for c in game.initial_follows],
+                "guest_judges": (r.judges if r else []) or game.guest_judges,
+                "contestant_judges": (r.contestant_judges if r else []),
+            }
+        )
 
     # No tie-break needed — mark the game as finished and return results
     game.state = 1
@@ -889,25 +892,39 @@ def _format_end_game_results(game, session_id):
     rounds_data = []
     for r in game.rounds:
         if hasattr(r, "session_id") and r.session_id == session_id:
-            rounds_data.append({
-                "round_num": r.round_num, "session_id": session_id,
-                "pairs": r.pairs, "lead_votes": r.lead_votes, "follow_votes": r.follow_votes,
-                "judges": r.judges, "contestant_judges": r.contestant_judges,
-                "win_messages": r.win_messages, "lead_winner": r.lead_winner,
-                "follow_winner": r.follow_winner,
-                "song_info": r.song_info if hasattr(r, "song_info") else None,
-            })
+            rounds_data.append(
+                {
+                    "round_num": r.round_num,
+                    "session_id": session_id,
+                    "pairs": r.pairs,
+                    "lead_votes": r.lead_votes,
+                    "follow_votes": r.follow_votes,
+                    "judges": r.judges,
+                    "contestant_judges": r.contestant_judges,
+                    "win_messages": r.win_messages,
+                    "lead_winner": r.lead_winner,
+                    "follow_winner": r.follow_winner,
+                    "song_info": r.song_info if hasattr(r, "song_info") else None,
+                }
+            )
     if game.current_round and game.current_round not in game.rounds:
         if hasattr(game.current_round, "session_id") and game.current_round.session_id == session_id:
             r = game.current_round
-            rounds_data.append({
-                "round_num": r.round_num, "session_id": session_id,
-                "pairs": r.pairs, "lead_votes": r.lead_votes, "follow_votes": r.follow_votes,
-                "judges": r.judges, "contestant_judges": r.contestant_judges,
-                "win_messages": r.win_messages, "lead_winner": r.lead_winner,
-                "follow_winner": r.follow_winner,
-                "song_info": r.song_info if hasattr(r, "song_info") else None,
-            })
+            rounds_data.append(
+                {
+                    "round_num": r.round_num,
+                    "session_id": session_id,
+                    "pairs": r.pairs,
+                    "lead_votes": r.lead_votes,
+                    "follow_votes": r.follow_votes,
+                    "judges": r.judges,
+                    "contestant_judges": r.contestant_judges,
+                    "win_messages": r.win_messages,
+                    "lead_winner": r.lead_winner,
+                    "follow_winner": r.follow_winner,
+                    "song_info": r.song_info if hasattr(r, "song_info") else None,
+                }
+            )
     rounds_data.sort(key=lambda x: x["round_num"])
 
     # When a tiebreak was resolved, replace the incomplete pre-tiebreak round entry
@@ -916,17 +933,23 @@ def _format_end_game_results(game, session_id):
     if (game.tiebreak_lead_winner or game.tiebreak_follow_winner) and game.current_round:
         last_round_num = game.current_round.round_num
         rounds_data = [rd for rd in rounds_data if rd.get("round_num") != last_round_num]
-        rounds_data.append({
-            "round_num": last_round_num,
-            "tiebreak": True,
-            "tiebreak_leads": [c.name for c in game.tiebreak_original_leads],
-            "tiebreak_follows": [c.name for c in game.tiebreak_original_follows],
-            "lead_winner": game.tiebreak_lead_winner.name if game.tiebreak_lead_winner else None,
-            "follow_winner": game.tiebreak_follow_winner.name if game.tiebreak_follow_winner else None,
-            "pairs": None, "lead_votes": None, "follow_votes": None,
-            "judges": None, "contestant_judges": None,
-            "win_messages": None, "song_info": None,
-        })
+        rounds_data.append(
+            {
+                "round_num": last_round_num,
+                "tiebreak": True,
+                "tiebreak_leads": [c.name for c in game.tiebreak_original_leads],
+                "tiebreak_follows": [c.name for c in game.tiebreak_original_follows],
+                "lead_winner": game.tiebreak_lead_winner.name if game.tiebreak_lead_winner else None,
+                "follow_winner": game.tiebreak_follow_winner.name if game.tiebreak_follow_winner else None,
+                "pairs": None,
+                "lead_votes": None,
+                "follow_votes": None,
+                "judges": None,
+                "contestant_judges": None,
+                "win_messages": None,
+                "song_info": None,
+            }
+        )
         rounds_data.sort(key=lambda x: x["round_num"])
 
     return {
@@ -955,11 +978,13 @@ def tiebreak_set_partners():
         return jsonify({"error": "No tie-break in progress"}), 400
     game.set_tiebreak_partner_selections(lead_selections, follow_selections)
     repo.save(session_id, game)
-    return jsonify({
-        "sub_round": game.tiebreak_sub_round,
-        "sr1_pairings": [list(p) for p in game.tiebreak_sub_round_1_pairings],
-        "sr2_pairings": [list(p) for p in game.tiebreak_sub_round_2_pairings],
-    })
+    return jsonify(
+        {
+            "sub_round": game.tiebreak_sub_round,
+            "sr1_pairings": [list(p) for p in game.tiebreak_sub_round_1_pairings],
+            "sr2_pairings": [list(p) for p in game.tiebreak_sub_round_2_pairings],
+        }
+    )
 
 
 @app.route("/api/tiebreak/advance", methods=["POST"])
@@ -997,25 +1022,26 @@ def tiebreak_vote():
 
     if game.tiebreak_lead_needed and lead_votes_raw:
         votes = [(v[0], v[1]) for v in lead_votes_raw]
-        lead_result = game.judge_tiebreak('lead', votes)
+        lead_result = game.judge_tiebreak("lead", votes)
 
     if game.tiebreak_follow_needed and follow_votes_raw:
         votes = [(v[0], v[1]) for v in follow_votes_raw]
-        follow_result = game.judge_tiebreak('follow', votes)
+        follow_result = game.judge_tiebreak("follow", votes)
 
     repo.save(session_id, game)
 
-    needs_another_round = (
-        (lead_result is not None and not lead_result.get('resolved')) or
-        (follow_result is not None and not follow_result.get('resolved'))
+    needs_another_round = (lead_result is not None and not lead_result.get("resolved")) or (
+        follow_result is not None and not follow_result.get("resolved")
     )
-    return jsonify({
-        "lead_result": lead_result,
-        "follow_result": follow_result,
-        "needs_another_round": needs_another_round,
-        "tied_leads": [c.name for c in game.tiebreak_leads_tied],
-        "tied_follows": [c.name for c in game.tiebreak_follows_tied],
-    })
+    return jsonify(
+        {
+            "lead_result": lead_result,
+            "follow_result": follow_result,
+            "needs_another_round": needs_another_round,
+            "tied_leads": [c.name for c in game.tiebreak_leads_tied],
+            "tied_follows": [c.name for c in game.tiebreak_follows_tied],
+        }
+    )
 
 
 @app.route("/api/tiebreak/finalize", methods=["POST"])
@@ -1189,7 +1215,7 @@ def parse_battle_json(payload):
         ordered = sorted(role_list, key=lambda p: p.get("points", 0) or 0, reverse=True)
         rows = []
         for idx, p in enumerate(ordered):
-            medal = ["\U0001F947", "\U0001F948", "\U0001F949"][idx] if idx < 3 else ""
+            medal = ["\U0001f947", "\U0001f948", "\U0001f949"][idx] if idx < 3 else ""
             rows.append(
                 {
                     "name": p.get("name"),

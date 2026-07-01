@@ -179,9 +179,7 @@ class StatsRepository:
             except psycopg2.errors.UniqueViolation as exc:
                 conn.rollback()
                 if "uq_battles_name_date" in str(exc):
-                    raise DuplicateBattleError(
-                        "A battle with this name and date has already been uploaded."
-                    ) from exc
+                    raise DuplicateBattleError("A battle with this name and date has already been uploaded.") from exc
                 raise StatsError(str(exc)) from exc
             except Exception as exc:  # noqa: BLE001
                 conn.rollback()

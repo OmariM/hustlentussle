@@ -1,5 +1,5 @@
 import unittest
-from game_logic import Game, Contestant
+from game_logic import Game
 from battle_rules_test_suite import BattleRulesValidator
 
 
@@ -132,9 +132,6 @@ class VotingRulesTestSuite(unittest.TestCase):
 
     def test_invalid_vote_handling(self):
         """Test how the system handles edge cases and invalid votes"""
-        game = self.create_game()
-        lead_pair = (game.pair_1[0], game.pair_2[0])
-
         # Test with votes that might cause issues
         edge_cases = [
             # Only one guest judge voting (missing second guest judge)
@@ -152,7 +149,7 @@ class VotingRulesTestSuite(unittest.TestCase):
                     fresh_game = self.create_game()
                     fresh_lead_pair = (fresh_game.pair_1[0], fresh_game.pair_2[0])
 
-                    result = fresh_game.judge_round(fresh_lead_pair[0], fresh_lead_pair[1], "lead", votes)
+                    fresh_game.judge_round(fresh_lead_pair[0], fresh_lead_pair[1], "lead", votes)
 
                     # Validate that game state remains consistent
                     validator = BattleRulesValidator(fresh_game)

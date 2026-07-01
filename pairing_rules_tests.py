@@ -1,5 +1,5 @@
 import unittest
-from game_logic import Game, Contestant
+from game_logic import Game
 from battle_rules_test_suite import BattleRulesValidator
 
 
@@ -310,10 +310,6 @@ class PairingRulesTestSuite(unittest.TestCase):
         follows = [f"Follow{i}" for i in range(1, 7)]
         game = self.create_game(leads, follows)
 
-        # Track initial queue order
-        initial_leads_queue = [c.name for c in game.leads]
-        initial_follows_queue = [c.name for c in game.follows]
-
         # Simulate several rounds
         for round_num in range(3):
             if game.is_finished():
@@ -327,10 +323,6 @@ class PairingRulesTestSuite(unittest.TestCase):
             game.judge_round(follow_pair[0], follow_pair[1], "follow", [("Judge1", 1), ("Judge2", 1)])
 
             if not game.is_finished():
-                # Check queue before transition
-                pre_transition_leads = [c.name for c in game.leads]
-                pre_transition_follows = [c.name for c in game.follows]
-
                 game.next_round()
 
                 # Validate that queue management follows FIFO principles

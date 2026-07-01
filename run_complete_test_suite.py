@@ -14,16 +14,19 @@ It includes:
 import unittest
 import sys
 import time
-from typing import Dict, List, Tuple
-import traceback
+from typing import Dict, List
 
 # Import all test suites
 from battle_rules_test_suite import BattleRulesTestSuite, StressTestSuite, BattleRulesValidator
 from voting_rules_tests import VotingRulesTestSuite
 from pairing_rules_tests import PairingRulesTestSuite
 from tiebreak_tests import (
-    TestDetectTiebreakNeeds, TestStartTiebreak, TestPartnerSelections,
-    TestAdvanceTiebreakSubRound, TestJudgeTiebreak, TestFinalizeTiebreakResults,
+    TestDetectTiebreakNeeds,
+    TestStartTiebreak,
+    TestPartnerSelections,
+    TestAdvanceTiebreakSubRound,
+    TestJudgeTiebreak,
+    TestFinalizeTiebreakResults,
     TestEndToEndTiebreakFlow,
 )
 from persistence_serialization_tests import TestGameSerialization
@@ -244,7 +247,7 @@ def main():
     runner = TestSuiteRunner()
 
     # Run all test suites
-    results = runner.run_all_suites()
+    runner.run_all_suites()
 
     # Run additional validations
     validation_results = runner.validate_sample_games()
@@ -272,7 +275,7 @@ def main():
 
     # Return exit code based on results
     if runner.total_failures == 0 and runner.total_errors == 0:
-        print(f"\n🎉 ALL TESTS PASSED! Battle rules are properly enforced.")
+        print("\n🎉 ALL TESTS PASSED! Battle rules are properly enforced.")
         return 0
     else:
         print(f"\n❌ {runner.total_failures + runner.total_errors} test issues found.")
