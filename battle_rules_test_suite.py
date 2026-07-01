@@ -1,9 +1,8 @@
 import unittest
 import random
-import itertools
-from typing import List, Tuple, Dict, Any, Set
+from typing import List, Tuple, Dict
 from dataclasses import dataclass
-from game_logic import Game, Contestant
+from game_logic import Game
 
 
 @dataclass
@@ -705,7 +704,7 @@ if __name__ == "__main__":
 
     # Print summary
     print(f"\n{'=' * 50}")
-    print(f"BATTLE RULES TEST SUITE SUMMARY")
+    print("BATTLE RULES TEST SUITE SUMMARY")
     print(f"{'=' * 50}")
     print(f"Tests run: {result.testsRun}")
     print(f"Failures: {len(result.failures)}")
@@ -715,11 +714,11 @@ if __name__ == "__main__":
     )
 
     if result.failures:
-        print(f"\nFAILURES:")
+        print("\nFAILURES:")
         for test, traceback in result.failures:
             print(f"- {test}: {traceback}")
 
     if result.errors:
-        print(f"\nERRORS:")
+        print("\nERRORS:")
         for test, traceback in result.errors:
             print(f"- {test}: {traceback}")

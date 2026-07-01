@@ -7,7 +7,7 @@ database storage.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 import sys
 import os
 
@@ -220,7 +220,9 @@ class GameSerializer:
             "tiebreak_sub_round_1_pairings": [list(p) for p in getattr(game, "tiebreak_sub_round_1_pairings", [])],
             "tiebreak_sub_round_2_pairings": [list(p) for p in getattr(game, "tiebreak_sub_round_2_pairings", [])],
             "tiebreak_lead_winner_name": (
-                getattr(game, "tiebreak_lead_winner", None).name if getattr(game, "tiebreak_lead_winner", None) else None
+                getattr(game, "tiebreak_lead_winner", None).name
+                if getattr(game, "tiebreak_lead_winner", None)
+                else None
             ),
             "tiebreak_follow_winner_name": (
                 getattr(game, "tiebreak_follow_winner", None).name
