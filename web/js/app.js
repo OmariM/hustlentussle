@@ -3321,66 +3321,38 @@ async function exportSocialImage() {
     };
 
     // --- Header ---
-    const now = new Date();
-    const TITLE_SIZE = 96;
-    const titleY = 12 + 52 + Math.round(TITLE_SIZE * 0.78); // baseline ≈ 151
+    const TITLE_SIZE = 88;
+    const titleY = 12 + 60 + Math.round(TITLE_SIZE * 0.78); // baseline ≈ 141
     ctx.textAlign = 'center';
     ctx.fillStyle = C.ink;
     ctx.font = `${TITLE_SIZE}px "Permanent Marker","Knewave",cursive`;
     ctx.fillText("Hustle n' Tussle", W / 2, titleY);
 
-    // Gold rule directly below title
-    const ruleY = titleY + 14;
+    const EDITION_SIZE = 38;
+    const editionY = titleY + Math.round(TITLE_SIZE * 0.22) + 18 + EDITION_SIZE; // gap 18
+    const now = new Date();
+    const editionText = `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
+    ctx.fillStyle = C.gray;
+    ctx.font = `500 ${EDITION_SIZE}px "Inter","DM Sans",sans-serif`;
+    ctx.fillText(editionText, W / 2, editionY);
+
+    // Gold brush underline below edition
+    const edW = ctx.measureText(editionText).width;
+    const ulY = editionY + 10;
     ctx.strokeStyle = C.gold;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(W / 2 - 320, ruleY);
-    ctx.quadraticCurveTo(W / 2, ruleY + 5, W / 2 + 320, ruleY + 1);
+    ctx.moveTo(W / 2 - edW / 2, ulY);
+    ctx.quadraticCurveTo(W / 2 - edW / 4, ulY + 6, W / 2, ulY + 3);
+    ctx.quadraticCurveTo(W / 2 + edW / 4, ulY, W / 2 + edW / 2, ulY + 5);
     ctx.stroke();
 
-    // Date sticky-note tag — top right, slightly rotated
-    ctx.save();
-    ctx.translate(W - 72, titleY - 40);
-    ctx.rotate(0.09);
-    const tagW = 148, tagH = 96;
-    _rrect(ctx, -tagW / 2, -tagH / 2, tagW, tagH, 8);
-    ctx.fillStyle = C.gold;
-    ctx.fill();
-    ctx.fillStyle = C.ink;
-    ctx.font = `32px "Permanent Marker",cursive`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${now.toLocaleDateString('en-US', { month: 'short' })} ${now.getDate()},`, 0, -10);
-    ctx.fillText(`${now.getFullYear()}.`, 0, 30);
-    ctx.restore();
-
-    // Black brush-band for edition
-    const EDITION_SIZE = 42;
-    const bandGap = 18; // gap from rule to band
-    const bandH = EDITION_SIZE + 28;
-    const bandY = ruleY + bandGap;
-    const bandMid = bandY + bandH / 2;
-    // Rough brush-stroke shape
-    ctx.fillStyle = C.ink;
-    ctx.beginPath();
-    ctx.moveTo(24, bandY + 3);
-    ctx.quadraticCurveTo(W / 2, bandY - 5, W - 24, bandY + 6);
-    ctx.quadraticCurveTo(W - 18, bandMid, W - 24, bandY + bandH - 4);
-    ctx.quadraticCurveTo(W / 2, bandY + bandH + 6, 24, bandY + bandH - 2);
-    ctx.quadraticCurveTo(18, bandMid, 24, bandY + 3);
-    ctx.fill();
-    // Edition text in gold on the band
-    const editionText = `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
-    ctx.fillStyle = C.gold;
-    ctx.font = `${EDITION_SIZE}px "Permanent Marker",cursive`;
-    ctx.textAlign = 'center';
-    ctx.fillText(editionText, W / 2, bandY + bandH * 0.68);
-
-    // Judges line below the band
-    let contentStartY = bandY + bandH + 16 + 32; // no judges
+    // Judges line (8 px below underline)
+    let contentStartY = ulY + 8 + 32; // no judges: 32px gap to cards
     if (resultsGuestJudges.length > 0) {
-        const JUDGES_SIZE = 34;
-        const judgesY = bandY + bandH + 16 + JUDGES_SIZE;
+        const JUDGES_SIZE = 36;
+        const judgesY = ulY + 8 + JUDGES_SIZE;
         ctx.fillStyle = C.gray;
         ctx.font = `500 ${JUDGES_SIZE}px "Inter","DM Sans",sans-serif`;
         ctx.fillText(
@@ -3454,14 +3426,11 @@ async function exportSocialImage() {
         ctx.fillStyle = C.ink;
         ctx.fillRect(CARD_X, startY, CARD_W, CARD_HEADER_H);
 
-        // Crown icon + section label in header
-        const HEADER_CROWN = 26;
-        const crownHCX = innerLeft + HEADER_CROWN * 0.7;
-        drawCrown(crownHCX, startY + CARD_HEADER_H / 2, HEADER_CROWN);
+        // Section label — Anton, white, ALL CAPS
         ctx.fillStyle = '#FFFFFF';
         ctx.font = `normal 56px "Anton","Bebas Neue","Space Grotesk",sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText(label.toUpperCase(), innerLeft + HEADER_CROWN * 1.4 + 14, startY + CARD_HEADER_H - 14);
+        ctx.fillText(label.toUpperCase(), innerLeft, startY + CARD_HEADER_H - 14);
 
         // Contestant rows
         const rowsStartY = startY + CARD_HEADER_H;
@@ -3533,7 +3502,7 @@ async function exportSocialImage() {
                 ctx.stroke();
 
                 // Round number
-                ctx.fillStyle = info.win ? '#FFFFFF' : C.ink;
+                ctx.fillStyle = info.win ? '#FFFFFF' : C.gray;
                 ctx.font = `700 ${tokenFontSize}px "Inter","DM Mono",monospace`;
                 ctx.textAlign = 'center';
                 ctx.fillText(String(info.round), cx, tokenCY + tokenFontSize * 0.37);
