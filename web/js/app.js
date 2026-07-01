@@ -2620,26 +2620,24 @@ async function displayResults(data) {
     console.log('Lead results:', data.leads);
     console.log('Follow results:', data.follows);
     
-    // Determine the single top-scoring lead and follow for crown display
-    let topLeadName = null;
-    if (Array.isArray(data.leads) && data.leads.length > 0) {
-        const topLead = data.leads.reduce((best, contestant) => {
-            const bestPoints = Number(best.points) || 0;
-            const contestantPoints = Number(contestant.points) || 0;
-            return contestantPoints > bestPoints ? contestant : best;
-        }, data.leads[0]);
-        topLeadName = topLead && topLead.name ? topLead.name : null;
+    // Crown the resolved battle champion (threshold / tie-break / early-end leader).
+    // Falls back to the top scorer only if champion info is absent.
+    const champions = data.champions;
+    function crownName(role, list) {
+        if (champions && champions[role] !== undefined) {
+            // Champion info present: trust it — a null name means no outright winner.
+            return champions[role] && champions[role].name ? champions[role].name : null;
+        }
+        // Legacy payload without champions: fall back to the top scorer.
+        if (Array.isArray(list) && list.length > 0) {
+            const top = list.reduce((best, c) =>
+                (Number(c.points) || 0) > (Number(best.points) || 0) ? c : best, list[0]);
+            return top && top.name ? top.name : null;
+        }
+        return null;
     }
-    
-    let topFollowName = null;
-    if (Array.isArray(data.follows) && data.follows.length > 0) {
-        const topFollow = data.follows.reduce((best, contestant) => {
-            const bestPoints = Number(best.points) || 0;
-            const contestantPoints = Number(contestant.points) || 0;
-            return contestantPoints > bestPoints ? contestant : best;
-        }, data.follows[0]);
-        topFollowName = topFollow && topFollow.name ? topFollow.name : null;
-    }
+    const topLeadName = crownName('lead', data.leads);
+    const topFollowName = crownName('follow', data.follows);
 
     // Display lead results
     if (data.leads && Array.isArray(data.leads)) {
@@ -3168,88 +3166,54 @@ async function downloadBattleData() {
     }
     
     try {
-        // First get the battle data to find all Spotify URLs
-        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=json`);
+        // Fetch the portable JSON battle export (hustlentussle.battle v1)
+        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}`);
         if (!response.ok) {
             throw new Error(`Failed to fetch battle data: ${response.status}`);
         }
-        
-        // Get the battle data as JSON first
         const battleData = await response.json();
-        
-        // If Spotify integration is enabled, enrich with Spotify metadata
+
+        // If Spotify integration is enabled, enrich song title/artist in-place
         const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
-        let access_token = null;
         if (spotifyOn) {
-            access_token = await getSpotifyToken();
-        }
-        
-        // Fetch metadata for all rounds in parallel
-        await Promise.all(battleData.rounds.map(async (round) => {
-            if (spotifyOn && round.song_info && round.song_info.spotify_url) {
+            let access_token = await getSpotifyToken();
+            await Promise.all((battleData.rounds || []).map(async (round) => {
+                const song = round.song;
+                if (!song || !song.spotify_url) return;
                 try {
-                    const spotifyUrl = new URL(round.song_info.spotify_url);
-                    const trackId = spotifyUrl.pathname.split('/').pop();
-                    
-                    if (trackId) {
-                        const metadataResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-                            headers: {
-                                'Authorization': `Bearer ${access_token}`
-                            }
+                    const trackId = new URL(song.spotify_url).pathname.split('/').pop();
+                    if (!trackId) return;
+                    let md = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                        headers: { 'Authorization': `Bearer ${access_token}` }
+                    });
+                    if (md.status === 401) {
+                        access_token = await getSpotifyToken();
+                        md = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+                            headers: { 'Authorization': `Bearer ${access_token}` }
                         });
-                        
-                        if (metadataResponse.status === 401 && spotifyOn) {
-                            // Token expired, get a new one and retry
-                            const newToken = await getSpotifyToken();
-                            const retryResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-                                headers: {
-                                    'Authorization': `Bearer ${newToken}`
-                                }
-                            });
-                            
-                            if (retryResponse.ok) {
-                                const metadata = await retryResponse.json();
-                                round.song_info.title = metadata.name;
-                                round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                            }
-                        } else if (metadataResponse.ok) {
-                            const metadata = await metadataResponse.json();
-                            round.song_info.title = metadata.name;
-                            round.song_info.artist = metadata.artists.map(artist => artist.name).join(', ');
-                        }
+                    }
+                    if (md.ok) {
+                        const meta = await md.json();
+                        song.title = meta.name;
+                        song.artist = meta.artists.map(a => a.name).join(', ');
                     }
                 } catch (e) {
-                    console.error(`Error fetching metadata for ${round.song_info.spotify_url}:`, e);
+                    console.error(`Error fetching metadata for ${song.spotify_url}:`, e);
                 }
-            }
-        }));
-        
-        // Now get the Excel file with the updated metadata
-        const excelResponse = await fetch(`/api/export_battle_data?session_id=${sessionId}&format=excel`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                rounds: battleData.rounds
-            })
-        });
-        
-        if (!excelResponse.ok) {
-            throw new Error(`Failed to generate Excel file: ${excelResponse.status}`);
+            }));
         }
-        
-        // Download the Excel file
-        const blob = await excelResponse.blob();
+
+        // Download the JSON directly
+        const blob = new Blob([JSON.stringify(battleData, null, 2)], { type: 'application/json' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `battle_data_${sessionId}.xlsx`;
+        a.download = `battle_${sessionId}.json`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
     } catch (error) {
         console.error('Error downloading battle data:', error);
         showToast('Failed to download battle data', 'error');

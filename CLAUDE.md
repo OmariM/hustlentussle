@@ -57,8 +57,8 @@ RESTful API with session-based game management (UUID `session_id` per game). Key
 - `/api/start_game` — initialize game
 - `/api/judge_leads`, `/api/judge_follows`, `/api/judge_combined` — process votes
 - `/api/next_round`, `/api/undo_round` — round management
-- `/api/export_battle_data` — Excel/JSON export (JSON shape built by reusable `build_battle_export()`)
-- `/api/process_uploaded_file` — resume a battle from an exported `.xlsx` (parsing in reusable `parse_battle_workbook()`)
+- `/api/export_battle_data` — JSON battle export (`hustlentussle.battle` v1, built by reusable `build_battle_export()`; explicit `champions` via `compute_champions()`)
+- `/api/process_uploaded_file` — load an exported `.json` battle for read-only display (validated/converted by reusable `parse_battle_json()`)
 - `/api/spotify/*` — optional Spotify OAuth integration for track metadata
 - `/api/admin/*` — admin login/logout/me (Flask session + `admins` table, werkzeug hashing)
 - `/api/stats/*` — year-to-date stats (public read) + admin ingest (`ingest/preview`, `ingest/commit`, battle delete)
@@ -69,7 +69,7 @@ permanent tables (`dancers`, `battles`, `battle_results`, `admins`; schema in
 `migrations/0001_ytd_stats.sql`). `stats/stats_repository.py` holds DB ops + the YTD
 aggregation (sum of raw points per role per year, with a canonical dancer registry).
 `stats/normalize.py` turns a battle payload into per-dancer/role rows; both ingest paths
-(publish a finished live battle, or upload an exported `.xlsx`) converge on it. Admins log
+(publish a finished live battle, or upload an exported `.json`) converge on it. Admins log
 in on the stats page to ingest results via a preview → name-resolution → commit flow.
 Frontend lives in `web/js/ytd.js` + the `stats-screen` markup in `index.html`. Requires
 `DATABASE_URL`; disabled (endpoints 503) when unset.

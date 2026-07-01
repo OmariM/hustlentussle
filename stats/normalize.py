@@ -1,17 +1,21 @@
 """
 Normalize a single battle into canonical per-dancer/per-role rows for YTD stats.
 
-Both ingest paths converge here:
-  - Publishing a finished live battle (built from the in-memory Game via the same
-    JSON the export endpoint produces).
-  - Uploading an exported .xlsx (parsed into the same shape).
+Both ingest paths converge here on the versioned export schema
+(hustlentussle.battle v1) — publishing a finished live battle and uploading an
+exported .json file both feed that shape:
 
-Expected input `payload` shape (the export JSON shape):
     {
-        "leads":   [{"name": str, "points": int, "is_winner": bool}, ...],
-        "follows": [{"name": str, "points": int, "is_winner": bool}, ...],
+        "participants": {
+            "leads":   [{"name": str, "points": int, "placement": int, "is_champion": bool}, ...],
+            "follows": [ ... ],
+        },
+        "champions": {"lead": {...}, "follow": {...}},
         "rounds":  [{"lead_winner": str|None, "follow_winner": str|None, ...}, ...],
     }
+
+The battle *champion* (is_champion) — not the last-round winner — drives the
+`is_winner` flag used for YTD crowns.
 """
 
 from typing import Any, Dict, List
@@ -54,13 +58,18 @@ def _normalize_role(
         name = (entry.get("name") or "").strip()
         if not name:
             continue
+        # Prefer the placement computed at export time; fall back to local ranking.
+        placement = entry.get("placement")
+        if placement is None:
+            placement = placements.get(name)
         results.append(
             {
                 "name": name,
                 "role": role,
                 "points": int(entry.get("points", 0) or 0),
-                "placement": placements.get(name),
-                "is_winner": bool(entry.get("is_winner", False)),
+                "placement": placement,
+                # Battle champion (is_champion) drives the crown; is_winner kept as fallback.
+                "is_winner": bool(entry.get("is_champion", entry.get("is_winner", False))),
                 "round_wins": round_wins.get(name, 0),
             }
         )
@@ -75,8 +84,12 @@ def normalize_battle(payload: Dict[str, Any]) -> Dict[str, Any]:
     name-resolution UI).
     """
     rounds = payload.get("rounds") or []
-    results = _normalize_role(payload.get("leads") or [], rounds, "lead", "lead_winner")
-    results += _normalize_role(payload.get("follows") or [], rounds, "follow", "follow_winner")
+    participants = payload.get("participants") or {}
+    # Accept the versioned schema (participants.*); tolerate a flat leads/follows too.
+    leads = participants.get("leads") or payload.get("leads") or []
+    follows = participants.get("follows") or payload.get("follows") or []
+    results = _normalize_role(leads, rounds, "lead", "lead_winner")
+    results += _normalize_role(follows, rounds, "follow", "follow_winner")
 
     seen: List[str] = []
     for row in results:

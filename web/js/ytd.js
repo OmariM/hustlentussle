@@ -140,7 +140,7 @@
     async function previewFromFile() {
         const input = $('ytd-file-input');
         const file = input.files[0];
-        if (!file) { alert('Choose a .xlsx file first.'); return; }
+        if (!file) { alert('Choose a .json battle file first.'); return; }
         const fd = new FormData();
         fd.append('battle_file', file);
         const res = await fetch('/api/stats/ingest/preview', { method: 'POST', body: fd });
