@@ -2,6 +2,7 @@
 let sessionId = null;
 let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
 let currentResultsData = null;     // last rendered results payload (for /results hydration)
+let currentUploadedBattlePayload = null; // raw hustlentussle.battle payload for the uploaded file being viewed/edited
 let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
@@ -464,6 +465,34 @@ document.addEventListener('DOMContentLoaded', () => {
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
     if (exportSocialImageBtn) exportSocialImageBtn.addEventListener('click', exportSocialImage);
+
+    // Edit Results modal (uploaded battles only)
+    const editResultsBtn = document.getElementById('edit-results-btn');
+    const editResultsModal = document.getElementById('edit-results-modal');
+    const editResultsCloseBtn = document.getElementById('edit-results-close');
+    const editResultsCancelBtn = document.getElementById('edit-results-cancel');
+    const editResultsSaveBtn = document.getElementById('edit-results-save');
+    const editAddLeadBtn = document.getElementById('edit-add-lead');
+    const editAddFollowBtn = document.getElementById('edit-add-follow');
+    if (editResultsBtn) editResultsBtn.addEventListener('click', openEditResultsModal);
+    if (editResultsCloseBtn) editResultsCloseBtn.addEventListener('click', closeEditResultsModal);
+    if (editResultsCancelBtn) editResultsCancelBtn.addEventListener('click', closeEditResultsModal);
+    if (editResultsSaveBtn) editResultsSaveBtn.addEventListener('click', saveEditedResults);
+    if (editAddLeadBtn) {
+        editAddLeadBtn.addEventListener('click', () => {
+            document.getElementById('edit-leads-body').appendChild(buildEditParticipantRow({ name: '', points: 0 }));
+        });
+    }
+    if (editAddFollowBtn) {
+        editAddFollowBtn.addEventListener('click', () => {
+            document.getElementById('edit-follows-body').appendChild(buildEditParticipantRow({ name: '', points: 0 }));
+        });
+    }
+    if (editResultsModal) {
+        editResultsModal.addEventListener('click', (e) => {
+            if (e.target === editResultsModal) closeEditResultsModal();
+        });
+    }
 
     // Theme toggles (nav bar + floating for display mode)
     document.querySelectorAll('#theme-toggle, #theme-toggle-floating').forEach(btn => {
@@ -1448,11 +1477,19 @@ async function processUploadedFile() {
     // Clear any previous error messages
     uploadError.textContent = '';
     uploadError.classList.remove('visible');
-    
+
+    // Keep a raw copy of the uploaded payload so results can be edited/re-processed later
+    let rawPayload = null;
+    try {
+        rawPayload = JSON.parse(await file.text());
+    } catch (e) {
+        rawPayload = null;
+    }
+
     // Create FormData object
     const formData = new FormData();
     formData.append('battle_file', file);
-    
+
     try {
         console.log('Uploading file:', file.name);
         const response = await fetch('/api/process_uploaded_file', {
@@ -1517,6 +1554,8 @@ async function processUploadedFile() {
         }
         
         // Display the results
+        currentUploadedBattlePayload = rawPayload;
+        data.uploaded = true;
         showResults(data, { sessionId: null });
     } catch (error) {
         console.error('Error processing file:', error);
@@ -2492,6 +2531,7 @@ function resetAndGoHome() {
     resetCompetition();
     liveBattleActive = false;
     currentResultsData = null;
+    currentUploadedBattlePayload = null;
     console.log('resetCompetition completed, navigating home');
     navigate('/');
 }
@@ -2594,6 +2634,295 @@ function updateScoreTable(leads, follows) {
     });
 }
 
+// --- Edit Results (uploaded battles only) ---------------------------------
+//
+// Uploaded battles never touch the server-side repository (see
+// /api/process_uploaded_file), so "editing" means mutating the raw
+// hustlentussle.battle payload we kept in memory and re-running it through
+// the same backend endpoint used for the original upload — that guarantees
+// the display shape (medals, placements) stays in sync with the same rules
+// a fresh upload would get.
+
+// Replace every exact-match occurrence of `oldName` anywhere in the payload
+// tree (pairs, votes, tiebreak lists, champions, etc.) with `newName`, so a
+// contestant rename doesn't leave round history pointing at a stale name.
+function deepRenameContestant(node, oldName, newName) {
+    if (Array.isArray(node)) {
+        node.forEach((val, i) => {
+            if (val === oldName) node[i] = newName;
+            else if (val && typeof val === 'object') deepRenameContestant(val, oldName, newName);
+        });
+    } else if (node && typeof node === 'object') {
+        Object.keys(node).forEach((key) => {
+            const val = node[key];
+            if (val === oldName) node[key] = newName;
+            else if (val && typeof val === 'object') deepRenameContestant(val, oldName, newName);
+        });
+    }
+}
+
+// Mirrors the backend's placement ranking (_export_participants): sorted by
+// points desc, ties share a rank.
+function computePlacements(entries) {
+    const sorted = [...entries].sort((a, b) => (b.points || 0) - (a.points || 0));
+    let lastPoints = null;
+    let lastRank = 0;
+    sorted.forEach((c, idx) => {
+        if (c.points !== lastPoints) {
+            lastRank = idx + 1;
+            lastPoints = c.points;
+        }
+        c.placement = lastRank;
+    });
+}
+
+function openEditResultsModal() {
+    if (!currentUploadedBattlePayload) return;
+    const payload = currentUploadedBattlePayload;
+    payload.participants = payload.participants || { leads: [], follows: [] };
+    payload.participants.leads = payload.participants.leads || [];
+    payload.participants.follows = payload.participants.follows || [];
+
+    renderEditParticipants('edit-leads-body', payload.participants.leads);
+    renderEditParticipants('edit-follows-body', payload.participants.follows);
+    renderEditChampions(payload);
+    renderEditRounds(payload);
+
+    const errorEl = document.getElementById('edit-results-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+
+    const modal = document.getElementById('edit-results-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeEditResultsModal() {
+    const modal = document.getElementById('edit-results-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function buildEditParticipantRow(participant) {
+    const row = document.createElement('tr');
+    row.dataset.originalName = participant.name || '';
+
+    const nameCell = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'edit-name-input';
+    nameInput.value = participant.name || '';
+    nameCell.appendChild(nameInput);
+
+    const pointsCell = document.createElement('td');
+    const pointsInput = document.createElement('input');
+    pointsInput.type = 'number';
+    pointsInput.min = '0';
+    pointsInput.step = '1';
+    pointsInput.className = 'edit-points-input';
+    pointsInput.value = participant.points ?? 0;
+    pointsCell.appendChild(pointsInput);
+
+    const removeCell = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn secondary small';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => row.remove());
+    removeCell.appendChild(removeBtn);
+
+    row.appendChild(nameCell);
+    row.appendChild(pointsCell);
+    row.appendChild(removeCell);
+    return row;
+}
+
+function renderEditParticipants(tbodyId, participants) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    participants.forEach((p) => tbody.appendChild(buildEditParticipantRow(p)));
+}
+
+function fillChampionSelect(select, names, currentName) {
+    if (!select) return;
+    select.innerHTML = '';
+    select.appendChild(new Option('No champion', ''));
+    names.forEach((name) => select.appendChild(new Option(name, name, false, name === currentName)));
+    if (!currentName) select.value = '';
+}
+
+function renderEditChampions(payload) {
+    const leadNames = payload.participants.leads.map((p) => p.name).filter(Boolean);
+    const followNames = payload.participants.follows.map((p) => p.name).filter(Boolean);
+    fillChampionSelect(
+        document.getElementById('edit-champion-lead'), leadNames,
+        payload.champions && payload.champions.lead ? payload.champions.lead.name : null
+    );
+    fillChampionSelect(
+        document.getElementById('edit-champion-follow'), followNames,
+        payload.champions && payload.champions.follow ? payload.champions.follow.name : null
+    );
+}
+
+function buildEditRoundRow(round) {
+    const row = document.createElement('div');
+    row.className = 'edit-round-row';
+    row.dataset.roundNum = round.round_num;
+
+    const label = document.createElement('span');
+    label.className = 'edit-round-label';
+    label.textContent = round.tiebreak ? `Round ${round.round_num} (Tie-Break)` : `Round ${round.round_num}`;
+    row.appendChild(label);
+
+    const leadOptions = round.tiebreak
+        ? (round.tiebreak_leads || [])
+        : [round.pairs?.pair_1?.lead, round.pairs?.pair_2?.lead].filter(Boolean);
+    const followOptions = round.tiebreak
+        ? (round.tiebreak_follows || [])
+        : [round.pairs?.pair_1?.follow, round.pairs?.pair_2?.follow].filter(Boolean);
+
+    if (leadOptions.length) {
+        const leadSel = document.createElement('select');
+        leadSel.className = 'edit-round-lead-winner';
+        leadSel.appendChild(new Option('No lead winner', ''));
+        leadOptions.forEach((name) => leadSel.appendChild(new Option(name, name, false, name === round.lead_winner)));
+        row.appendChild(leadSel);
+    }
+    if (followOptions.length) {
+        const followSel = document.createElement('select');
+        followSel.className = 'edit-round-follow-winner';
+        followSel.appendChild(new Option('No follow winner', ''));
+        followOptions.forEach((name) => followSel.appendChild(new Option(name, name, false, name === round.follow_winner)));
+        row.appendChild(followSel);
+    }
+    return row;
+}
+
+function renderEditRounds(payload) {
+    const container = document.getElementById('edit-rounds-body');
+    if (!container) return;
+    container.innerHTML = '';
+    const rounds = (payload.rounds || []).slice().sort((a, b) => (a.round_num || 0) - (b.round_num || 0));
+    rounds.forEach((round) => container.appendChild(buildEditRoundRow(round)));
+}
+
+// Reads the editable rows for one role's table; blank names are treated as removed rows.
+function collectParticipantEdits(tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    const entries = [];
+    const renames = [];
+    Array.from(tbody.querySelectorAll('tr')).forEach((row) => {
+        const name = row.querySelector('.edit-name-input').value.trim();
+        if (!name) return;
+        const pointsRaw = parseInt(row.querySelector('.edit-points-input').value, 10);
+        const points = Number.isFinite(pointsRaw) ? pointsRaw : 0;
+        const originalName = row.dataset.originalName;
+        if (originalName && originalName !== name) renames.push({ from: originalName, to: name });
+        entries.push({ name, points });
+    });
+    return { entries, renames };
+}
+
+function validateParticipantEdits(entries, label) {
+    const seen = new Set();
+    entries.forEach((e) => {
+        if (seen.has(e.name)) throw new Error(`Duplicate ${label} name: "${e.name}"`);
+        seen.add(e.name);
+        if (e.points < 0) throw new Error(`${label} "${e.name}" cannot have negative points.`);
+    });
+}
+
+// Rebuilds payload.participants[role] from the edited rows, preserving
+// existing initial_order for known names and appending new ones at the end.
+// `championName` (already post-rename) drives is_champion, which is what
+// YTD stats ingest (stats/normalize.py) reads for the crown — the top-level
+// `champions` object alone only affects this screen's display.
+function applyParticipantEdits(payload, role, entries, championName) {
+    const existing = payload.participants[role] || [];
+    const byName = new Map(existing.map((p) => [p.name, p]));
+    const updated = entries.map((e, idx) => {
+        const match = byName.get(e.name);
+        const base = match || { name: e.name, placement: 0, initial_order: existing.length + idx + 1 };
+        base.points = e.points;
+        base.is_champion = championName != null && e.name === championName;
+        return base;
+    });
+    computePlacements(updated);
+    payload.participants[role] = updated;
+}
+
+// Re-derives the results-screen display shape by sending the edited payload
+// through the same endpoint/validation the original upload used.
+async function reprocessBattlePayload(payload) {
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const formData = new FormData();
+    formData.append('battle_file', blob, 'edited-battle.json');
+    const response = await fetch('/api/process_uploaded_file', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (!response.ok || data.error) {
+        throw new Error(data.error || `Failed to process edited results (${response.status})`);
+    }
+    return data;
+}
+
+async function saveEditedResults() {
+    const errorEl = document.getElementById('edit-results-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+
+    const payload = currentUploadedBattlePayload;
+    if (!payload) return;
+
+    try {
+        const leadEdits = collectParticipantEdits('edit-leads-body');
+        const followEdits = collectParticipantEdits('edit-follows-body');
+        validateParticipantEdits(leadEdits.entries, 'Lead');
+        validateParticipantEdits(followEdits.entries, 'Follow');
+
+        // Apply the champion selection and round-winner edits using the *current*
+        // names first, then sweep renames afterwards so a freshly-picked name
+        // still gets corrected if that same row is also being renamed.
+        payload.champions = payload.champions || {};
+        const leadChampionName = document.getElementById('edit-champion-lead').value || null;
+        const followChampionName = document.getElementById('edit-champion-follow').value || null;
+        payload.champions.lead = leadChampionName
+            ? { ...(payload.champions.lead || {}), name: leadChampionName }
+            : null;
+        payload.champions.follow = followChampionName
+            ? { ...(payload.champions.follow || {}), name: followChampionName }
+            : null;
+
+        document.querySelectorAll('#edit-rounds-body .edit-round-row').forEach((rowEl) => {
+            const roundNum = Number(rowEl.dataset.roundNum);
+            const round = (payload.rounds || []).find((r) => r.round_num === roundNum);
+            if (!round) return;
+            const leadSel = rowEl.querySelector('.edit-round-lead-winner');
+            const followSel = rowEl.querySelector('.edit-round-follow-winner');
+            if (leadSel) round.lead_winner = leadSel.value || null;
+            if (followSel) round.follow_winner = followSel.value || null;
+        });
+
+        [...leadEdits.renames, ...followEdits.renames].forEach(({ from, to }) => {
+            if (from && to && from !== to) deepRenameContestant(payload, from, to);
+        });
+
+        // Re-read the champion names post-rename so a renamed champion still matches.
+        const finalLeadChampion = payload.champions.lead ? payload.champions.lead.name : null;
+        const finalFollowChampion = payload.champions.follow ? payload.champions.follow.name : null;
+        applyParticipantEdits(payload, 'leads', leadEdits.entries, finalLeadChampion);
+        applyParticipantEdits(payload, 'follows', followEdits.entries, finalFollowChampion);
+
+        const reprocessed = await reprocessBattlePayload(payload);
+        currentUploadedBattlePayload = payload;
+        reprocessed.uploaded = true;
+        closeEditResultsModal();
+        showResults(reprocessed, { sessionId: null });
+        showToast('Results updated', 'success');
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = err.message || 'Failed to save changes.';
+            errorEl.classList.remove('hidden');
+        }
+    }
+}
+
 // --- Router hydration helpers (called by js/router.js) -------------------
 
 // Navigate to the results screen for a given payload, updating the URL.
@@ -2662,7 +2991,13 @@ async function displayResults(data) {
     
     // Use the showScreen function with the correct screen element
     showScreen(resultsScreen);
-    
+
+    // Editing is only offered for battles loaded via file upload (no live session behind them)
+    const editResultsBtn = document.getElementById('edit-results-btn');
+    if (editResultsBtn) {
+        editResultsBtn.style.display = (data.uploaded && currentUploadedBattlePayload) ? '' : 'none';
+    }
+
     // Clear previous results
     const leadResultsBody = document.getElementById('lead-results-body');
     const followResultsBody = document.getElementById('follow-results-body');
@@ -3511,18 +3846,24 @@ async function exportSocialImage() {
 }
 
 async function downloadBattleData() {
-    if (!sessionId) {
-        console.error('No active session to download data from.');
+    if (!sessionId && !currentUploadedBattlePayload) {
+        console.error('No active session or uploaded battle to download data from.');
         return;
     }
-    
+
     try {
-        // Fetch the portable JSON battle export (hustlentussle.battle v1)
-        const response = await fetch(`/api/export_battle_data?session_id=${sessionId}`);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch battle data: ${response.status}`);
+        // Live sessions fetch the portable JSON export; uploaded (possibly edited) battles
+        // already hold that same shape in memory.
+        let battleData;
+        if (sessionId) {
+            const response = await fetch(`/api/export_battle_data?session_id=${sessionId}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch battle data: ${response.status}`);
+            }
+            battleData = await response.json();
+        } else {
+            battleData = currentUploadedBattlePayload;
         }
-        const battleData = await response.json();
 
         // If Spotify integration is enabled, enrich song title/artist in-place
         const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
@@ -3559,7 +3900,7 @@ async function downloadBattleData() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `battle_${sessionId}.json`;
+        a.download = sessionId ? `battle_${sessionId}.json` : 'battle_edited.json';
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);

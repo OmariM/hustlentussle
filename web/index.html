@@ -545,9 +545,65 @@
             
             <div class="results-actions">
                 <button id="back-to-home-from-results" class="btn primary">Back to Home</button>
+                <button id="edit-results-btn" class="btn secondary" style="display:none;">Edit Results</button>
                 <button id="download-battle-data" class="btn secondary">Download Battle Data (JSON)</button>
                 <button id="export-social-image" class="btn secondary">Share Results (9:16)</button>
                 <button id="publish-to-ytd" class="btn secondary" style="display:none;">Publish to Year-to-Date Stats</button>
+            </div>
+        </div>
+
+        <div id="edit-results-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="edit-results-title">
+            <div class="modal modal--edit-results">
+                <div class="modal-header">
+                    <h3 id="edit-results-title">Edit Results</h3>
+                    <button id="edit-results-close" class="modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-note">Fix missing or incorrect names, points, champions, and round winners from the uploaded file. Changes apply to this view and to the downloadable JSON, not to the original file.</p>
+
+                    <div class="edit-results-section">
+                        <h4>Leads</h4>
+                        <table class="results-table edit-results-table">
+                            <thead><tr><th>Name</th><th>Points</th><th></th></tr></thead>
+                            <tbody id="edit-leads-body"></tbody>
+                        </table>
+                        <button id="edit-add-lead" type="button" class="btn secondary small">+ Add Lead</button>
+                    </div>
+
+                    <div class="edit-results-section">
+                        <h4>Follows</h4>
+                        <table class="results-table edit-results-table">
+                            <thead><tr><th>Name</th><th>Points</th><th></th></tr></thead>
+                            <tbody id="edit-follows-body"></tbody>
+                        </table>
+                        <button id="edit-add-follow" type="button" class="btn secondary small">+ Add Follow</button>
+                    </div>
+
+                    <div class="edit-results-section">
+                        <h4>Champions</h4>
+                        <div class="edit-results-champions">
+                            <div class="form-group">
+                                <label for="edit-champion-lead">Lead Champion</label>
+                                <select id="edit-champion-lead"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-champion-follow">Follow Champion</label>
+                                <select id="edit-champion-follow"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="edit-results-section">
+                        <h4>Round Winners</h4>
+                        <div id="edit-rounds-body" class="edit-rounds-list"></div>
+                    </div>
+
+                    <div id="edit-results-error" class="modal-error hidden"></div>
+                </div>
+                <div class="modal-footer">
+                    <button id="edit-results-cancel" class="btn secondary">Cancel</button>
+                    <button id="edit-results-save" class="btn primary">Save Changes</button>
+                </div>
             </div>
         </div>
 
