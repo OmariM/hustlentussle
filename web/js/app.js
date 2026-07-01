@@ -3278,36 +3278,76 @@ async function exportSocialImage() {
 
     await document.fonts.ready;
 
+    // Mirror the app's current light/dark theme
+    const isDark = document.documentElement.getAttribute('data-color') === 'dark';
+    const C = isDark ? {
+        bg:            '#0a0a12',
+        bgCard:        '#1a1a2e',
+        accent:        '#7c3aed',
+        textPrimary:   '#f1f5f9',
+        textSecondary: '#94a3b8',
+        textMuted:     '#64748b',
+        border:        'rgba(148,163,184,0.12)',
+        rowAlt:        'rgba(255,255,255,0.03)',
+        badgeWin:      '#7c3aed',
+        badgeWinBorder:'#9d5cf5',
+        badgeLose:     'rgba(255,255,255,0.07)',
+        badgeLoseBorder:'rgba(148,163,184,0.15)',
+        badgeWinText:  '#ffffff',
+        badgeLoseText: '#64748b',
+        fontDisplay:   '"Space Grotesk","Inter",sans-serif',
+        fontBody:      '"Inter","DM Sans",sans-serif',
+        fontMono:      '"DM Mono",monospace',
+    } : {
+        bg:            '#f5f5f7',
+        bgCard:        '#ffffff',
+        accent:        '#1d4ed8',
+        textPrimary:   '#0f172a',
+        textSecondary: '#475569',
+        textMuted:     '#94a3b8',
+        border:        '#e2e8f0',
+        rowAlt:        'rgba(0,0,0,0.03)',
+        badgeWin:      '#1d4ed8',
+        badgeWinBorder:'#1e40af',
+        badgeLose:     '#f0f0f5',
+        badgeLoseBorder:'#e2e8f0',
+        badgeWinText:  '#ffffff',
+        badgeLoseText: '#94a3b8',
+        fontDisplay:   '"DM Sans",sans-serif',
+        fontBody:      '"DM Sans",sans-serif',
+        fontMono:      '"DM Mono",monospace',
+    };
+
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Background — white
-    ctx.fillStyle = '#ffffff';
+    // Background
+    ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, W, H);
 
-    // Top accent bar — black
-    ctx.fillStyle = '#111111';
+    // Top accent bar
+    ctx.fillStyle = C.accent;
     ctx.fillRect(0, 0, W, 12);
 
     // --- Header ---
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 78px "Space Grotesk","DM Sans",sans-serif';
+    ctx.fillStyle = C.textPrimary;
+    ctx.font = `bold 78px ${C.fontDisplay}`;
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
     const now = new Date();
     const monthStr = now.toLocaleDateString('en-US', { month: 'long' });
     const yearStr = now.getFullYear();
-    ctx.fillStyle = '#888888';
-    ctx.font = '400 38px "Inter","DM Sans",sans-serif';
+    ctx.fillStyle = C.textSecondary;
+    ctx.font = `400 38px ${C.fontBody}`;
     ctx.fillText(`${monthStr} Edition (${yearStr})`, W / 2, 200);
 
     if (resultsGuestJudges.length > 0) {
         const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
-        ctx.fillStyle = '#222222';
-        ctx.font = '600 40px "Space Grotesk","DM Sans",sans-serif';
+        ctx.fillStyle = C.textSecondary;
+        ctx.font = `600 40px ${C.fontDisplay}`;
         ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
     }
 
@@ -3361,28 +3401,28 @@ async function exportSocialImage() {
         const cardW = W - 2 * (PAD - 12);
         const cardH = CARD_HEADER_H + order.length * rowH + CARD_PAD_BOTTOM;
 
-        // Card background (light)
+        // Card background
         _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
-        ctx.fillStyle = '#f4f4f4';
+        ctx.fillStyle = C.bgCard;
         ctx.fill();
 
-        // Dark header strip — clipped to card shape so top corners are rounded
+        // Accent header strip — clipped to card shape so top corners are rounded
         ctx.save();
         _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
         ctx.clip();
-        ctx.fillStyle = '#111111';
+        ctx.fillStyle = C.accent;
         ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
         ctx.restore();
 
         // Card border
         _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.strokeStyle = C.border;
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Section label — white bold uppercase in dark strip
+        // Section label — white bold uppercase in header strip
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold 52px "Space Grotesk","DM Sans",sans-serif`;
+        ctx.font = `bold 52px ${C.fontDisplay}`;
         ctx.textAlign = 'left';
         ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
 
@@ -3395,13 +3435,13 @@ async function exportSocialImage() {
 
             // Alternating row tint
             if (idx % 2 === 0) {
-                ctx.fillStyle = 'rgba(0,0,0,0.04)';
+                ctx.fillStyle = C.rowAlt;
                 ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowH - 1);
             }
 
             // Rank
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = `400 ${rankFontSize}px "DM Mono",monospace`;
+            ctx.fillStyle = C.textMuted;
+            ctx.font = `400 ${rankFontSize}px ${C.fontMono}`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', PAD, textBaseY);
 
@@ -3412,10 +3452,10 @@ async function exportSocialImage() {
             ctx.clip();
             const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
             const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
-            ctx.fillStyle = isTop ? '#111111' : '#555555';
+            ctx.fillStyle = isTop ? C.textPrimary : C.textSecondary;
             ctx.font = isTop
-                ? `bold ${nameFontSize}px "DM Sans",sans-serif`
-                : `400 ${nameFontSize}px "DM Sans",sans-serif`;
+                ? `bold ${nameFontSize}px ${C.fontBody}`
+                : `400 ${nameFontSize}px ${C.fontBody}`;
             ctx.fillText(displayName, PAD + rankW, textBaseY);
             if (isTop) {
                 const nameW2 = ctx.measureText(displayName).width;
@@ -3434,17 +3474,17 @@ async function exportSocialImage() {
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.fillStyle = info.win ? '#111111' : '#f0f0f0';
+                ctx.fillStyle = info.win ? C.badgeWin : C.badgeLose;
                 ctx.fill();
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
-                ctx.strokeStyle = info.win ? '#333333' : 'rgba(0,0,0,0.2)';
+                ctx.strokeStyle = info.win ? C.badgeWinBorder : C.badgeLoseBorder;
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
-                ctx.fillStyle = info.win ? '#ffffff' : '#aaaaaa';
-                ctx.font = `bold ${bFontSize}px "DM Mono",monospace`;
+                ctx.fillStyle = info.win ? C.badgeWinText : C.badgeLoseText;
+                ctx.font = `bold ${bFontSize}px ${C.fontMono}`;
                 ctx.textAlign = 'center';
                 ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
             });
