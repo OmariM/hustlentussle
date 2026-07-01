@@ -26,6 +26,7 @@ from tiebreak_tests import (
     TestAdvanceTiebreakSubRound, TestJudgeTiebreak, TestFinalizeTiebreakResults,
     TestEndToEndTiebreakFlow,
 )
+from persistence_serialization_tests import TestGameSerialization
 from game_logic import Game
 
 
@@ -56,6 +57,7 @@ class TestSuiteRunner:
             ("Tie-Break: Judge Voting", TestJudgeTiebreak),
             ("Tie-Break: Finalize", TestFinalizeTiebreakResults),
             ("Tie-Break: End-to-End", TestEndToEndTiebreakFlow),
+            ("Persistence: Serialization", TestGameSerialization),
         ]
 
         print("=" * 60)

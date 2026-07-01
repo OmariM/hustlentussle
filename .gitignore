@@ -61,3 +61,6 @@ docs/screenshots/*
 
 # Render specific
 .render-buildlogs/
+
+# Local compose overrides (testing)
+docker-compose.override.yml

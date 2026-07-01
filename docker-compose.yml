@@ -1,0 +1,41 @@
+# Self-contained Hustle n' Tussle stack: web app + its own Postgres.
+# Isolated from other stacks on the host (own network + named volume).
+# Ingress (domain/TLS) is handled by the existing Nginx Proxy Manager /
+# Cloudflare Tunnel, pointed at the published host port below.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hustlentussle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-hustlentussle}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hustlentussle} -d ${POSTGRES_DB:-hustlentussle}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hustlentussle}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hustlentussle}
+      PERSISTENCE_FALLBACK_ENABLED: "false"
+      GAME_EXPIRATION_SECONDS: "21600"
+      CLEANUP_INTERVAL_SECONDS: "3600"
+    # Bind to localhost only; the reverse proxy (NPM/Cloudflare) reaches it here.
+    # Host port 8090 avoids Domino Soul on 8080.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8090}:8080"
+
+volumes:
+  pgdata:
