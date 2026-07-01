@@ -13,6 +13,16 @@ let initialLeads = []; // Store initial order of leads
 let initialFollows = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
+// Cached data for the social export image (populated by displayResults)
+let resultsLeadMap = new Map();
+let resultsFollowMap = new Map();
+let resultsInitialLeads = [];
+let resultsInitialFollows = [];
+let resultsTopLeadName = null;
+let resultsTopFollowName = null;
+let resultsNumRounds = 0;
+let resultsGuestJudges = [];
+
 // Display mode state (for viewer-only mode without voting controls)
 let displayMode = false;
 let displayPollInterval = null;
@@ -144,7 +154,7 @@ let submitVotesBtn, votingResults;
 let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
 let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
 let leadsLeaderboard, followsLeaderboard;
-let backToHomeFromResultsBtn, downloadBattleDataBtn;
+let backToHomeFromResultsBtn, downloadBattleDataBtn, exportSocialImageBtn;
 // Vote confirmation modal elements
 let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
 let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
@@ -327,6 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     followsLeaderboard = document.getElementById('follows-leaderboard');
     backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
     downloadBattleDataBtn = document.getElementById('download-battle-data');
+    exportSocialImageBtn = document.getElementById('export-social-image');
     
     // Check if elements exist
     console.log('Checking elements:');
@@ -451,6 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     downloadBattleDataBtn.addEventListener('click', downloadBattleData);
+    if (exportSocialImageBtn) exportSocialImageBtn.addEventListener('click', exportSocialImage);
 
     // Theme toggles (nav bar + floating for display mode)
     document.querySelectorAll('#theme-toggle, #theme-toggle-floating').forEach(btn => {
@@ -2673,6 +2685,10 @@ async function displayResults(data) {
     if (leadGraphic) leadGraphic.innerHTML = '';
     if (followGraphic) followGraphic.innerHTML = '';
     
+    // Sync globals so exportSocialImage() has current data
+    currentLeads = data.leads || [];
+    currentFollows = data.follows || [];
+
     // Always use the initial order from the server response
     const initialLeadsData = data.initial_leads || [];
     const initialFollowsData = data.initial_follows || [];
@@ -2818,6 +2834,26 @@ async function displayResults(data) {
 
         renderGraphicColumn(initialLeadsData || [], leadMap, topLeadName, leadGraphic);
         renderGraphicColumn(initialFollowsData || [], followMap, topFollowName, followGraphic);
+
+        // Cache for social export
+        resultsLeadMap = leadMap;
+        resultsFollowMap = followMap;
+        resultsInitialLeads = [...(initialLeadsData || [])];
+        resultsInitialFollows = [...(initialFollowsData || [])];
+        resultsTopLeadName = topLeadName;
+        resultsTopFollowName = topFollowName;
+        resultsNumRounds = totalRounds;
+        resultsGuestJudges = guestJudges.length > 0
+            ? [...guestJudges]
+            : (() => {
+                // Fallback: extract unique judge names from rounds data
+                // (handles page-reload case where guestJudges global was reset)
+                const seen = new Set();
+                (data.rounds || []).forEach(r => {
+                    if (Array.isArray(r.judges)) r.judges.forEach(j => seen.add(j));
+                });
+                return [...seen];
+            })();
     }
     
     console.log('Round history:', data.rounds);
@@ -3219,6 +3255,258 @@ function renderPlaylistEmbed(track) {
     iframe.allow = 'encrypted-media';
     iframe.className = 'spotify-embed';
     playlistEmbedContainer.appendChild(iframe);
+}
+
+function _rrect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+async function exportSocialImage() {
+    const W = 1080;
+    const H = 1920;
+    const PAD = 50;
+
+    await document.fonts.ready;
+
+    // Mirror the app's current light/dark theme
+    const isDark = document.documentElement.getAttribute('data-color') === 'dark';
+    const C = isDark ? {
+        bg:            '#0a0a12',
+        bgCard:        '#1a1a2e',
+        accent:        '#7c3aed',
+        textPrimary:   '#f1f5f9',
+        textSecondary: '#94a3b8',
+        textMuted:     '#64748b',
+        border:        'rgba(148,163,184,0.12)',
+        rowAlt:        'rgba(255,255,255,0.03)',
+        badgeWin:      '#7c3aed',
+        badgeWinBorder:'#9d5cf5',
+        badgeLose:     'rgba(255,255,255,0.07)',
+        badgeLoseBorder:'rgba(148,163,184,0.15)',
+        badgeWinText:  '#ffffff',
+        badgeLoseText: '#64748b',
+        fontDisplay:   '"Space Grotesk","Inter",sans-serif',
+        fontBody:      '"Inter","DM Sans",sans-serif',
+        fontMono:      '"DM Mono",monospace',
+    } : {
+        bg:            '#f5f5f7',
+        bgCard:        '#ffffff',
+        accent:        '#1d4ed8',
+        textPrimary:   '#0f172a',
+        textSecondary: '#475569',
+        textMuted:     '#94a3b8',
+        border:        '#e2e8f0',
+        rowAlt:        'rgba(0,0,0,0.03)',
+        badgeWin:      '#1d4ed8',
+        badgeWinBorder:'#1e40af',
+        badgeLose:     '#f0f0f5',
+        badgeLoseBorder:'#e2e8f0',
+        badgeWinText:  '#ffffff',
+        badgeLoseText: '#94a3b8',
+        fontDisplay:   '"DM Sans",sans-serif',
+        fontBody:      '"DM Sans",sans-serif',
+        fontMono:      '"DM Mono",monospace',
+    };
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Top accent bar
+    ctx.fillStyle = C.accent;
+    ctx.fillRect(0, 0, W, 12);
+
+    // --- Header ---
+    ctx.textAlign = 'center';
+    ctx.fillStyle = C.textPrimary;
+    ctx.font = `bold 78px ${C.fontDisplay}`;
+    ctx.fillText("Hustle n' Tussle", W / 2, 130);
+
+    const now = new Date();
+    const monthStr = now.toLocaleDateString('en-US', { month: 'long' });
+    const yearStr = now.getFullYear();
+    ctx.fillStyle = C.textSecondary;
+    ctx.font = `400 38px ${C.fontBody}`;
+    ctx.fillText(`${monthStr} Edition (${yearStr})`, W / 2, 200);
+
+    if (resultsGuestJudges.length > 0) {
+        const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
+        ctx.fillStyle = C.textSecondary;
+        ctx.font = `600 40px ${C.fontDisplay}`;
+        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
+    }
+
+    const sortedLeads = [...currentLeads].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const sortedFollows = [...currentFollows].sort((a, b) => (b.points || 0) - (a.points || 0));
+
+    const contentStartY = 300;
+
+    // --- Battle Graphic ---
+    const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
+    const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
+    const numRounds = resultsNumRounds || 0;
+
+    // Layout: two card sections (Leads then Follows)
+    const CARD_HEADER_H = 76;   // dark strip at top of each card
+    const CARD_PAD_BOTTOM = 16; // padding below last row inside card
+    const SECTION_GAP = 20;
+    const FOOTER_H = 40;
+    const availForRows = (H - FOOTER_H) - contentStartY
+        - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
+        - SECTION_GAP;
+    const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
+
+    // Badge sizing: fit all rounds on a single horizontal line per row
+    const rankW = 44;
+    const nameAreaW = 260;
+    const badgeStartX = PAD + rankW + nameAreaW + 24;
+    const badgeAreaW = W - PAD - badgeStartX;
+    const badgeGap = 4;
+
+    // Use the most rounds any individual dancer competed in (not total game rounds)
+    // so the badge row fills the full width for the most active dancer.
+    const allRoundCounts = [
+        ...[...leadsOrder].map(n => (resultsLeadMap.get(n) || []).length),
+        ...[...followsOrder].map(n => (resultsFollowMap.get(n) || []).length),
+    ];
+    const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
+    const badgeSizeFromRounds = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
+
+    // rowH fills all available vertical space; badgeSize is the smaller of the two constraints
+    const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
+    const rowH = Math.max(36, maxRowHFromSpace);
+    const badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
+    const bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
+    const nameFontSize = Math.max(20, Math.min(44, rowH - 26));
+    const rankFontSize = Math.max(16, nameFontSize - 4);
+
+    const drawSection = (order, map, topName, label, startY) => {
+        const CARD_RADIUS = 20;
+        const cardX = PAD - 12;
+        const cardW = W - 2 * (PAD - 12);
+        const cardH = CARD_HEADER_H + order.length * rowH + CARD_PAD_BOTTOM;
+
+        // Card background
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.fillStyle = C.bgCard;
+        ctx.fill();
+
+        // Accent header strip — clipped to card shape so top corners are rounded
+        ctx.save();
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.clip();
+        ctx.fillStyle = C.accent;
+        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
+        ctx.restore();
+
+        // Card border
+        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.strokeStyle = C.border;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Section label — white bold uppercase in header strip
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold 52px ${C.fontDisplay}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
+
+        const rowsStartY = startY + CARD_HEADER_H;
+
+        order.forEach((name, idx) => {
+            const rowY = rowsStartY + idx * rowH;
+            const isTop = name === topName;
+            const textBaseY = rowY + rowH * 0.64;
+
+            // Alternating row tint
+            if (idx % 2 === 0) {
+                ctx.fillStyle = C.rowAlt;
+                ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowH - 1);
+            }
+
+            // Rank
+            ctx.fillStyle = C.textMuted;
+            ctx.font = `400 ${rankFontSize}px ${C.fontMono}`;
+            ctx.textAlign = 'left';
+            ctx.fillText((idx + 1) + '.', PAD, textBaseY);
+
+            // Name + crown — clipped to nameAreaW so crown never bleeds into badge area
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(PAD + rankW, rowY, nameAreaW, rowH);
+            ctx.clip();
+            const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
+            const displayName = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
+            ctx.fillStyle = isTop ? C.textPrimary : C.textSecondary;
+            ctx.font = isTop
+                ? `bold ${nameFontSize}px ${C.fontBody}`
+                : `400 ${nameFontSize}px ${C.fontBody}`;
+            ctx.fillText(displayName, PAD + rankW, textBaseY);
+            if (isTop) {
+                const nameW2 = ctx.measureText(displayName).width;
+                ctx.font = `${nameFontSize}px serif`;
+                ctx.fillText('👑', PAD + rankW + nameW2 + 5, textBaseY);
+            }
+            ctx.restore();
+
+            // Round badges — one row of circles
+            const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
+            const badgeCY = rowY + rowH / 2;
+            rounds.forEach((info, bi) => {
+                const cx = badgeStartX + bi * (badgeSize + badgeGap) + badgeSize / 2;
+                const cy = badgeCY;
+                const r = badgeSize / 2;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fillStyle = info.win ? C.badgeWin : C.badgeLose;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
+                ctx.strokeStyle = info.win ? C.badgeWinBorder : C.badgeLoseBorder;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.fillStyle = info.win ? C.badgeWinText : C.badgeLoseText;
+                ctx.font = `bold ${bFontSize}px ${C.fontMono}`;
+                ctx.textAlign = 'center';
+                ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
+            });
+        });
+
+        return rowsStartY + order.length * rowH + CARD_PAD_BOTTOM;
+    };
+
+    const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
+    drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + SECTION_GAP);
+
+    canvas.toBlob(blob => {
+        if (!blob) { showToast('Failed to generate image', 'error'); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'hnt-results.png';
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }, 'image/png');
 }
 
 async function downloadBattleData() {
