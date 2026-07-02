@@ -1,0 +1,27 @@
+# Dev-only Postgres for the host-run Flask dev server (scripts/dev-server-start.sh).
+# Isolated from the prod stack (hustlentussle-prod/): own volume and, when run with
+# `-p hustlentussle-dev`, its own container/network namespace. No web service here —
+# the Flask app runs directly on the host for instant reload; only the database is
+# containerized.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-hustlentussle_dev}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:?set DEV_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-hustlentussle_dev}
+    # Bound to loopback only; the host-run Flask process connects via localhost.
+    ports:
+      - "127.0.0.1:${DEV_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-hustlentussle_dev} -d ${DEV_POSTGRES_DB:-hustlentussle_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dev_pgdata:

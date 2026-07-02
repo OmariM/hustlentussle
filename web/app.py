@@ -30,7 +30,13 @@ from persistence import (  # noqa: E402
     MemoryGameRepository,
 )
 from werkzeug.security import check_password_hash  # noqa: E402
-from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError  # noqa: E402
+from stats import (  # noqa: E402
+    StatsRepository,
+    normalize_battle,
+    DuplicateBattleError,
+    DuplicateDancerError,
+    StatsError,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -1932,6 +1938,97 @@ def stats_delete_battle(battle_id):
     return jsonify({"success": True})
 
 
+@app.route("/api/stats/battles/<battle_id>", methods=["GET"])
+@admin_required
+def stats_get_battle(battle_id):
+    """Fetch a single committed battle's full raw payload, for the edit modal."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    battle = stats_repo.get_battle(battle_id)
+    if not battle:
+        return jsonify({"error": "Battle not found"}), 404
+    battle["id"] = str(battle["id"])
+    battle["battle_date"] = battle["battle_date"].isoformat() if battle.get("battle_date") else None
+    battle["created_at"] = battle["created_at"].isoformat() if battle.get("created_at") else None
+    return jsonify(battle)
+
+
+@app.route("/api/stats/battles/<battle_id>", methods=["PUT"])
+@admin_required
+def stats_update_battle(battle_id):
+    """Replace a committed battle's payload and re-derive its results.
+
+    Unlike /ingest/commit, the client only ever holds the edited raw payload (no
+    separate pre-normalized results list survives client-side editing), so results
+    are always recomputed here from raw_payload via normalize_battle - never
+    trust a client-supplied results array for this route.
+    """
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    name = (data.get("battle_name") or "").strip()
+    battle_date = (data.get("battle_date") or "").strip()
+    raw_payload = data.get("raw_payload") or {}
+
+    if not name or not battle_date or not raw_payload:
+        return jsonify({"error": "battle_name, battle_date and raw_payload are required"}), 400
+
+    try:
+        parse_battle_json(raw_payload)  # validate format/version (raises ValueError)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    norm = normalize_battle(raw_payload)
+    meta = {"name": name, "battle_date": battle_date}
+    try:
+        updated = stats_repo.update_battle(battle_id, meta, raw_payload, norm["results"])
+    except DuplicateBattleError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    if not updated:
+        return jsonify({"error": "Battle not found"}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/api/stats/dancers", methods=["GET"])
+@admin_required
+def stats_list_dancers():
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    dancers = stats_repo.list_dancers_with_stats()
+    for d in dancers:
+        d["id"] = str(d["id"])
+        d["battles_entered"] = int(d.get("battles_entered") or 0)
+        d["result_count"] = int(d.get("result_count") or 0)
+    return jsonify({"dancers": dancers})
+
+
+@app.route("/api/stats/dancers/merge", methods=["POST"])
+@admin_required
+def stats_merge_dancers():
+    """Fold one or more duplicate dancers into a single survivor."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    target_id = data.get("target_id")
+    source_ids = data.get("source_ids") or []
+    new_display_name = data.get("new_display_name")
+
+    if not target_id or not isinstance(source_ids, list) or not source_ids:
+        return jsonify({"error": "target_id and a non-empty source_ids list are required"}), 400
+    if target_id in source_ids:
+        return jsonify({"error": "Target dancer cannot also be a source."}), 400
+
+    try:
+        moved = stats_repo.merge_dancers(target_id, source_ids, new_display_name)
+    except DuplicateDancerError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"success": True, "battle_results_moved": moved})
+
+
 @app.route("/api/results", methods=["GET"])
 def get_results():
     """Read-only battle results for a session (for deep-linking /results/<id>).
@@ -1960,4 +2057,9 @@ def spa_fallback(err):
 
 
 if __name__ == "__main__":
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    # FLASK_DEBUGGER lets a dev deployment keep the auto-reloader (for instant
+    # reload on save) while disabling Werkzeug's interactive debugger, which
+    # allows arbitrary code execution via its console and must never be
+    # reachable from an internet-facing address.
+    use_debugger = config.DEBUG and os.environ.get("FLASK_DEBUGGER", "1") == "1"
+    app.run(host=config.HOST, port=config.PORT, use_reloader=config.DEBUG, use_debugger=use_debugger)

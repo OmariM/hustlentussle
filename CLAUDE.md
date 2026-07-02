@@ -47,6 +47,42 @@ docker compose run --rm web python scripts/create_admin.py --email you@example.c
 gunicorn wsgi:application
 ```
 
+## Dev environment (dev.hustlentussle.com)
+
+`~/projects/hustlentussle` (this repo, tracking `main`) is served at
+`dev.hustlentussle.com` for testing features before they reach prod
+(`~/projects/hustlentussle-prod`, the deployment mirror — never edit it manually).
+
+Like domino-soul-dev's HMR mode, the dev server runs as a **host process**, not a
+container, so edits to files here take effect on save (Flask's reloader) with no
+rebuild:
+
+```bash
+./scripts/dev-server-start.sh   # start dev Postgres (Docker) + Flask dev server in tmux
+./scripts/dev-server-stop.sh    # stop the tmux session (pass --db to also stop Postgres)
+tmux attach -t hustlentussle-dev   # watch logs (detach: Ctrl+B D)
+```
+
+How it works:
+- `.venv-dev/` is a local virtualenv with `requirements.txt` installed (gitignored;
+  recreate with `python3 -m venv .venv-dev && .venv-dev/bin/pip install -r requirements.txt`
+  if missing — `ensurepip`/`python3-venv` must be installed on the host for the first
+  `venv` creation to succeed).
+- The Flask process binds `0.0.0.0:8091` — the port Nginx Proxy Manager routes
+  `dev.hustlentussle.com` to — so no proxy config changes are needed once the NPM
+  proxy host exists.
+- `docker-compose.dev.yml` runs an isolated dev-only Postgres (own volume,
+  `-p hustlentussle-dev` project name) bound to `127.0.0.1:5433`; credentials are
+  in the gitignored `.env` (`DEV_POSTGRES_*`).
+- `FLASK_DEBUGGER=0` is set for the dev server: it keeps the auto-reloader but
+  disables Werkzeug's interactive debugger, which allows arbitrary code execution
+  via its console and must never be reachable from an internet-facing address
+  (`dev.hustlentussle.com` has no auth in front of it). See `web/app.py`'s
+  `__main__` block.
+- Run migrations / create an admin against the dev DB the same way as prod, just
+  pointed at the dev database URL from `.env`:
+  `DATABASE_URL=postgresql://$DEV_POSTGRES_USER:$DEV_POSTGRES_PASSWORD@localhost:$DEV_POSTGRES_PORT/$DEV_POSTGRES_DB .venv-dev/bin/python scripts/migrate.py`
+
 ## Architecture
 
 ### Core Game Engine (`game_logic.py`)

@@ -3,6 +3,14 @@ let sessionId = null;
 let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
 let currentResultsData = null;     // last rendered results payload (for /results hydration)
 let currentUploadedBattlePayload = null; // raw hustlentussle.battle payload for the uploaded file being viewed/edited
+
+// State for the generalized battle-payload editor (#edit-results-modal). Kept separate from
+// currentUploadedBattlePayload since the same modal is also used to edit already-published
+// YTD battles (see web/js/ytd.js) - reusing that variable here would corrupt whichever flow
+// isn't currently using the modal (the results-screen download button, the edit-button
+// visibility gate, etc. all key off currentUploadedBattlePayload).
+let editorPayload = null;
+let editorCallbacks = null;
 let guestJudges = [];
 let leadVotes = {};  // Changed to an object to easily update votes
 let followVotes = {}; // Changed to an object to easily update votes
@@ -474,7 +482,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const editResultsSaveBtn = document.getElementById('edit-results-save');
     const editAddLeadBtn = document.getElementById('edit-add-lead');
     const editAddFollowBtn = document.getElementById('edit-add-follow');
-    if (editResultsBtn) editResultsBtn.addEventListener('click', openEditResultsModal);
+    if (editResultsBtn) {
+        editResultsBtn.addEventListener('click', () => {
+            openEditResultsModal(currentUploadedBattlePayload, {
+                title: 'Edit Results',
+                showMetaFields: false,
+                onSave: async (payload) => {
+                    const reprocessed = await reprocessBattlePayload(payload);
+                    currentUploadedBattlePayload = payload;
+                    reprocessed.uploaded = true;
+                    showResults(reprocessed, { sessionId: null });
+                    showToast('Results updated', 'success');
+                },
+            });
+        });
+    }
     if (editResultsCloseBtn) editResultsCloseBtn.addEventListener('click', closeEditResultsModal);
     if (editResultsCancelBtn) editResultsCancelBtn.addEventListener('click', closeEditResultsModal);
     if (editResultsSaveBtn) editResultsSaveBtn.addEventListener('click', saveEditedResults);
@@ -2730,12 +2752,34 @@ function computePlacements(entries) {
     });
 }
 
-function openEditResultsModal() {
-    if (!currentUploadedBattlePayload) return;
-    const payload = currentUploadedBattlePayload;
+// Generalized battle-payload editor. `payload` is a raw hustlentussle.battle v1 object;
+// `options.onSave(editedPayload, meta)` decides what "save" means for the caller (e.g. the
+// results screen reprocesses+redisplays locally, while the YTD admin screen PUTs to the
+// server) - see editorCallbacks usage in saveEditedResults(). `options.showMetaFields` shows
+// battle name/date inputs (only meaningful for already-published battles, which have a
+// separate DB-level name/date from the payload itself); `options.initialMeta` pre-fills them.
+function openEditResultsModal(payload, options = {}) {
+    if (!payload) return;
+    editorPayload = payload;
+    editorCallbacks = options;
+
     payload.participants = payload.participants || { leads: [], follows: [] };
     payload.participants.leads = payload.participants.leads || [];
     payload.participants.follows = payload.participants.follows || [];
+
+    const titleEl = document.getElementById('edit-results-title');
+    if (titleEl) titleEl.textContent = options.title || 'Edit Results';
+
+    const metaSection = document.getElementById('edit-results-meta');
+    if (metaSection) {
+        metaSection.style.display = options.showMetaFields ? '' : 'none';
+        if (options.showMetaFields) {
+            const nameInput = document.getElementById('edit-battle-name');
+            const dateInput = document.getElementById('edit-battle-date');
+            if (nameInput) nameInput.value = (options.initialMeta && options.initialMeta.name) || '';
+            if (dateInput) dateInput.value = (options.initialMeta && options.initialMeta.battle_date) || '';
+        }
+    }
 
     renderEditParticipants('edit-leads-body', payload.participants.leads);
     renderEditParticipants('edit-follows-body', payload.participants.follows);
@@ -2749,6 +2793,10 @@ function openEditResultsModal() {
     const modal = document.getElementById('edit-results-modal');
     if (modal) modal.classList.remove('hidden');
 }
+// Exposed so other modules (e.g. web/js/ytd.js, which is intentionally self-contained and
+// doesn't share scope with this file) can reuse this editor without duplicating its ~250
+// lines of table/select-building logic.
+window.openBattlePayloadEditor = openEditResultsModal;
 
 // Recomputes the points-vs-round-wins warning from whatever is currently typed/selected
 // in the modal (not the saved payload), so it updates live as the user edits.
@@ -2939,8 +2987,8 @@ async function saveEditedResults() {
     const errorEl = document.getElementById('edit-results-error');
     if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
 
-    const payload = currentUploadedBattlePayload;
-    if (!payload) return;
+    const payload = editorPayload;
+    if (!payload || !editorCallbacks) return;
 
     try {
         const leadEdits = collectParticipantEdits('edit-leads-body');
@@ -2981,12 +3029,14 @@ async function saveEditedResults() {
         applyParticipantEdits(payload, 'leads', leadEdits.entries, finalLeadChampion);
         applyParticipantEdits(payload, 'follows', followEdits.entries, finalFollowChampion);
 
-        const reprocessed = await reprocessBattlePayload(payload);
-        currentUploadedBattlePayload = payload;
-        reprocessed.uploaded = true;
+        const meta = editorCallbacks.showMetaFields
+            ? {
+                name: document.getElementById('edit-battle-name').value.trim(),
+                battle_date: document.getElementById('edit-battle-date').value,
+            }
+            : null;
+        await editorCallbacks.onSave(payload, meta);
         closeEditResultsModal();
-        showResults(reprocessed, { sessionId: null });
-        showToast('Results updated', 'success');
     } catch (err) {
         if (errorEl) {
             errorEl.textContent = err.message || 'Failed to save changes.';
