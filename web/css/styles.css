@@ -1231,6 +1231,35 @@ input[type="checkbox"] {
     margin-top: var(--space-lg);
 }
 
+.ytd-collapsible-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.ytd-collapsible-summary::-webkit-details-marker {
+    display: none;
+}
+
+.ytd-collapsible-summary::before {
+    content: '\25B6';
+    display: inline-block;
+    font-size: 11px;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+}
+
+.ytd-collapsible[open] > .ytd-collapsible-summary::before {
+    transform: rotate(90deg);
+}
+
+.ytd-collapsible-summary h4 {
+    margin: 0;
+}
+
 .battle-graphic-section {
     margin-bottom: var(--space-lg);
 }
