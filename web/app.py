@@ -1932,6 +1932,59 @@ def stats_delete_battle(battle_id):
     return jsonify({"success": True})
 
 
+@app.route("/api/stats/battles/<battle_id>", methods=["GET"])
+@admin_required
+def stats_get_battle(battle_id):
+    """Fetch a single committed battle's full raw payload, for the edit modal."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    battle = stats_repo.get_battle(battle_id)
+    if not battle:
+        return jsonify({"error": "Battle not found"}), 404
+    battle["id"] = str(battle["id"])
+    battle["battle_date"] = battle["battle_date"].isoformat() if battle.get("battle_date") else None
+    battle["created_at"] = battle["created_at"].isoformat() if battle.get("created_at") else None
+    return jsonify(battle)
+
+
+@app.route("/api/stats/battles/<battle_id>", methods=["PUT"])
+@admin_required
+def stats_update_battle(battle_id):
+    """Replace a committed battle's payload and re-derive its results.
+
+    Unlike /ingest/commit, the client only ever holds the edited raw payload (no
+    separate pre-normalized results list survives client-side editing), so results
+    are always recomputed here from raw_payload via normalize_battle - never
+    trust a client-supplied results array for this route.
+    """
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    name = (data.get("battle_name") or "").strip()
+    battle_date = (data.get("battle_date") or "").strip()
+    raw_payload = data.get("raw_payload") or {}
+
+    if not name or not battle_date or not raw_payload:
+        return jsonify({"error": "battle_name, battle_date and raw_payload are required"}), 400
+
+    try:
+        parse_battle_json(raw_payload)  # validate format/version (raises ValueError)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    norm = normalize_battle(raw_payload)
+    meta = {"name": name, "battle_date": battle_date}
+    try:
+        updated = stats_repo.update_battle(battle_id, meta, raw_payload, norm["results"])
+    except DuplicateBattleError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    if not updated:
+        return jsonify({"error": "Battle not found"}), 404
+    return jsonify({"success": True})
+
+
 @app.route("/api/results", methods=["GET"])
 def get_results():
     """Read-only battle results for a session (for deep-linking /results/<id>).

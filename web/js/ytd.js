@@ -114,6 +114,11 @@
                 `<td>${escapeHtml(b.source)}</td>` +
                 `<td>${b.result_count}</td>`;
             const actions = document.createElement('td');
+            const edit = document.createElement('button');
+            edit.className = 'btn secondary small';
+            edit.textContent = 'Edit';
+            edit.addEventListener('click', () => editBattle(b.id));
+            actions.appendChild(edit);
             const del = document.createElement('button');
             del.className = 'btn secondary small';
             del.textContent = 'Delete';
@@ -133,6 +138,42 @@
         } else {
             alert('Failed to delete battle.');
         }
+    }
+
+    async function editBattle(id) {
+        let battle;
+        try {
+            const res = await fetch(`/api/stats/battles/${id}`);
+            if (!res.ok) throw new Error();
+            battle = await res.json();
+        } catch (e) {
+            alert('Failed to load battle.');
+            return;
+        }
+
+        window.openBattlePayloadEditor(battle.raw_data, {
+            title: 'Edit Published Battle',
+            showMetaFields: true,
+            initialMeta: { name: battle.name, battle_date: battle.battle_date },
+            onSave: async (editedPayload, meta) => {
+                const res = await fetch(`/api/stats/battles/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        battle_name: meta.name,
+                        battle_date: meta.battle_date,
+                        raw_payload: editedPayload,
+                    }),
+                });
+                let data;
+                try { data = await res.json(); } catch (e) { data = {}; }
+                if (!res.ok) throw new Error(data.error || 'Failed to update battle.');
+                await loadYears();
+                await loadStandings();
+                await loadBattles();
+                alert('Battle updated.');
+            },
+        });
     }
 
     // ---- ingest (preview -> resolve -> commit) ----

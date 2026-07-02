@@ -185,6 +185,95 @@ class StatsRepository:
                 conn.rollback()
                 raise StatsError(str(exc)) from exc
 
+    def get_battle(self, battle_id: str) -> Optional[Dict[str, Any]]:
+        with self._connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, battle_date, battle_year, source, session_id, raw_data, created_at
+                    FROM battles WHERE id = %s
+                    """,
+                    (battle_id,),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    def update_battle(
+        self,
+        battle_id: str,
+        meta: Dict[str, Any],
+        raw_data: Dict[str, Any],
+        results: List[Dict[str, Any]],
+    ) -> bool:
+        """
+        Replace a battle's stored payload and results in place.
+
+        meta: {name, battle_date}
+        results: rows from normalize_battle (name, role, points, placement, is_winner, round_wins)
+
+        Unlike create_battle, there's no `resolutions` step here - a dancer name that
+        already appears in this battle's results keeps its existing dancer_id (so a
+        typo fix doesn't sever the link to their YTD history), and any new/renamed
+        name falls back to the same case-insensitive find-or-create as an unmapped
+        name during initial ingest.
+        """
+        with self._connection() as conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT dancer_name, dancer_id FROM battle_results WHERE battle_id = %s",
+                        (battle_id,),
+                    )
+                    existing_by_name = {r["dancer_name"]: r["dancer_id"] for r in cur.fetchall()}
+
+                    cur.execute(
+                        """
+                        UPDATE battles SET name = %s, battle_date = %s, raw_data = %s
+                        WHERE id = %s
+                        RETURNING id
+                        """,
+                        (meta["name"], meta["battle_date"], Json(raw_data), battle_id),
+                    )
+                    if cur.fetchone() is None:
+                        conn.rollback()
+                        return False
+
+                    cur.execute("DELETE FROM battle_results WHERE battle_id = %s", (battle_id,))
+
+                    for row in results:
+                        dancer_id = existing_by_name.get(row["name"]) or self._get_or_create_dancer(
+                            cur, row["name"]
+                        )
+                        cur.execute(
+                            """
+                            INSERT INTO battle_results
+                                (battle_id, dancer_id, dancer_name, role, points, placement, is_winner, round_wins)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                battle_id,
+                                dancer_id,
+                                row["name"],
+                                row["role"],
+                                row.get("points", 0),
+                                row.get("placement"),
+                                row.get("is_winner", False),
+                                row.get("round_wins", 0),
+                            ),
+                        )
+                conn.commit()
+                return True
+            except psycopg2.errors.UniqueViolation as exc:
+                conn.rollback()
+                if "uq_battles_name_date" in str(exc):
+                    raise DuplicateBattleError(
+                        "Another battle with this name and date already exists."
+                    ) from exc
+                raise StatsError(str(exc)) from exc
+            except Exception as exc:  # noqa: BLE001
+                conn.rollback()
+                raise StatsError(str(exc)) from exc
+
     def list_years(self) -> List[int]:
         with self._connection() as conn:
             with conn.cursor() as cur:
