@@ -2057,4 +2057,9 @@ def spa_fallback(err):
 
 
 if __name__ == "__main__":
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    # FLASK_DEBUGGER lets a dev deployment keep the auto-reloader (for instant
+    # reload on save) while disabling Werkzeug's interactive debugger, which
+    # allows arbitrary code execution via its console and must never be
+    # reachable from an internet-facing address.
+    use_debugger = config.DEBUG and os.environ.get("FLASK_DEBUGGER", "1") == "1"
+    app.run(host=config.HOST, port=config.PORT, use_reloader=config.DEBUG, use_debugger=use_debugger)
