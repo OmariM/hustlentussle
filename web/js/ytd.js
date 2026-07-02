@@ -176,6 +176,116 @@
         });
     }
 
+    // ---- admin: dancers (merge duplicates) ----
+
+    let mergeNameDirty = false; // true once the admin has typed into #ytd-merge-name themselves
+
+    async function loadDancers() {
+        if (!isAdmin) return;
+        let dancers = [];
+        try {
+            const res = await fetch('/api/stats/dancers');
+            dancers = (await res.json()).dancers || [];
+        } catch (e) { dancers = []; }
+        const body = $('ytd-dancers-body');
+        body.innerHTML = '';
+        dancers.forEach((d) => {
+            const tr = document.createElement('tr');
+            const checkCell = document.createElement('td');
+            const check = document.createElement('input');
+            check.type = 'checkbox';
+            check.dataset.id = d.id;
+            check.dataset.name = d.display_name;
+            checkCell.appendChild(check);
+            tr.appendChild(checkCell);
+
+            const nameCell = document.createElement('td');
+            nameCell.textContent = d.display_name;
+            tr.appendChild(nameCell);
+
+            const aliasCell = document.createElement('td');
+            aliasCell.textContent = (d.aliases || []).join(', ');
+            tr.appendChild(aliasCell);
+
+            const battlesCell = document.createElement('td');
+            battlesCell.textContent = d.battles_entered;
+            if (d.battles_entered === 0) {
+                const hint = document.createElement('span');
+                hint.style.color = 'var(--text-muted, #888)';
+                hint.textContent = ' (no battles)';
+                battlesCell.appendChild(hint);
+            }
+            tr.appendChild(battlesCell);
+
+            body.appendChild(tr);
+        });
+        updateMergeButtonState();
+    }
+
+    function updateMergeButtonState() {
+        const checked = $('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked');
+        $('ytd-merge-selected-btn').disabled = checked.length < 2;
+    }
+
+    function openMergeModal() {
+        const checked = Array.from($('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked'));
+        if (checked.length < 2) return;
+
+        mergeNameDirty = false;
+        $('ytd-merge-error').textContent = '';
+        const choices = $('ytd-merge-choices');
+        choices.innerHTML = '';
+
+        checked.forEach((cb, i) => {
+            const label = document.createElement('label');
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'ytd-merge-target';
+            radio.value = cb.dataset.id;
+            radio.dataset.name = cb.dataset.name;
+            if (i === 0) radio.checked = true;
+            radio.addEventListener('change', () => {
+                if (!mergeNameDirty) $('ytd-merge-name').value = radio.dataset.name;
+            });
+            label.appendChild(radio);
+            label.appendChild(document.createTextNode(cb.dataset.name));
+            choices.appendChild(label);
+        });
+
+        $('ytd-merge-name').value = checked[0].dataset.name;
+        openModal('ytd-merge-modal');
+    }
+
+    async function confirmMerge() {
+        const errEl = $('ytd-merge-error');
+        errEl.textContent = '';
+
+        const targetRadio = $('ytd-merge-choices').querySelector('input[type=radio]:checked');
+        if (!targetRadio) { errEl.textContent = 'Choose a dancer to keep.'; return; }
+        const targetId = targetRadio.value;
+        const targetName = targetRadio.dataset.name;
+
+        const sourceIds = Array.from($('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked'))
+            .map((cb) => cb.dataset.id)
+            .filter((id) => id !== targetId);
+
+        const typedName = $('ytd-merge-name').value.trim();
+        const payload = { target_id: targetId, source_ids: sourceIds };
+        if (typedName && typedName !== targetName) payload.new_display_name = typedName;
+
+        const res = await fetch('/api/stats/dancers/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        let data; try { data = await res.json(); } catch (e) { data = {}; }
+        if (!res.ok) { errEl.textContent = data.error || 'Failed to merge dancers.'; return; }
+
+        closeModal('ytd-merge-modal');
+        await loadDancers();
+        await loadStandings();
+    }
+
     // ---- ingest (preview -> resolve -> commit) ----
 
     async function previewFromFile() {
@@ -323,6 +433,7 @@
         closeModal('ytd-login-modal');
         $('ytd-login-password').value = '';
         await loadBattles();
+        await loadDancers();
     }
 
     async function logout() {
@@ -339,6 +450,7 @@
         await loadYears();
         await loadStandings();
         await loadBattles();
+        await loadDancers();
     }
     window.ytdOnEnterStats = enterStats;
 
@@ -366,6 +478,14 @@
         on('publish-to-ytd', 'click', previewFromLiveBattle);
         on('ytd-ingest-cancel', 'click', () => closeModal('ytd-ingest-modal'));
         on('ytd-ingest-commit', 'click', commitIngest);
+
+        // dancers (merge duplicates)
+        const dancersBody = $('ytd-dancers-body');
+        if (dancersBody) dancersBody.addEventListener('change', updateMergeButtonState);
+        on('ytd-merge-selected-btn', 'click', openMergeModal);
+        on('ytd-merge-cancel', 'click', () => closeModal('ytd-merge-modal'));
+        on('ytd-merge-confirm', 'click', confirmMerge);
+        on('ytd-merge-name', 'input', () => { mergeNameDirty = true; });
 
         // file name display
         on('ytd-file-input', 'change', () => {

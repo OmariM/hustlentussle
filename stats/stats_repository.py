@@ -33,6 +33,10 @@ class DuplicateBattleError(StatsError):
     """A battle with the same (name, date) was already submitted."""
 
 
+class DuplicateDancerError(StatsError):
+    """The requested display name collides with a different, unmerged dancer."""
+
+
 class StatsRepository:
     def __init__(self, database_url: str, min_connections: int = 1, max_connections: int = 5):
         if not PSYCOPG2_AVAILABLE:
@@ -55,6 +59,24 @@ class StatsRepository:
         with self._connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT id, display_name, aliases FROM dancers ORDER BY display_name")
+                return [dict(r) for r in cur.fetchall()]
+
+    def list_dancers_with_stats(self) -> List[Dict[str, Any]]:
+        """Like list_dancers, plus battle/result counts so an admin can spot likely
+        duplicate/orphaned dancers (e.g. a typo-fixed name left with zero battles)."""
+        with self._connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT d.id, d.display_name, d.aliases,
+                           COUNT(DISTINCT br.battle_id) AS battles_entered,
+                           COUNT(br.id) AS result_count
+                    FROM dancers d
+                    LEFT JOIN battle_results br ON br.dancer_id = d.id
+                    GROUP BY d.id
+                    ORDER BY d.display_name
+                    """
+                )
                 return [dict(r) for r in cur.fetchall()]
 
     def find_dancer_by_name(self, name: str) -> Optional[Dict[str, Any]]:
@@ -101,6 +123,104 @@ class StatsRepository:
             """,
             (alias, dancer_id, alias, alias),
         )
+
+    def merge_dancers(
+        self,
+        target_id: str,
+        source_ids: List[str],
+        new_display_name: Optional[str] = None,
+    ) -> int:
+        """
+        Fold one or more duplicate dancers into `target_id`: repoint their
+        battle_results, capture their names as aliases on the target, then delete
+        them. Optionally also rename the survivor to `new_display_name`.
+
+        Only battle_results.dancer_id and the dancers table are touched - each
+        battle's raw_data JSON is the immutable historical record and is
+        intentionally left as-is.
+
+        Returns the number of battle_results rows repointed.
+        """
+        if target_id in source_ids:
+            raise StatsError("Target dancer cannot also be a source.")
+
+        with self._connection() as conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    all_ids = [target_id] + list(source_ids)
+
+                    cur.execute(
+                        "SELECT id, display_name, aliases FROM dancers WHERE id = ANY(%s::uuid[])",
+                        (all_ids,),
+                    )
+                    by_id = {str(r["id"]): r for r in cur.fetchall()}
+                    if len(by_id) != len(all_ids):
+                        raise StatsError("One or more selected dancers no longer exist.")
+
+                    # A blind repoint can't tell two dancers apart if they were both
+                    # (mistakenly, or legitimately as different people) entered as
+                    # separate contestants in the same battle+role - check the whole
+                    # merge set together, not just target-vs-each-source, since two
+                    # sources can collide with each other too.
+                    cur.execute(
+                        """
+                        SELECT br.battle_id, br.role, b.name, b.battle_date
+                        FROM battle_results br
+                        JOIN battles b ON b.id = br.battle_id
+                        WHERE br.dancer_id = ANY(%s::uuid[])
+                        GROUP BY br.battle_id, br.role, b.name, b.battle_date
+                        HAVING COUNT(DISTINCT br.dancer_id) > 1
+                        """,
+                        (all_ids,),
+                    )
+                    collisions = cur.fetchall()
+                    if collisions:
+                        battles_desc = ", ".join(f"{c['name']} ({c['battle_date']})" for c in collisions)
+                        raise StatsError(
+                            f"Cannot merge: {battles_desc} would end up with two results for the same battle and role."
+                        )
+
+                    cur.execute(
+                        "UPDATE battle_results SET dancer_id = %s WHERE dancer_id = ANY(%s::uuid[])",
+                        (target_id, source_ids),
+                    )
+                    moved = cur.rowcount
+
+                    for source_id in source_ids:
+                        source = by_id[source_id]
+                        self._maybe_add_alias(cur, target_id, source["display_name"])
+                        for alias in source["aliases"]:
+                            self._maybe_add_alias(cur, target_id, alias)
+
+                    cur.execute("DELETE FROM dancers WHERE id = ANY(%s::uuid[])", (source_ids,))
+
+                    new_name = (new_display_name or "").strip()
+                    target = by_id[target_id]
+                    if new_name and new_name.lower() != target["display_name"].strip().lower():
+                        old_name = target["display_name"]
+                        cur.execute(
+                            "UPDATE dancers SET display_name = %s WHERE id = %s",
+                            (new_name, target_id),
+                        )
+                        # Preserve the target's pre-rename name too, so it still resolves
+                        # via alias lookup on future uploads. Must run *after* the rename
+                        # above - _maybe_add_alias refuses to alias a name that still
+                        # equals the dancer's current display_name.
+                        self._maybe_add_alias(cur, target_id, old_name)
+
+                conn.commit()
+                return moved
+            except (StatsError, DuplicateDancerError):
+                conn.rollback()
+                raise
+            except psycopg2.errors.UniqueViolation as exc:
+                conn.rollback()
+                if "idx_dancers_display_name_lower" in str(exc):
+                    raise DuplicateDancerError("Another dancer already has that name.") from exc
+                raise StatsError(str(exc)) from exc
+            except Exception as exc:  # noqa: BLE001
+                conn.rollback()
+                raise StatsError(str(exc)) from exc
 
     # ----- battles -----
 
@@ -241,9 +361,7 @@ class StatsRepository:
                     cur.execute("DELETE FROM battle_results WHERE battle_id = %s", (battle_id,))
 
                     for row in results:
-                        dancer_id = existing_by_name.get(row["name"]) or self._get_or_create_dancer(
-                            cur, row["name"]
-                        )
+                        dancer_id = existing_by_name.get(row["name"]) or self._get_or_create_dancer(cur, row["name"])
                         cur.execute(
                             """
                             INSERT INTO battle_results
@@ -266,9 +384,7 @@ class StatsRepository:
             except psycopg2.errors.UniqueViolation as exc:
                 conn.rollback()
                 if "uq_battles_name_date" in str(exc):
-                    raise DuplicateBattleError(
-                        "Another battle with this name and date already exists."
-                    ) from exc
+                    raise DuplicateBattleError("Another battle with this name and date already exists.") from exc
                 raise StatsError(str(exc)) from exc
             except Exception as exc:  # noqa: BLE001
                 conn.rollback()

@@ -30,7 +30,13 @@ from persistence import (  # noqa: E402
     MemoryGameRepository,
 )
 from werkzeug.security import check_password_hash  # noqa: E402
-from stats import StatsRepository, normalize_battle, DuplicateBattleError, StatsError  # noqa: E402
+from stats import (  # noqa: E402
+    StatsRepository,
+    normalize_battle,
+    DuplicateBattleError,
+    DuplicateDancerError,
+    StatsError,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -1983,6 +1989,44 @@ def stats_update_battle(battle_id):
     if not updated:
         return jsonify({"error": "Battle not found"}), 404
     return jsonify({"success": True})
+
+
+@app.route("/api/stats/dancers", methods=["GET"])
+@admin_required
+def stats_list_dancers():
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    dancers = stats_repo.list_dancers_with_stats()
+    for d in dancers:
+        d["id"] = str(d["id"])
+        d["battles_entered"] = int(d.get("battles_entered") or 0)
+        d["result_count"] = int(d.get("result_count") or 0)
+    return jsonify({"dancers": dancers})
+
+
+@app.route("/api/stats/dancers/merge", methods=["POST"])
+@admin_required
+def stats_merge_dancers():
+    """Fold one or more duplicate dancers into a single survivor."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    target_id = data.get("target_id")
+    source_ids = data.get("source_ids") or []
+    new_display_name = data.get("new_display_name")
+
+    if not target_id or not isinstance(source_ids, list) or not source_ids:
+        return jsonify({"error": "target_id and a non-empty source_ids list are required"}), 400
+    if target_id in source_ids:
+        return jsonify({"error": "Target dancer cannot also be a source."}), 400
+
+    try:
+        moved = stats_repo.merge_dancers(target_id, source_ids, new_display_name)
+    except DuplicateDancerError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"success": True, "battle_results_moved": moved})
 
 
 @app.route("/api/results", methods=["GET"])
