@@ -10,7 +10,7 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
-# psycopg2 is a hard dependency in production (requirements.prod.txt) but may be
+# psycopg2 is a hard dependency in production (requirements.txt) but may be
 # absent in a bare in-memory dev environment; guard the import so `import stats`
 # never crashes app startup. StatsRepository raises if it's actually used.
 try:

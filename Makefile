@@ -36,9 +36,8 @@ check: ## Dry-run format + lint (for CI)
 install: ## Install dependencies
 	pip install -r requirements.txt
 
-install-dev: ## Install dependencies + ruff
-	pip install -r requirements.txt
-	pip install ruff
+install-dev: ## Install dev dependencies (runtime + ruff/pillow/playwright)
+	pip install -r requirements-dev.txt
 
 clean: ## Remove __pycache__, .pyc, .pyo files
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

@@ -8,17 +8,16 @@ Hustle n' Tussle is a partner dance competition management app. It randomly pair
 
 ## Tech Stack
 
-- **Backend:** Python 3.9+ with Flask 3.1.1
+- **Backend:** Python 3.12 with Flask 3.1.1
 - **Frontend:** Vanilla HTML5/CSS3/ES6+ JavaScript (no npm, no frontend framework)
 - **Database:** PostgreSQL (production) with in-memory fallback (development)
 - **Deployment:** Self-hosted Docker Compose stack (web + Postgres). See `DEPLOY.md`.
-  (Previously Render.com; `render.yaml`/`Procfile` are legacy.)
 
 ## Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (runtime only: requirements.txt; dev adds ruff/pillow/playwright)
+pip install -r requirements-dev.txt
 
 # Run dev web server (localhost:5000)
 python web/app.py
@@ -64,8 +63,8 @@ tmux attach -t hustlentussle-dev   # watch logs (detach: Ctrl+B D)
 ```
 
 How it works:
-- `.venv-dev/` is a local virtualenv with `requirements.txt` installed (gitignored;
-  recreate with `python3 -m venv .venv-dev && .venv-dev/bin/pip install -r requirements.txt`
+- `.venv-dev/` is a local virtualenv with `requirements-dev.txt` installed (gitignored;
+  recreate with `python3 -m venv .venv-dev && .venv-dev/bin/pip install -r requirements-dev.txt`
   if missing — `ensurepip`/`python3-venv` must be installed on the host for the first
   `venv` creation to succeed).
 - The Flask process binds `0.0.0.0:8091` — the port Nginx Proxy Manager routes
@@ -111,11 +110,10 @@ Frontend lives in `web/js/ytd.js` + the `stats-screen` markup in `index.html`. R
 `DATABASE_URL`; disabled (endpoints 503) when unset.
 
 ### Persistence Layer (`persistence/`)
-Factory pattern with interface-based abstraction (`GameRepositoryInterface`). `RepositoryFactory` selects backend based on config. `FallbackRepository` auto-falls back from PostgreSQL to in-memory on failure. Games auto-expire after 6 hours (configurable). `GameSerializer` handles Game object JSON serialization.
+Factory pattern with interface-based abstraction (`GameRepositoryInterface`). `RepositoryFactory` selects backend based on config, falling back from PostgreSQL to in-memory at startup if the DB is unavailable. Games auto-expire after 6 hours (configurable). `GameSerializer` handles Game object JSON serialization.
 
 ### Frontend (`web/js/`)
 - `app.js` — main application logic with global state management (sessionId, votes, rounds, contestants)
-- `main.js` — entry point
 - `components/DebugTools.js` — debug utilities (enable via env, `?debug=1` query param, or Alt+Shift+D)
 - `router.js` — client-side History API routing. Clean paths map to screens: `/`, `/setup`,
   `/upload`, `/stats`, `/battle/<session_id>`, `/results/<session_id>`. `navigate(path)` +

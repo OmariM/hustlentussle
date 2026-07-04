@@ -30,6 +30,13 @@ from tiebreak_tests import (
     TestEndToEndTiebreakFlow,
 )
 from persistence_serialization_tests import TestGameSerialization
+from persistence.tests.test_serializers import (
+    TestGameSerializer,
+    TestContestantSerializer,
+    TestRoundSerializer,
+)
+from persistence.tests.test_memory_repository import TestMemoryGameRepository
+from unit_tests import TestGameLogic, TestExportBattleData
 from game_logic import Game
 
 
@@ -61,6 +68,12 @@ class TestSuiteRunner:
             ("Tie-Break: Finalize", TestFinalizeTiebreakResults),
             ("Tie-Break: End-to-End", TestEndToEndTiebreakFlow),
             ("Persistence: Serialization", TestGameSerialization),
+            ("Persistence: Game Serializer", TestGameSerializer),
+            ("Persistence: Contestant Serializer", TestContestantSerializer),
+            ("Persistence: Round Serializer", TestRoundSerializer),
+            ("Persistence: Memory Repository", TestMemoryGameRepository),
+            ("Web API: Game Endpoints", TestGameLogic),
+            ("Web API: Battle Export", TestExportBattleData),
         ]
 
         print("=" * 60)

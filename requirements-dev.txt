@@ -1,0 +1,4 @@
+-r requirements.txt
+ruff>=0.4
+pillow>=10.3.0
+playwright>=1.46.0

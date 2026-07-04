@@ -16,7 +16,6 @@ from persistence.postgres_repository import PostgresGameRepository
 from persistence.serializers import GameSerializer
 from persistence.factory import (
     RepositoryFactory,
-    FallbackRepository,
     CleanupScheduler,
 )
 
@@ -29,6 +28,5 @@ __all__ = [
     "PostgresGameRepository",
     "GameSerializer",
     "RepositoryFactory",
-    "FallbackRepository",
     "CleanupScheduler",
 ]

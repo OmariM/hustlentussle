@@ -93,7 +93,9 @@ class TestGameLogic(unittest.TestCase):
         """Test that no contest contestants are placed at the end of the queue."""
         lead_pair = (self.game.pair_1[0], self.game.pair_2[0])
         self.simulate_round(lead_pair, "lead", [("Judge1", 4), ("Judge2", 4), ("Lead3", 1), ("Lead4", 2)])
-        after_leads = [c.name for c in self.game.leads]
+        # Indexing reflects actual queue storage; iteration would hide the
+        # no-contest pair while they are still the current competitors.
+        after_leads = [self.game.leads[i].name for i in range(len(self.game.leads))]
         expected_end = [lead_pair[0].name, lead_pair[1].name]
         self.assertEqual(after_leads[-2:], expected_end, f"Expected end {expected_end}, got {after_leads[-2:]}")
 
@@ -292,8 +294,10 @@ class TestGameLogic(unittest.TestCase):
         # Give winning points to Follow1 (4 points needed to win)
         initial_follow_1.points = game.win_threshold - 1
 
-        # Simulate round where Follow1 wins
+        # Simulate round where Follow1 wins. The lead round must be judged
+        # too before advancing, matching the real app flow.
         follow_pair = (initial_follow_1, initial_follow_2)
+        game.judge_round(game.pair_1[0], game.pair_2[0], "lead", [("Judge1", 1), ("Judge2", 1)])
         game.judge_round(follow_pair[0], follow_pair[1], "follow", [("Judge1", 1), ("Judge2", 1)])
 
         # Check if Follow1 is marked as a winner

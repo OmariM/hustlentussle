@@ -6,8 +6,8 @@ else on the host (own network + named volume `hustlentussle_pgdata`). Public
 ingress (domain + TLS) is handled by your existing reverse proxy (Nginx Proxy
 Manager / Cloudflare Tunnel) pointed at the published host port.
 
-This replaces the old Render deployment (`render.yaml`) and the legacy
-`deployment/` systemd + nginx scaffolding.
+This is the only supported deployment path (the old Render and systemd + nginx
+setups have been removed).
 
 ## 1. Configure
 
