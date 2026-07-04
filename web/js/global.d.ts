@@ -55,10 +55,6 @@ declare global {
         ENABLE_DEBUG_TOOLS?: boolean;
         DebugTools?: new () => unknown;
         debugTools?: { autoAdvance?: boolean };
-
-        // Spotify Web Playback SDK (loaded on demand from sdk.scdn.co)
-        Spotify?: unknown;
-        onSpotifyWebPlaybackSDKReady?: () => void;
     }
 }
 
