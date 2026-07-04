@@ -65,3 +65,7 @@ docs/screenshots/*
 
 # Local compose overrides (testing)
 docker-compose.override.yml
+
+# Frontend build tooling
+node_modules/
+web/js/dist/

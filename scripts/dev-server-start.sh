@@ -21,6 +21,15 @@ until docker compose -f docker-compose.dev.yml -p hustlentussle-dev exec -T db \
   sleep 1
 done
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERROR: node is required to build the frontend (web/js/dist). Install Node 22+." >&2
+  exit 1
+fi
+if [ ! -d node_modules ]; then
+  echo "Installing frontend dependencies (node_modules missing)..."
+  npm ci
+fi
+
 tmux kill-session -t hustlentussle-dev 2>/dev/null || true
 tmux new-session -d -s hustlentussle-dev -c "$(pwd)"
 tmux send-keys -t hustlentussle-dev "
@@ -32,5 +41,10 @@ export DATABASE_URL='postgresql://${DEV_POSTGRES_USER:-hustlentussle_dev}:${DEV_
 exec .venv-dev/bin/python web/app.py
 " C-m
 
+# Second window: esbuild watch keeps web/js/dist in sync with source on save
+tmux new-window -t hustlentussle-dev -n esbuild -c "$(pwd)"
+tmux send-keys -t hustlentussle-dev:esbuild "exec npm run watch" C-m
+
 echo "Dev server starting in tmux session 'hustlentussle-dev' on port 8091."
+echo "Window 0: Flask; window 'esbuild': frontend watch build."
 echo "Attach: tmux attach -t hustlentussle-dev   (detach: Ctrl+B D)"
