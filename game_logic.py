@@ -1,4 +1,13 @@
+import logging
 import random
+
+logger = logging.getLogger(__name__)
+
+# Points needed to win a role when the organizer doesn't choose a threshold.
+DEFAULT_WIN_THRESHOLD = 7
+
+# Each round takes 2 leads + 2 follows out of the judging pool.
+COMPETITORS_PER_ROUND = 4
 
 
 class Contestant:
@@ -197,17 +206,17 @@ class Game:
         # Track whether threshold was explicitly provided
         self.custom_threshold = points_to_win is not None
 
-        # Set win threshold: use provided value, or default to 7
+        # Set win threshold: use provided value, or the default
         if points_to_win is not None:
             self.win_threshold = points_to_win
         else:
-            self.win_threshold = 7
+            self.win_threshold = DEFAULT_WIN_THRESHOLD
 
         # Calculate expected contestant judges (1 more than guest judges)
         self.expected_contestant_judges = len(guest_judge_names) + 1
 
         # Calculate number of contestant judges
-        available_for_judging = len(self._leads) + len(self._follows) - 4
+        available_for_judging = len(self._leads) + len(self._follows) - COMPETITORS_PER_ROUND
         if not self.contestant_judging_enabled:
             self.num_contestant_judges = 0
         elif num_contestant_judges is not None:
@@ -258,29 +267,7 @@ class Game:
             # With insufficient contestants, no contestant judges
             self.contestant_judges = []
 
-            # Create new round
-            self.current_round = Round(
-                self.round_num,
-                {},
-                {},
-                self.guest_judges,
-                [j.name for j in self.contestant_judges],
-                self.session_id,
-                contestant_judging_enabled=self.contestant_judging_enabled,
-                simple_contestant_judges=self.simple_contestant_judges,
-            )
-
-            # Store the pairs for this round
-            self.current_round.pairs = {
-                "pair_1": {"lead": self.pair_1[0].name, "follow": self.pair_1[1].name},
-                "pair_2": {"lead": self.pair_2[0].name, "follow": self.pair_2[1].name},
-            }
-
-            # Save queue snapshot for undo functionality
-            self.current_round.queue_snapshot = {
-                "leads": [lead.name for lead in self._leads],
-                "follows": [f.name for f in self._follows],
-            }
+            self._create_current_round()
 
             # Mark game as finished when either role has fewer than 2 contestants overall
             if self.total_num_leads < 2 or self.total_num_follows < 2:
@@ -294,7 +281,11 @@ class Game:
         # Select contestant judges from remaining pool (exclude competitors)
         self.contestant_judges = self.get_contestant_judges()
 
-        # Create new round
+        self._create_current_round()
+
+    def _create_current_round(self):
+        """Create the Round object for the current pairs/judges and snapshot the
+        queues so the round can be undone."""
         self.current_round = Round(
             self.round_num,
             {},
@@ -361,6 +352,27 @@ class Game:
         # Clear special transition flags
         self.no_contest_pending = False
 
+        self._replenish_queues_for_selection()
+
+        # Store current follows if we have a follow tie
+        current_follows = None
+        if self.tie_follow_pair:
+            current_follows = (self.pair_1[1], self.pair_2[1])
+            self.tie_follow_pair = None
+
+        lead1, lead2 = self._select_next_leads()
+        follow1, follow2 = self._select_next_follows(current_follows)
+        self._form_next_pairs(lead1, lead2, follow1, follow2, current_follows)
+
+        self._replenish_queues_after_pairing()
+
+        self.contestant_judges = self.get_contestant_judges()
+        self._create_current_round()
+
+    def _replenish_queues_for_selection(self):
+        """Refill queues from the initial rosters when too few dancers remain
+        to select the next pairs (current competitors stay excluded unless the
+        roster is only two deep)."""
         # Replenish leads if we're running low
         if len(self._leads) < 2:
             if self.total_num_leads <= 2:
@@ -387,12 +399,14 @@ class Game:
                     if follow.name not in competing_follows and follow not in self._follows:
                         self._follows.append(follow)
 
-        # Store current follows if we have a follow tie
-        current_follows = None
-        if self.tie_follow_pair:
-            current_follows = (self.pair_1[1], self.pair_2[1])
-            self.tie_follow_pair = None
+    def _select_next_leads(self):
+        """Pick the two leads for the next round.
 
+        Priority: a threshold winner rotates out (back of queue) while fresh
+        leads come in; a tied pair rematches; a round winner (or carryover
+        winner once the role is decided) stays in against the next in queue;
+        otherwise the two front-of-queue leads compete.
+        """
         # Handle lead selection based on game state
         if self.has_winning_lead and not self.has_winning_follow:
             # Initial winning lead (with flags set) should go to the end of the queue
@@ -478,6 +492,11 @@ class Game:
                     pass
                 lead2 = replacement
 
+        return lead1, lead2
+
+    def _select_next_follows(self, current_follows):
+        """Pick the two follows for the next round (mirror of _select_next_leads,
+        plus the follow-tie rematch case carried in via current_follows)."""
         # Handle follow selection based on game state
         if self.has_winning_follow and not self.has_winning_lead:
             # Initial winning follow (with flags set) should go to the end of the queue
@@ -559,6 +578,11 @@ class Game:
                     pass
                 follow2 = replacement
 
+        return follow1, follow2
+
+    def _form_next_pairs(self, lead1, lead2, follow1, follow2, current_follows):
+        """Assemble pair_1/pair_2 from the selected dancers, avoiding repeat
+        couples and winner-with-winner pairings, then record the pairings."""
         # When there's a follow tie, we need to ensure the couples are different
         if current_follows:
             # Get the winning lead and next lead from queue
@@ -615,6 +639,9 @@ class Game:
         # Record new pairings for next round
         self._record_pairings()
 
+    def _replenish_queues_after_pairing(self):
+        """Refill queues (excluding the just-selected competitors) so contestant
+        judges and future selections have a pool to draw from."""
         # Replenish leads if we're running low
         if len(self._leads) < 2:
             # Add all leads back to the queue except the current competing leads
@@ -630,30 +657,6 @@ class Game:
             for follow in self.initial_follows:
                 if follow.name not in competing_follows and follow not in self._follows:
                     self._follows.append(follow)
-
-        self.contestant_judges = self.get_contestant_judges()
-        self.current_round = Round(
-            self.round_num,
-            {},
-            {},
-            self.guest_judges,
-            [j.name for j in self.contestant_judges],
-            self.session_id,
-            contestant_judging_enabled=self.contestant_judging_enabled,
-            simple_contestant_judges=self.simple_contestant_judges,
-        )
-
-        # Store the pairs for this round
-        self.current_round.pairs = {
-            "pair_1": {"lead": self.pair_1[0].name, "follow": self.pair_1[1].name},
-            "pair_2": {"lead": self.pair_2[0].name, "follow": self.pair_2[1].name},
-        }
-
-        # Save queue snapshot for undo functionality
-        self.current_round.queue_snapshot = {
-            "leads": [lead.name for lead in self._leads],
-            "follows": [f.name for f in self._follows],
-        }
 
     def judge_round(self, c1, c2, role, votes):
         guest_votes = [d for (v, d) in votes if v in self.guest_judges]
@@ -1037,19 +1040,19 @@ class Game:
         self.state = 1
 
     def debug_state(self):
-        """Print the current state of the game for debugging."""
-        print("\n--- Game State ---")
-        print(f"Round: {self.round_num}")
-        print(f"Pair 1: {self.pair_1[0].name} (lead) vs {self.pair_1[1].name} (follow)")
-        print(f"Pair 2: {self.pair_2[0].name} (lead) vs {self.pair_2[1].name} (follow)")
-        print(f"Leads in queue: {[lead.name for lead in self._leads]}")
-        print(f"Follows in queue: {[follow.name for follow in self._follows]}")
-        print(f"Winning lead: {self.winning_lead.name if self.winning_lead else None}")
-        print(f"Winning follow: {self.winning_follow.name if self.winning_follow else None}")
-        print(f"Has winning lead: {self.has_winning_lead}")
-        print(f"Has winning follow: {self.has_winning_follow}")
-        print(f"Is finished: {self.is_finished()}")
-        print("------------------\n")
+        """Log the current state of the game for debugging."""
+        logger.debug("--- Game State ---")
+        logger.debug(f"Round: {self.round_num}")
+        logger.debug(f"Pair 1: {self.pair_1[0].name} (lead) vs {self.pair_1[1].name} (follow)")
+        logger.debug(f"Pair 2: {self.pair_2[0].name} (lead) vs {self.pair_2[1].name} (follow)")
+        logger.debug(f"Leads in queue: {[lead.name for lead in self._leads]}")
+        logger.debug(f"Follows in queue: {[follow.name for follow in self._follows]}")
+        logger.debug(f"Winning lead: {self.winning_lead.name if self.winning_lead else None}")
+        logger.debug(f"Winning follow: {self.winning_follow.name if self.winning_follow else None}")
+        logger.debug(f"Has winning lead: {self.has_winning_lead}")
+        logger.debug(f"Has winning follow: {self.has_winning_follow}")
+        logger.debug(f"Is finished: {self.is_finished()}")
+        logger.debug("------------------")
 
     def _record_pairings(self):
         # Record initial pairings
@@ -1073,99 +1076,24 @@ class Game:
         pair_1_data = undone_round.pairs.get("pair_1", {}) if undone_round.pairs else {}
         pair_2_data = undone_round.pairs.get("pair_2", {}) if undone_round.pairs else {}
 
-        # Find contestant objects for the undone round's pairs
-        undone_lead1 = undone_lead2 = undone_follow1 = undone_follow2 = None
-        for lead in self.initial_leads:
-            if lead.name == pair_1_data.get("lead"):
-                undone_lead1 = lead
-            if lead.name == pair_2_data.get("lead"):
-                undone_lead2 = lead
-        for follow in self.initial_follows:
-            if follow.name == pair_1_data.get("follow"):
-                undone_follow1 = follow
-            if follow.name == pair_2_data.get("follow"):
-                undone_follow2 = follow
+        undone_lead1, undone_lead2, undone_follow1, undone_follow2 = self._find_round_contestants(
+            pair_1_data, pair_2_data
+        )
 
         # Restore queue from snapshot if available (most accurate restoration)
         if undone_round.queue_snapshot:
-            # Build name-to-object maps for lookup
-            lead_map = {lead.name: lead for lead in self.initial_leads}
-            follow_map = {f.name: f for f in self.initial_follows}
-
-            # Restore leads queue from snapshot
-            self._leads = []
-            for name in undone_round.queue_snapshot.get("leads", []):
-                if name in lead_map:
-                    self._leads.append(lead_map[name])
-
-            # Restore follows queue from snapshot
-            self._follows = []
-            for name in undone_round.queue_snapshot.get("follows", []):
-                if name in follow_map:
-                    self._follows.append(follow_map[name])
+            self._restore_queues_from_snapshot(undone_round.queue_snapshot)
         else:
             # Fallback: approximate queue restoration (for rounds saved before this feature)
-            undone_pair_leads = {pair_1_data.get("lead"), pair_2_data.get("lead")}
-            undone_pair_follows = {pair_1_data.get("follow"), pair_2_data.get("follow")}
+            self._approximate_queue_restore(
+                undone_round,
+                pair_1_data,
+                pair_2_data,
+                (undone_lead1, undone_lead2),
+                (undone_follow1, undone_follow2),
+            )
 
-            # Identify the losers from the undone round
-            lead_loser_name = None
-            follow_loser_name = None
-            if undone_round.lead_winner and undone_lead1 and undone_lead2:
-                lead_loser_name = (
-                    undone_lead2.name if undone_round.lead_winner == undone_lead1.name else undone_lead1.name
-                )
-            if undone_round.follow_winner and undone_follow1 and undone_follow2:
-                follow_loser_name = (
-                    undone_follow2.name if undone_round.follow_winner == undone_follow1.name else undone_follow1.name
-                )
-
-            # Collect contestants from current pairs that need to go back to the queue
-            leads_to_restore = []
-            follows_to_restore = []
-            if self.pair_1 and self.pair_2:
-                current_lead1, current_follow1 = self.pair_1
-                current_lead2, current_follow2 = self.pair_2
-
-                if current_lead1.name not in undone_pair_leads and current_lead1.name != lead_loser_name:
-                    leads_to_restore.append(current_lead1)
-                if current_lead2.name not in undone_pair_leads and current_lead2.name != lead_loser_name:
-                    leads_to_restore.append(current_lead2)
-                if current_follow1.name not in undone_pair_follows and current_follow1.name != follow_loser_name:
-                    follows_to_restore.append(current_follow1)
-                if current_follow2.name not in undone_pair_follows and current_follow2.name != follow_loser_name:
-                    follows_to_restore.append(current_follow2)
-
-            # Remove losers from the queue
-            if lead_loser_name:
-                self._leads = [lead for lead in self._leads if lead.name != lead_loser_name]
-            if follow_loser_name:
-                self._follows = [f for f in self._follows if f.name != follow_loser_name]
-
-            # Insert contestants back at the front of the queue
-            for lead in reversed(leads_to_restore):
-                if lead not in self._leads:
-                    self._leads.insert(0, lead)
-            for follow in reversed(follows_to_restore):
-                if follow not in self._follows:
-                    self._follows.insert(0, follow)
-
-            # Remove the undone round's pairs from the queue
-            self._leads = [lead for lead in self._leads if lead.name not in undone_pair_leads]
-            self._follows = [f for f in self._follows if f.name not in undone_pair_follows]
-
-        # Subtract points from the round winners
-        if undone_round.lead_winner:
-            for lead in self.initial_leads:
-                if lead.name == undone_round.lead_winner:
-                    lead.points = max(0, lead.points - 1)
-                    break
-
-        if undone_round.follow_winner:
-            for follow in self.initial_follows:
-                if follow.name == undone_round.follow_winner:
-                    follow.points = max(0, follow.points - 1)
-                    break
+        self._rollback_round_points(undone_round)
 
         # Restore round number
         self.round_num = undone_round.round_num
@@ -1185,6 +1113,114 @@ class Game:
         # Restore current_round to the undone round
         self.current_round = undone_round
 
+        self._reset_transition_state_after_undo()
+
+        # Reselect contestant judges for this round
+        self.contestant_judges = self.get_contestant_judges()
+        self.current_round.contestant_judges = [j.name for j in self.contestant_judges]
+
+        return True
+
+    def _find_round_contestants(self, pair_1_data, pair_2_data):
+        """Resolve a round's pair names back to the canonical Contestant objects."""
+        undone_lead1 = undone_lead2 = undone_follow1 = undone_follow2 = None
+        for lead in self.initial_leads:
+            if lead.name == pair_1_data.get("lead"):
+                undone_lead1 = lead
+            if lead.name == pair_2_data.get("lead"):
+                undone_lead2 = lead
+        for follow in self.initial_follows:
+            if follow.name == pair_1_data.get("follow"):
+                undone_follow1 = follow
+            if follow.name == pair_2_data.get("follow"):
+                undone_follow2 = follow
+        return undone_lead1, undone_lead2, undone_follow1, undone_follow2
+
+    def _restore_queues_from_snapshot(self, queue_snapshot):
+        """Rebuild both queues exactly as they were when the round started."""
+        # Build name-to-object maps for lookup
+        lead_map = {lead.name: lead for lead in self.initial_leads}
+        follow_map = {f.name: f for f in self.initial_follows}
+
+        # Restore leads queue from snapshot
+        self._leads = []
+        for name in queue_snapshot.get("leads", []):
+            if name in lead_map:
+                self._leads.append(lead_map[name])
+
+        # Restore follows queue from snapshot
+        self._follows = []
+        for name in queue_snapshot.get("follows", []):
+            if name in follow_map:
+                self._follows.append(follow_map[name])
+
+    def _approximate_queue_restore(self, undone_round, pair_1_data, pair_2_data, undone_leads, undone_follows):
+        """Best-effort queue restoration for rounds saved without a snapshot."""
+        undone_lead1, undone_lead2 = undone_leads
+        undone_follow1, undone_follow2 = undone_follows
+        undone_pair_leads = {pair_1_data.get("lead"), pair_2_data.get("lead")}
+        undone_pair_follows = {pair_1_data.get("follow"), pair_2_data.get("follow")}
+
+        # Identify the losers from the undone round
+        lead_loser_name = None
+        follow_loser_name = None
+        if undone_round.lead_winner and undone_lead1 and undone_lead2:
+            lead_loser_name = undone_lead2.name if undone_round.lead_winner == undone_lead1.name else undone_lead1.name
+        if undone_round.follow_winner and undone_follow1 and undone_follow2:
+            follow_loser_name = (
+                undone_follow2.name if undone_round.follow_winner == undone_follow1.name else undone_follow1.name
+            )
+
+        # Collect contestants from current pairs that need to go back to the queue
+        leads_to_restore = []
+        follows_to_restore = []
+        if self.pair_1 and self.pair_2:
+            current_lead1, current_follow1 = self.pair_1
+            current_lead2, current_follow2 = self.pair_2
+
+            if current_lead1.name not in undone_pair_leads and current_lead1.name != lead_loser_name:
+                leads_to_restore.append(current_lead1)
+            if current_lead2.name not in undone_pair_leads and current_lead2.name != lead_loser_name:
+                leads_to_restore.append(current_lead2)
+            if current_follow1.name not in undone_pair_follows and current_follow1.name != follow_loser_name:
+                follows_to_restore.append(current_follow1)
+            if current_follow2.name not in undone_pair_follows and current_follow2.name != follow_loser_name:
+                follows_to_restore.append(current_follow2)
+
+        # Remove losers from the queue
+        if lead_loser_name:
+            self._leads = [lead for lead in self._leads if lead.name != lead_loser_name]
+        if follow_loser_name:
+            self._follows = [f for f in self._follows if f.name != follow_loser_name]
+
+        # Insert contestants back at the front of the queue
+        for lead in reversed(leads_to_restore):
+            if lead not in self._leads:
+                self._leads.insert(0, lead)
+        for follow in reversed(follows_to_restore):
+            if follow not in self._follows:
+                self._follows.insert(0, follow)
+
+        # Remove the undone round's pairs from the queue
+        self._leads = [lead for lead in self._leads if lead.name not in undone_pair_leads]
+        self._follows = [f for f in self._follows if f.name not in undone_pair_follows]
+
+    def _rollback_round_points(self, undone_round):
+        """Subtract the points the undone round's winners earned."""
+        if undone_round.lead_winner:
+            for lead in self.initial_leads:
+                if lead.name == undone_round.lead_winner:
+                    lead.points = max(0, lead.points - 1)
+                    break
+
+        if undone_round.follow_winner:
+            for follow in self.initial_follows:
+                if follow.name == undone_round.follow_winner:
+                    follow.points = max(0, follow.points - 1)
+                    break
+
+    def _reset_transition_state_after_undo(self):
+        """Clear round-transition state that no longer applies after an undo."""
         # Clear game finished state if it was set
         if self.state == 1:
             self.state = 0
@@ -1205,12 +1241,6 @@ class Game:
         self.winning_lead = None
         self.winning_follow = None
         self._recalculate_winner_flags()
-
-        # Reselect contestant judges for this round
-        self.contestant_judges = self.get_contestant_judges()
-        self.current_round.contestant_judges = [j.name for j in self.contestant_judges]
-
-        return True
 
     def _recalculate_winner_flags(self):
         """Recalculate has_winning_lead and has_winning_follow based on current points."""
