@@ -21,6 +21,19 @@ declare global {
         showScreen?: (el: HTMLElement) => void;
         hydrateBattleRoute?: (sessionId: string) => void;
         hydrateResultsRoute?: (sessionId: string | null) => void;
+        updateSessionIdDisplay?: () => void;
+        renderFromState?: (state: unknown) => void;
+        refreshCanonicalState?: () => Promise<void>;
+        endGame?: () => void;
+
+        // Shared vote/roster state mirrored onto window (DebugTools keeps its
+        // own copies here; app.js's internal `let` state is separate)
+        guestJudges?: string[];
+        initialLeads?: string[];
+        initialFollows?: string[];
+        leadVotes?: Record<string, number>;
+        followVotes?: Record<string, number>;
+        votingLocked?: { lead: boolean; follow: boolean };
         openBattlePayloadEditor?: (
             payload: BattleExportV1,
             opts: {
@@ -38,10 +51,10 @@ declare global {
         // ytd.ts
         ytdOnEnterStats?: () => void;
 
-        // components/DebugTools.js + the inline bootstrap in index.html
+        // components/DebugTools.ts + the inline bootstrap in index.html
         ENABLE_DEBUG_TOOLS?: boolean;
         DebugTools?: new () => unknown;
-        debugTools?: { autoAdvance?: boolean } & Record<string, unknown>;
+        debugTools?: { autoAdvance?: boolean };
 
         // Spotify Web Playback SDK (loaded on demand from sdk.scdn.co)
         Spotify?: unknown;

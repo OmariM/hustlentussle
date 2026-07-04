@@ -2,16 +2,18 @@
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function makePill(name, role, state) {
+type PillState = '' | 'winner' | 'loser' | 'tied';
+
+function makePill(name: string, role: 'lead' | 'follow', state: PillState): HTMLSpanElement {
     const el = document.createElement('span');
     el.className = ['viz-pill', role, state].filter(Boolean).join(' ');
     el.textContent = name;
     return el;
 }
 
-function makeOutcomeBadge(type) {
+function makeOutcomeBadge(type: string): HTMLSpanElement {
     const el = document.createElement('span');
-    const labels = { tie: 'Tie', 'no-contest': 'No Contest', winner: 'Winner', tied: 'Tied' };
+    const labels: Record<string, string> = { tie: 'Tie', 'no-contest': 'No Contest', winner: 'Winner', tied: 'Tied' };
     el.className = 'viz-outcome-badge ' + type;
     el.textContent = labels[type] || type;
     return el;
@@ -19,7 +21,12 @@ function makeOutcomeBadge(type) {
 
 // Shared controller for OutcomesExplainer sub-panels.
 // Builds title + [‹ stageEl ›] + caption + step counter inside panel.
-function makeAnimPanel(panel, title, steps, renderFn) {
+function makeAnimPanel<S>(
+    panel: HTMLElement,
+    title: string,
+    steps: S[],
+    renderFn: (stageEl: HTMLElement, captionEl: HTMLElement, step: S) => void,
+): void {
     const titleEl = document.createElement('h3');
     titleEl.className = 'viz-outcome-title';
     titleEl.textContent = title;
@@ -59,28 +66,34 @@ function makeAnimPanel(panel, title, steps, renderFn) {
 
     let idx = 0;
 
-    function render() {
+    function render(): void {
         renderFn(stageEl, captionEl, steps[idx]);
-        counterEl.textContent = (idx + 1) + ' / ' + steps.length;
+        counterEl.textContent = idx + 1 + ' / ' + steps.length;
     }
 
-    prevBtn.addEventListener('click', () => { idx = (idx - 1 + steps.length) % steps.length; render(); });
-    nextBtn.addEventListener('click', () => { idx = (idx + 1) % steps.length; render(); });
+    prevBtn.addEventListener('click', () => {
+        idx = (idx - 1 + steps.length) % steps.length;
+        render();
+    });
+    nextBtn.addEventListener('click', () => {
+        idx = (idx + 1) % steps.length;
+        render();
+    });
 
     render();
 }
 
 // ─── Tab switching ─────────────────────────────────────────────────────────
 
-function setupExplainerTabs() {
-    const tabs = document.querySelectorAll('.explainer-tab');
-    const panels = document.querySelectorAll('.explainer-panel');
-    tabs.forEach(tab => {
+function setupExplainerTabs(): void {
+    const tabs = document.querySelectorAll<HTMLElement>('.explainer-tab');
+    const panels = document.querySelectorAll<HTMLElement>('.explainer-panel');
+    tabs.forEach((tab) => {
         tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            panels.forEach(p => p.classList.remove('active'));
+            tabs.forEach((t) => t.classList.remove('active'));
+            panels.forEach((p) => p.classList.remove('active'));
             tab.classList.add('active');
-            const target = document.getElementById(tab.dataset.target);
+            const target = document.getElementById(tab.dataset.target || '');
             if (target) target.classList.add('active');
         });
     });
@@ -88,8 +101,32 @@ function setupExplainerTabs() {
 
 // ─── Animation 1: Queue System ─────────────────────────────────────────────
 
+interface QueueCouple {
+    lead: string;
+    follow: string;
+    num: number;
+}
+
+interface QueueStep {
+    label: string;
+    leadsQueue: string[];
+    followsQueue: string[];
+    couples: QueueCouple[];
+    leadH: Record<string, PillState>;
+    followH: Record<string, PillState>;
+}
+
 class QueueExplainer {
-    constructor(container) {
+    private container: HTMLElement;
+    private stepIndex: number;
+    private _steps: QueueStep[];
+    private _leadsListEl!: HTMLElement;
+    private _followsListEl!: HTMLElement;
+    private _stageEl!: HTMLElement;
+    private _captionEl!: HTMLElement;
+    private _counterEl!: HTMLElement;
+
+    constructor(container: HTMLElement) {
         this.container = container;
         this.stepIndex = 0;
 
@@ -99,7 +136,8 @@ class QueueExplainer {
                 leadsQueue: ['Alex', 'Jordan', 'Sam', 'Casey', 'Riley', 'Morgan'],
                 followsQueue: ['Jamie', 'Taylor', 'Drew', 'Avery', 'Blake', 'Quinn'],
                 couples: [],
-                leadH: {}, followH: {}
+                leadH: {},
+                followH: {},
             },
             {
                 label: 'Round 1 — the first two leads and first two follows enter the battle.',
@@ -109,7 +147,8 @@ class QueueExplainer {
                     { lead: 'Alex', follow: 'Jamie', num: 1 },
                     { lead: 'Jordan', follow: 'Taylor', num: 2 },
                 ],
-                leadH: {}, followH: {}
+                leadH: {},
+                followH: {},
             },
             {
                 label: 'Round 1 — Alex wins leads, Jamie wins follows.',
@@ -120,17 +159,15 @@ class QueueExplainer {
                     { lead: 'Jordan', follow: 'Taylor', num: 2 },
                 ],
                 leadH: { Alex: 'winner', Jordan: 'loser' },
-                followH: { Jamie: 'winner', Taylor: 'loser' }
+                followH: { Jamie: 'winner', Taylor: 'loser' },
             },
             {
                 label: 'Losers (Jordan, Taylor) cycle to the back of their queues. Winners stay on stage.',
                 leadsQueue: ['Sam', 'Casey', 'Riley', 'Morgan', 'Jordan'],
                 followsQueue: ['Drew', 'Avery', 'Blake', 'Quinn', 'Taylor'],
-                couples: [
-                    { lead: 'Alex', follow: 'Jamie', num: 1 },
-                ],
+                couples: [{ lead: 'Alex', follow: 'Jamie', num: 1 }],
                 leadH: { Alex: 'winner' },
-                followH: { Jamie: 'winner' }
+                followH: { Jamie: 'winner' },
             },
             {
                 label: 'Round 2 — winners stay but get new partners. Alex faces Drew; Sam steps up to face Jamie.',
@@ -140,7 +177,8 @@ class QueueExplainer {
                     { lead: 'Alex', follow: 'Drew', num: 1 },
                     { lead: 'Sam', follow: 'Jamie', num: 2 },
                 ],
-                leadH: {}, followH: {}
+                leadH: {},
+                followH: {},
             },
             {
                 label: 'Round 2 — Sam wins leads, Jamie wins follows.',
@@ -151,17 +189,15 @@ class QueueExplainer {
                     { lead: 'Sam', follow: 'Jamie', num: 2 },
                 ],
                 leadH: { Sam: 'winner', Alex: 'loser' },
-                followH: { Jamie: 'winner', Drew: 'loser' }
+                followH: { Jamie: 'winner', Drew: 'loser' },
             },
             {
                 label: 'Losers (Alex, Drew) cycle to the back. Sam and Jamie stay on stage.',
                 leadsQueue: ['Casey', 'Riley', 'Morgan', 'Jordan', 'Alex'],
                 followsQueue: ['Avery', 'Blake', 'Quinn', 'Taylor', 'Drew'],
-                couples: [
-                    { lead: 'Sam', follow: 'Jamie', num: 1 },
-                ],
+                couples: [{ lead: 'Sam', follow: 'Jamie', num: 1 }],
                 leadH: { Sam: 'winner' },
-                followH: { Jamie: 'winner' }
+                followH: { Jamie: 'winner' },
             },
             {
                 label: 'Round 3 — winners stay, new partners step up. Sam faces Avery; Casey steps up to face Jamie.',
@@ -171,7 +207,8 @@ class QueueExplainer {
                     { lead: 'Sam', follow: 'Avery', num: 1 },
                     { lead: 'Casey', follow: 'Jamie', num: 2 },
                 ],
-                leadH: {}, followH: {}
+                leadH: {},
+                followH: {},
             },
             {
                 label: 'Round 3 — Casey wins leads, Jamie wins follows.',
@@ -182,19 +219,20 @@ class QueueExplainer {
                     { lead: 'Casey', follow: 'Jamie', num: 2 },
                 ],
                 leadH: { Casey: 'winner', Sam: 'loser' },
-                followH: { Jamie: 'winner', Avery: 'loser' }
+                followH: { Jamie: 'winner', Avery: 'loser' },
             },
         ];
 
         this._build();
     }
 
-    _build() {
+    private _build(): void {
         this.container.innerHTML = '';
 
         const desc = document.createElement('p');
         desc.className = 'explainer-desc';
-        desc.textContent = 'Leads and follows are managed as two independent queues. Each round, the first two from each queue compete. Winners stay on stage but dance with a new partner next round; losers cycle to the back of their queue.';
+        desc.textContent =
+            'Leads and follows are managed as two independent queues. Each round, the first two from each queue compete. Winners stay on stage but dance with a new partner next round; losers cycle to the back of their queue.';
         this.container.appendChild(desc);
 
         // [‹] [arena] [›]
@@ -268,34 +306,34 @@ class QueueExplainer {
         this.container.appendChild(controls);
     }
 
-    _updateCounter() {
-        this._counterEl.textContent = (this.stepIndex + 1) + ' / ' + this._steps.length;
+    private _updateCounter(): void {
+        this._counterEl.textContent = this.stepIndex + 1 + ' / ' + this._steps.length;
     }
 
-    _stepBy(delta) {
+    private _stepBy(delta: number): void {
         this.stepIndex = (this.stepIndex + delta + this._steps.length) % this._steps.length;
         this._render();
     }
 
-    _render() {
+    private _render(): void {
         const s = this._steps[this.stepIndex];
         this._captionEl.textContent = s.label;
         this._updateCounter();
 
         // FLIP — snapshot every pill's screen position before we touch the DOM
-        const oldRects = new Map();
-        this.container.querySelectorAll('.viz-pill').forEach(el => {
-            oldRects.set(el.textContent.trim(), el.getBoundingClientRect());
+        const oldRects = new Map<string, DOMRect>();
+        this.container.querySelectorAll<HTMLElement>('.viz-pill').forEach((el) => {
+            oldRects.set((el.textContent || '').trim(), el.getBoundingClientRect());
         });
 
         // Re-render queues (no anim-in — FLIP decides below)
         this._leadsListEl.innerHTML = '';
-        s.leadsQueue.forEach(name => {
+        s.leadsQueue.forEach((name) => {
             this._leadsListEl.appendChild(makePill(name, 'lead', s.leadH[name] || ''));
         });
 
         this._followsListEl.innerHTML = '';
-        s.followsQueue.forEach(name => {
+        s.followsQueue.forEach((name) => {
             this._followsListEl.appendChild(makePill(name, 'follow', s.followH[name] || ''));
         });
 
@@ -307,7 +345,7 @@ class QueueExplainer {
             empty.textContent = 'Waiting for round to start…';
             this._stageEl.appendChild(empty);
         } else {
-            s.couples.forEach(c => {
+            s.couples.forEach((c) => {
                 const card = document.createElement('div');
                 card.className = 'viz-couple-card';
                 if (s.leadH[c.lead] === 'tied') card.classList.add('viz-couple-tied');
@@ -333,9 +371,9 @@ class QueueExplainer {
         }
 
         // FLIP — for each new pill decide: fly from old position, or slide in fresh
-        const toFlip = [];
-        this.container.querySelectorAll('.viz-pill').forEach(el => {
-            const name = el.textContent.trim();
+        const toFlip: HTMLElement[] = [];
+        this.container.querySelectorAll<HTMLElement>('.viz-pill').forEach((el) => {
+            const name = (el.textContent || '').trim();
             const old = oldRects.get(name);
             if (!old) {
                 // Genuinely new contestant — slide in from the side
@@ -357,28 +395,54 @@ class QueueExplainer {
         // then start the transition to the natural (zero-transform) position
         if (toFlip.length) {
             void document.body.offsetHeight;
-            toFlip.forEach(el => {
+            toFlip.forEach((el) => {
                 el.style.transition = 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
                 el.style.transform = '';
-                el.addEventListener('transitionend', () => { el.style.transition = ''; }, { once: true });
+                el.addEventListener(
+                    'transitionend',
+                    () => {
+                        el.style.transition = '';
+                    },
+                    { once: true },
+                );
             });
         }
     }
 
-    start() {
+    start(): void {
         this._render();
     }
 }
 
 // ─── Animation 2: Special Outcomes ─────────────────────────────────────────
 
+interface OutcomeCouple {
+    lead: string;
+    follow: string;
+    leadState?: PillState;
+    followState?: PillState;
+    leadNew?: boolean;
+    followNew?: boolean;
+}
+
+interface OutcomeStep {
+    label: string;
+    phase?: 'result';
+    badgeType?: string;
+    badgeSpan?: 'leads' | 'follows';
+    couples: OutcomeCouple[];
+    note?: string;
+}
+
 class OutcomesExplainer {
-    constructor(container) {
+    private container: HTMLElement;
+
+    constructor(container: HTMLElement) {
         this.container = container;
         this._build();
     }
 
-    _build() {
+    private _build(): void {
         this.container.innerHTML = '';
 
         const desc = document.createElement('p');
@@ -406,7 +470,7 @@ class OutcomesExplainer {
     // All steps use the same 3-column grid (leads | + | follows) so pills stay in
     // their columns across every frame. The header row shows a badge over the
     // affected role on result steps, and is empty on all other steps.
-    _renderOutcomeStep(stageEl, captionEl, s) {
+    private _renderOutcomeStep(stageEl: HTMLElement, captionEl: HTMLElement, s: OutcomeStep): void {
         captionEl.textContent = s.label;
         stageEl.innerHTML = '';
 
@@ -415,14 +479,15 @@ class OutcomesExplainer {
 
         // Header row
         if (s.phase === 'result') {
-            const badge = makeOutcomeBadge(s.badgeType);
+            const badge = makeOutcomeBadge(s.badgeType || '');
             const badgeCell = document.createElement('div');
             badgeCell.appendChild(badge);
             if (s.badgeSpan === 'leads') {
                 grid.appendChild(badgeCell);
                 grid.appendChild(document.createElement('div'));
                 grid.appendChild(document.createElement('div'));
-            } else { // 'follows'
+            } else {
+                // 'follows'
                 grid.appendChild(document.createElement('div'));
                 grid.appendChild(document.createElement('div'));
                 grid.appendChild(badgeCell);
@@ -434,7 +499,7 @@ class OutcomesExplainer {
         }
 
         // Data rows — one grid row per couple
-        s.couples.forEach(c => {
+        s.couples.forEach((c) => {
             const leadPill = makePill(c.lead, 'lead', c.leadState || '');
             if (c.leadNew) leadPill.classList.add('anim-in');
             grid.appendChild(leadPill);
@@ -459,8 +524,8 @@ class OutcomesExplainer {
         }
     }
 
-    _buildTiePanel(panel) {
-        const steps = [
+    private _buildTiePanel(panel: HTMLElement): void {
+        const steps: OutcomeStep[] = [
             {
                 label: 'Two couples compete on stage.',
                 couples: [
@@ -479,21 +544,20 @@ class OutcomesExplainer {
                 ],
             },
             {
-                label: 'Re-match: same leads, but Jamie (follow winner) rotates to face Sam. Drew steps up as Alex\'s new follow.',
+                label: "Re-match: same leads, but Jamie (follow winner) rotates to face Sam. Drew steps up as Alex's new follow.",
                 couples: [
                     { lead: 'Alex', follow: 'Drew', followNew: true },
                     { lead: 'Sam', follow: 'Jamie' },
                 ],
-                note: '↩ Same leads return; Jamie rotates to the lead she hasn\'t faced',
+                note: "↩ Same leads return; Jamie rotates to the lead she hasn't faced",
             },
         ];
 
-        makeAnimPanel(panel, 'Tie', steps,
-            (stageEl, captionEl, s) => this._renderOutcomeStep(stageEl, captionEl, s));
+        makeAnimPanel(panel, 'Tie', steps, (stageEl, captionEl, s) => this._renderOutcomeStep(stageEl, captionEl, s));
     }
 
-    _buildNcPanel(panel) {
-        const steps = [
+    private _buildNcPanel(panel: HTMLElement): void {
+        const steps: OutcomeStep[] = [
             {
                 label: 'Two couples compete on stage.',
                 couples: [
@@ -521,17 +585,49 @@ class OutcomesExplainer {
             },
         ];
 
-        makeAnimPanel(panel, 'No Contest', steps,
-            (stageEl, captionEl, s) => this._renderOutcomeStep(stageEl, captionEl, s));
+        makeAnimPanel(panel, 'No Contest', steps, (stageEl, captionEl, s) =>
+            this._renderOutcomeStep(stageEl, captionEl, s),
+        );
     }
 
-    start() {}
+    start(): void {}
 }
 
 // ─── Animation 3: Tie-Break ─────────────────────────────────────────────────
 
+interface TiebreakScoreRow {
+    name: string;
+    pts: number;
+    tied: boolean;
+}
+
+interface TiebreakPick {
+    lead: string;
+    follow: string;
+}
+
+interface TiebreakTally {
+    name: string;
+    guestVotes: number;
+    contestantVotes: number;
+}
+
+type TiebreakStep =
+    | { label: string; phase: 'scoreboard'; scores: TiebreakScoreRow[] }
+    | { label: string; phase: 'partner-select'; picks: TiebreakPick[] }
+    | { label: string; phase: 'pairings'; pairings: TiebreakPick[] }
+    | { label: string; phase: 'vote'; tallies: TiebreakTally[] }
+    | { label: string; phase: 'winner'; winner: string; others: string[] };
+
 class TiebreakExplainer {
-    constructor(container) {
+    private container: HTMLElement;
+    private stepIndex: number;
+    private _steps: TiebreakStep[];
+    private _phaseEl!: HTMLElement;
+    private _captionEl!: HTMLElement;
+    private _counterEl!: HTMLElement;
+
+    constructor(container: HTMLElement) {
         this.container = container;
         this.stepIndex = 0;
 
@@ -545,7 +641,7 @@ class TiebreakExplainer {
                     { name: 'Jordan', pts: 5, tied: true },
                     { name: 'Casey', pts: 3, tied: false },
                     { name: 'Riley', pts: 2, tied: false },
-                ]
+                ],
             },
             {
                 label: 'Tied leads each pick a follow to dance with in the tie-break.',
@@ -554,7 +650,7 @@ class TiebreakExplainer {
                     { lead: 'Alex', follow: 'Jamie' },
                     { lead: 'Sam', follow: 'Taylor' },
                     { lead: 'Jordan', follow: 'Drew' },
-                ]
+                ],
             },
             {
                 label: 'Sub-Round 1 — each tied lead dances with their chosen partner.',
@@ -563,7 +659,7 @@ class TiebreakExplainer {
                     { lead: 'Alex', follow: 'Jamie' },
                     { lead: 'Sam', follow: 'Taylor' },
                     { lead: 'Jordan', follow: 'Drew' },
-                ]
+                ],
             },
             {
                 label: 'Sub-Round 2 — partners rotate so each lead dances with a different follow.',
@@ -572,16 +668,16 @@ class TiebreakExplainer {
                     { lead: 'Alex', follow: 'Taylor' },
                     { lead: 'Sam', follow: 'Drew' },
                     { lead: 'Jordan', follow: 'Jamie' },
-                ]
+                ],
             },
             {
                 label: 'Final vote — guest and contestant judges each cast their vote.',
                 phase: 'vote',
                 tallies: [
-                    { name: 'Alex',   guestVotes: 0, contestantVotes: 1 },
-                    { name: 'Sam',    guestVotes: 1, contestantVotes: 2 },
+                    { name: 'Alex', guestVotes: 0, contestantVotes: 1 },
+                    { name: 'Sam', guestVotes: 1, contestantVotes: 2 },
                     { name: 'Jordan', guestVotes: 1, contestantVotes: 0 },
-                ]
+                ],
             },
             {
                 label: 'Sam wins the tie-break!',
@@ -594,12 +690,13 @@ class TiebreakExplainer {
         this._build();
     }
 
-    _build() {
+    private _build(): void {
         this.container.innerHTML = '';
 
         const desc = document.createElement('p');
         desc.className = 'explainer-desc';
-        desc.textContent = 'When the battle ends early and contestants are tied on points, a tie-break mini-tournament runs: each tied contestant picks a partner, dances two sub-rounds, then judges vote to pick a winner.';
+        desc.textContent =
+            'When the battle ends early and contestants are tied on points, a tie-break mini-tournament runs: each tied contestant picks a partner, dances two sub-rounds, then judges vote to pick a winner.';
         this.container.appendChild(desc);
 
         // [‹] [phase content] [›]
@@ -639,16 +736,16 @@ class TiebreakExplainer {
         this.container.appendChild(controls);
     }
 
-    _updateCounter() {
-        this._counterEl.textContent = (this.stepIndex + 1) + ' / ' + this._steps.length;
+    private _updateCounter(): void {
+        this._counterEl.textContent = this.stepIndex + 1 + ' / ' + this._steps.length;
     }
 
-    _stepBy(delta) {
+    private _stepBy(delta: number): void {
         this.stepIndex = (this.stepIndex + delta + this._steps.length) % this._steps.length;
         this._render();
     }
 
-    _render() {
+    private _render(): void {
         const s = this._steps[this.stepIndex];
         this._captionEl.textContent = s.label;
         this._updateCounter();
@@ -657,7 +754,7 @@ class TiebreakExplainer {
         if (s.phase === 'scoreboard') {
             const list = document.createElement('div');
             list.className = 'viz-score-list';
-            s.scores.forEach(row => {
+            s.scores.forEach((row) => {
                 const r = document.createElement('div');
                 r.className = 'viz-score-row' + (row.tied ? ' tied' : '');
 
@@ -666,7 +763,7 @@ class TiebreakExplainer {
                 bar.className = 'viz-score-bar';
                 const fill = document.createElement('div');
                 fill.className = 'viz-score-fill' + (row.tied ? ' tied' : '');
-                fill.style.width = Math.round(row.pts / 7 * 100) + '%';
+                fill.style.width = Math.round((row.pts / 7) * 100) + '%';
                 bar.appendChild(fill);
 
                 const pts = document.createElement('span');
@@ -680,12 +777,10 @@ class TiebreakExplainer {
                 list.appendChild(r);
             });
             this._phaseEl.appendChild(list);
-        }
-
-        else if (s.phase === 'partner-select') {
+        } else if (s.phase === 'partner-select') {
             const list = document.createElement('div');
             list.className = 'viz-picks-list';
-            s.picks.forEach(pick => {
+            s.picks.forEach((pick) => {
                 const row = document.createElement('div');
                 row.className = 'viz-pick-row anim-in';
                 row.appendChild(makePill(pick.lead, 'lead', ''));
@@ -697,12 +792,10 @@ class TiebreakExplainer {
                 list.appendChild(row);
             });
             this._phaseEl.appendChild(list);
-        }
-
-        else if (s.phase === 'pairings') {
+        } else if (s.phase === 'pairings') {
             const list = document.createElement('div');
             list.className = 'viz-stage-pairs';
-            s.pairings.forEach(p => {
+            s.pairings.forEach((p) => {
                 const card = document.createElement('div');
                 card.className = 'viz-couple-card anim-in';
                 card.appendChild(makePill(p.lead, 'lead', ''));
@@ -714,9 +807,7 @@ class TiebreakExplainer {
                 list.appendChild(card);
             });
             this._phaseEl.appendChild(list);
-        }
-
-        else if (s.phase === 'vote') {
+        } else if (s.phase === 'vote') {
             const grid = document.createElement('div');
             grid.className = 'viz-vote-grid';
 
@@ -731,7 +822,7 @@ class TiebreakExplainer {
             h2.textContent = 'Contestant Judges';
             grid.appendChild(h2);
 
-            s.tallies.forEach(t => {
+            s.tallies.forEach((t) => {
                 grid.appendChild(makePill(t.name, 'lead', ''));
 
                 const g = document.createElement('span');
@@ -746,9 +837,7 @@ class TiebreakExplainer {
             });
 
             this._phaseEl.appendChild(grid);
-        }
-
-        else if (s.phase === 'winner') {
+        } else if (s.phase === 'winner') {
             const banner = document.createElement('div');
             banner.className = 'viz-winner-banner';
 
@@ -776,7 +865,7 @@ class TiebreakExplainer {
                 otherLabel.style.color = 'var(--text-muted)';
                 otherLabel.style.fontSize = '13px';
                 others.appendChild(otherLabel);
-                s.others.forEach(name => {
+                s.others.forEach((name) => {
                     others.appendChild(makePill(name, 'lead', 'loser'));
                 });
                 this._phaseEl.appendChild(others);
@@ -784,7 +873,7 @@ class TiebreakExplainer {
         }
     }
 
-    start() {
+    start(): void {
         this._render();
     }
 }
