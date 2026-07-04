@@ -55,8 +55,9 @@ to loopback so only the proxy can reach it.
 
 ```bash
 git pull
-docker compose up -d --build
-docker compose run --rm web python scripts/migrate.py   # if new migrations were added
+docker compose build                                    # build first: migrate runs from the new image
+docker compose run --rm web python scripts/migrate.py   # applies only unapplied migrations (schema_migrations ledger)
+docker compose up -d
 ```
 
 Data persists in the `hustlentussle_pgdata` volume across rebuilds and restarts.
