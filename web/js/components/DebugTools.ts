@@ -578,49 +578,19 @@ class DebugTools {
 
             // Store the session ID
             localStorage.setItem('sessionId', data.session_id);
-            // Set both the non-window global (app.js's top-level `let`, shared
-            // classic-script scope) and the window fallback
-            try {
-                sessionId = data.session_id;
-            } catch {
-                /* app.js not loaded */
-            }
             window.sessionId = data.session_id;
-            if (typeof window.updateSessionIdDisplay === 'function') {
-                window.updateSessionIdDisplay();
-            }
 
             // Store other game data
             window.guestJudges = data.guest_judges;
             window.initialLeads = data.initial_leads;
             window.initialFollows = data.initial_follows;
 
-            // Show battle screen and render canonical state reliably
-            if (typeof window.showScreen === 'function') {
-                const battleEl = document.getElementById('battle-screen');
-                if (battleEl) window.showScreen(battleEl);
-            } else {
-                const setupEl = document.getElementById('setup-screen');
-                const battleEl = document.getElementById('battle-screen');
-                if (setupEl) setupEl.classList.remove('active');
-                if (battleEl) battleEl.classList.add('active');
-            }
-
-            // Prefer direct state fetch to avoid relying on external globals
-            try {
-                const stateResp = await fetch(`/api/state?session_id=${data.session_id}`);
-                if (stateResp.ok) {
-                    const stateJson = await stateResp.json();
-                    if (typeof window.renderFromState === 'function') {
-                        window.renderFromState(stateJson);
-                    }
-                } else if (typeof window.refreshCanonicalState === 'function') {
-                    await window.refreshCanonicalState();
-                }
-            } catch {
-                if (typeof window.refreshCanonicalState === 'function') {
-                    await window.refreshCanonicalState();
-                }
+            // Enter the battle through the router: hydrateBattleRoute sets
+            // app.js's internal session state and renders canonical state.
+            // (app.js is a bundled module — its state is only reachable
+            // through these public entry points.)
+            if (typeof window.navigate === 'function') {
+                window.navigate('/battle/' + encodeURIComponent(data.session_id));
             }
 
             console.log('Battle started with random names');

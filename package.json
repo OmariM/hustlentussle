@@ -3,8 +3,8 @@
   "private": true,
   "description": "Build tooling for the Hustle n' Tussle frontend (esbuild transform + tsc typecheck)",
   "scripts": {
-    "build": "esbuild web/js/app.js web/js/router.ts web/js/ytd.ts web/js/explainers.ts web/js/components/DebugTools.ts --outdir=web/js/dist --outbase=web/js --sourcemap --target=es2020",
-    "watch": "esbuild web/js/app.js web/js/router.ts web/js/ytd.ts web/js/explainers.ts web/js/components/DebugTools.ts --outdir=web/js/dist --outbase=web/js --sourcemap --target=es2020 --watch",
+    "build": "esbuild web/js/app.js web/js/router.ts web/js/ytd.ts web/js/explainers.ts web/js/components/DebugTools.ts --bundle --format=iife --outdir=web/js/dist --outbase=web/js --sourcemap --target=es2020",
+    "watch": "esbuild web/js/app.js web/js/router.ts web/js/ytd.ts web/js/explainers.ts web/js/components/DebugTools.ts --bundle --format=iife --outdir=web/js/dist --outbase=web/js --sourcemap --target=es2020 --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint web/js"
   },

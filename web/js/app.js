@@ -1,3 +1,5 @@
+import { getState as apiGetState } from './api';
+
 // Global variables
 let sessionId = null;
 let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
@@ -923,9 +925,7 @@ async function initDisplayMode() {
 // Canonical state helpers
 async function fetchCanonicalState() {
     if (!sessionId) return null;
-    const resp = await fetch(`/api/state?session_id=${sessionId}`);
-    if (!resp.ok) throw new Error('Failed to fetch canonical state');
-    return await resp.json();
+    return await apiGetState(sessionId);
 }
 
 function renderDisplayModeTiebreak(tb) {
@@ -5089,3 +5089,16 @@ function exitDemo() {
         wireDemo();
     }
 })();
+// ============================================================
+// Cross-file exports
+// ============================================================
+// app.js is bundled as an IIFE, so top-level declarations are no longer
+// window properties. Everything other files call lives here explicitly
+// (router.ts, ytd.ts, components/DebugTools.ts; see global.d.ts).
+window.showScreen = showScreen;
+window.hydrateBattleRoute = hydrateBattleRoute;
+window.hydrateResultsRoute = hydrateResultsRoute;
+window.updateSessionIdDisplay = updateSessionIdDisplay;
+window.renderFromState = renderFromState;
+window.refreshCanonicalState = refreshCanonicalState;
+window.endGame = endGame;
