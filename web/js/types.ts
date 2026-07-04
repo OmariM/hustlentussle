@@ -256,3 +256,45 @@ export interface ResultsResponse {
     champions: Champions;
     tiebreak_winners?: { lead: string | null; follow: string | null };
 }
+
+// ---- Tie-break flow (/api/end_game + /api/tiebreak/*, web/routes/game.py) ----
+
+/** /api/end_game response when a tie-break is required. */
+export interface TiebreakStartData {
+    tiebreak_required: true;
+    lead_needed: boolean;
+    follow_needed: boolean;
+    tied_leads: string[];
+    tied_follows: string[];
+    lead_max_points: number;
+    follow_max_points: number;
+    all_leads: string[];
+    all_follows: string[];
+    guest_judges: string[];
+    contestant_judges: string[];
+}
+
+export interface TiebreakSetPartnersResponse {
+    sub_round: number;
+    sr1_pairings: Array<[string, string]>;
+    sr2_pairings: Array<[string, string]>;
+}
+
+export interface TiebreakAdvanceResponse {
+    sub_round: number;
+}
+
+export interface TiebreakRoleResult {
+    resolved: boolean;
+    winner: string | null;
+    vote_tally: Record<string, number>;
+    still_tied?: string[];
+}
+
+export interface TiebreakVoteResponse {
+    lead_result: TiebreakRoleResult | null;
+    follow_result: TiebreakRoleResult | null;
+    needs_another_round: boolean;
+    tied_leads: string[];
+    tied_follows: string[];
+}
