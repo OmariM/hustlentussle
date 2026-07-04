@@ -22,7 +22,7 @@ load_dotenv()
 # Add parent directory to path to import game_logic and persistence
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game, Contestant  # noqa: E402
-from web.config import get_config  # noqa: E402
+from web.config import get_config, ALLOWED_ORIGIN_HOSTS  # noqa: E402
 from persistence import (  # noqa: E402
     RepositoryFactory,
     CleanupScheduler,
@@ -30,6 +30,7 @@ from persistence import (  # noqa: E402
     MemoryGameRepository,
 )
 from werkzeug.security import check_password_hash  # noqa: E402
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 from stats import (  # noqa: E402
     StatsRepository,
     normalize_battle,
@@ -56,7 +57,15 @@ if not app.config.get("ASSET_VERSION"):
     app.config["ASSET_VERSION"] = (
         os.environ.get("ASSET_VERSION") or os.environ.get("GIT_COMMIT") or str(int(time.time()))
     )
-CORS(app)
+
+# The app sits behind a reverse proxy (Nginx Proxy Manager) in dev and prod;
+# trust one hop of X-Forwarded-* so request.remote_addr / scheme are the
+# real client's, not the proxy's (needed for login rate limiting).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# The frontend is same-origin; CORS exists only for known deployments of
+# this app, not the whole internet.
+CORS(app, origins=[f"https://{h}" for h in ALLOWED_ORIGIN_HOSTS] + [f"http://{h}" for h in ALLOWED_ORIGIN_HOSTS])
 
 # Stronger cache control: ensure index.html and assets revalidate after deploy.
 # This prevents "hard to shake" stale JS/CSS in some browsers/CDNs.
@@ -1745,11 +1754,29 @@ def spotify_playlist_tracks():
 # =========================================================================
 
 
+def _request_origin_allowed():
+    """CSRF defense-in-depth for cookie-authenticated endpoints.
+
+    Browsers always send an Origin header on cross-site state-changing
+    requests; reject those from hosts we don't serve. Requests without an
+    Origin (curl, same-site GETs, non-browser clients) fall back to the
+    Referer, and are allowed when neither header is present since they
+    cannot carry a cross-site-forged cookie request.
+    """
+    origin = request.headers.get("Origin") or request.headers.get("Referer")
+    if not origin:
+        return True
+    host = urllib.parse.urlparse(origin).hostname
+    return host in ALLOWED_ORIGIN_HOSTS
+
+
 def admin_required(f):
     """Guard an endpoint so only a logged-in admin (Flask session) can call it."""
 
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not _request_origin_allowed():
+            return jsonify({"error": "Cross-origin request rejected"}), 403
         if not session.get("admin_id"):
             return jsonify({"error": "Authentication required"}), 401
         return f(*args, **kwargs)
@@ -1757,8 +1784,34 @@ def admin_required(f):
     return wrapper
 
 
+# In-process sliding-window rate limit for admin login (per client IP,
+# per gunicorn worker — coarse but sufficient against brute force here).
+_LOGIN_MAX_FAILURES = 5
+_LOGIN_WINDOW_SECONDS = 15 * 60
+_login_failures: Dict[str, List[float]] = {}
+_login_failures_lock = threading.Lock()
+
+
+def _login_rate_limited(ip: str) -> bool:
+    now = time.time()
+    with _login_failures_lock:
+        attempts = [t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
+        _login_failures[ip] = attempts
+        return len(attempts) >= _LOGIN_MAX_FAILURES
+
+
+def _record_login_failure(ip: str):
+    with _login_failures_lock:
+        _login_failures.setdefault(ip, []).append(time.time())
+
+
 @app.route("/api/admin/login", methods=["POST"])
 def admin_login():
+    if not _request_origin_allowed():
+        return jsonify({"error": "Cross-origin request rejected"}), 403
+    client_ip = request.remote_addr or "unknown"
+    if _login_rate_limited(client_ip):
+        return jsonify({"error": "Too many failed login attempts; try again later"}), 429
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
@@ -1768,7 +1821,10 @@ def admin_login():
         return jsonify({"error": "Stats database not configured"}), 503
     admin = stats_repo.get_admin_by_email(email)
     if not admin or not check_password_hash(admin["password_hash"], password):
+        _record_login_failure(client_ip)
         return jsonify({"error": "Invalid credentials"}), 401
+    with _login_failures_lock:
+        _login_failures.pop(client_ip, None)
     session["admin_id"] = str(admin["id"])
     session["admin_email"] = admin["email"]
     return jsonify({"authenticated": True, "email": admin["email"]})
