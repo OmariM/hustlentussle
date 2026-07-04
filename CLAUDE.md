@@ -39,7 +39,7 @@ python simulate_test.py
 
 # Production (self-hosted Docker stack — see DEPLOY.md)
 docker compose up -d --build
-docker compose run --rm web python scripts/migrate.py          # apply DB migrations
+docker compose run --rm web python scripts/migrate.py          # apply DB migrations (ledger-tracked; build image first)
 docker compose run --rm web python scripts/create_admin.py --email you@example.com
 
 # Production (bare gunicorn, no Docker)

@@ -81,33 +81,22 @@ class PostgresGameRepository(GameRepositoryInterface):
         except psycopg2.Error as e:
             raise PersistenceError(f"Failed to connect to PostgreSQL: {e}")
 
-        # Initialize database schema
-        self._init_schema()
+        # Verify the schema exists (created by scripts/migrate.py, not here)
+        self._check_schema()
 
-    def _init_schema(self):
-        """Create the games table if it doesn't exist."""
-        # Execute each SQL statement separately for psycopg2 compatibility
-        statements = [
-            """
-            CREATE TABLE IF NOT EXISTS games (
-                session_id VARCHAR(64) PRIMARY KEY,
-                game_state JSONB NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                expires_at TIMESTAMP WITH TIME ZONE NOT NULL
-            )
-            """,
-            # Index for expiration queries
-            "CREATE INDEX IF NOT EXISTS idx_games_expires_at ON games(expires_at)",
-            # Index for JSONB queries (if needed later)
-            "CREATE INDEX IF NOT EXISTS idx_games_state ON games USING GIN(game_state)",
-        ]
+    def _check_schema(self):
+        """Fail loudly if the games table is missing.
 
+        Schema is owned by migrations/ (applied via scripts/migrate.py);
+        creating it lazily here would hide schema drift.
+        """
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                for statement in statements:
-                    cur.execute(statement)
-            conn.commit()
+                cur.execute("SELECT to_regclass('games')")
+                if cur.fetchone()[0] is None:
+                    raise PersistenceError(
+                        "The 'games' table does not exist. Run migrations first: python scripts/migrate.py"
+                    )
 
     @contextmanager
     def _get_connection(self):

@@ -46,12 +46,19 @@ jobs:
           git checkout prod
           git reset --hard origin/prod
 
+      - name: Build image
+        run: |
+          cd /home/oat/projects/hustlentussle-prod
+          docker compose build
+
+      # Migrations must run from the freshly built image (compose run uses
+      # the last built image, so building first is load-bearing here).
       - name: Apply DB migrations
         run: |
           cd /home/oat/projects/hustlentussle-prod
           docker compose run --rm web python scripts/migrate.py
 
-      - name: Build and restart containers
+      - name: Restart containers
         run: |
           cd /home/oat/projects/hustlentussle-prod
-          docker compose up -d --build
+          docker compose up -d
