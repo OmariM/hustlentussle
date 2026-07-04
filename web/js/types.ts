@@ -112,8 +112,8 @@ export interface ChampionInfo {
 }
 
 export interface Champions {
-    lead: ChampionInfo;
-    follow: ChampionInfo;
+    lead: ChampionInfo | null;
+    follow: ChampionInfo | null;
 }
 
 export interface ExportParticipant {
@@ -133,6 +133,9 @@ export interface SongInfo {
     track_name?: string | null;
     artist_name?: string | null;
     spotify_url?: string | null;
+    /** Set client-side when Spotify metadata enrichment runs (results/download). */
+    title?: string | null;
+    artist?: string | null;
     [key: string]: unknown;
 }
 

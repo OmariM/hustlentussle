@@ -42,7 +42,8 @@ declare global {
                 initialMeta?: { name?: string; battle_date?: string | null };
                 onSave: (
                     editedPayload: BattleExportV1,
-                    meta: { name: string; battle_date: string },
+                    // null when showMetaFields is false (the results-screen flow)
+                    meta: { name: string; battle_date: string } | null,
                 ) => Promise<void>;
             },
         ) => void;
