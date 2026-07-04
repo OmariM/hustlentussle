@@ -14,6 +14,34 @@ import {
     startSpotifyAuth,
 } from './spotify';
 import { initDemo, currentDemoAction, demoActionCompleted } from './demo';
+import {
+    display,
+    detectDisplayMode,
+    initDisplayDeps,
+    initDisplayMode,
+    applyDisplayModeUI,
+    startDisplayPolling,
+    stopDisplayPolling,
+    renderDisplayModeTiebreak,
+} from './display';
+
+// Wire display mode to the render pipeline (function declarations hoist;
+// DOM-dependent values are resolved lazily inside the arrows)
+initDisplayDeps({
+    fetchState: () => fetchCanonicalState(),
+    renderFromState: (state) => renderFromState(state),
+    renderFromStateWithoutQueueAnimation: (state) => {
+        skipQueueAnimationOnNextRender = true;
+        renderFromState(state);
+        skipQueueAnimationOnNextRender = false;
+    },
+    hasPendingQueueAnimation: () => !!(pendingQueueAnimationData &&
+        (pendingQueueAnimationData.leadLosers.length > 0 ||
+         pendingQueueAnimationData.followLosers.length > 0)),
+    triggerPendingQueueAnimation: () => triggerPendingQueueAnimation(),
+    endCompetition: () => endCompetition(),
+    showBattleScreen: () => showScreen(roundScreen),
+});
 
 // Global variables
 let sessionId = null;
@@ -51,9 +79,7 @@ let resultsGuestJudges = [];
 let resultsEventTitle = null; // custom subtitle; falls back to "Month Edition (Year)"
 
 // Display mode state (for viewer-only mode without voting controls)
-let displayMode = false;
-let displayPollInterval = null;
-const DISPLAY_POLL_INTERVAL_MS = 3000; // Poll every 3 seconds in display mode
+// Display mode state lives in display.ts (`display.active` + polling internals)
 
 // Queue order animation state (for display mode)
 let previousLeadOrder = [];
@@ -97,17 +123,17 @@ let simpleContestantJudgesEnabled = false;
 // Apply mode (layout) and color (light/dark) independently
 // Color preferences are stored per mode so admin and display can differ
 function applyTheme() {
-    const mode = displayMode ? 'display' : 'admin';
+    const mode = display.active ? 'display' : 'admin';
     document.documentElement.setAttribute('data-mode', mode);
 
     const colorKey = `color-preference-${mode}`;
     const savedColor = localStorage.getItem(colorKey);
-    const color = savedColor || (displayMode ? 'dark' : 'light');
+    const color = savedColor || (display.active ? 'dark' : 'light');
     document.documentElement.setAttribute('data-color', color);
 }
 
 function toggleTheme() {
-    const mode = displayMode ? 'display' : 'admin';
+    const mode = display.active ? 'display' : 'admin';
     const current = document.documentElement.getAttribute('data-color');
     const next = (current === 'light') ? 'dark' : 'light';
     localStorage.setItem(`color-preference-${mode}`, next);
@@ -162,8 +188,12 @@ let undoRoundBtn;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded');
     
-    // Detect display mode early (before DOM element setup)
-    detectDisplayMode();
+    // Detect display mode early (before DOM element setup); adopt the URL's session id
+    const displaySessionId = detectDisplayMode();
+    if (displaySessionId) {
+        sessionId = displaySessionId;
+        localStorage.setItem('sessionId', sessionId);
+    }
     applyTheme();
 
     // Initialize DOM elements
@@ -561,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hide nav bar initially to avoid a flash before the router renders the first route.
     const navBar = document.getElementById('nav-bar');
-    if (navBar && !displayMode) {
+    if (navBar && !display.active) {
         navBar.style.display = 'none';
     }
 
@@ -591,7 +621,7 @@ function showScreen(screen) {
     // Hide nav on home screen and in display mode
     const navBar = document.getElementById('nav-bar');
     if (navBar) {
-        navBar.style.display = (screen === homeScreen || displayMode) ? 'none' : '';
+        navBar.style.display = (screen === homeScreen || display.active) ? 'none' : '';
     }
 
     // Reset error messages when switching screens
@@ -610,7 +640,7 @@ function showScreen(screen) {
     } catch (_) {}
 
     // Apply display mode UI changes when switching screens
-    if (displayMode) {
+    if (display.active) {
         applyDisplayModeUI();
         // Start/stop polling based on which screen is active
         if (screen === roundScreen) {
@@ -619,213 +649,6 @@ function showScreen(screen) {
             stopDisplayPolling();
         }
     }
-}
-
-// Display mode functions
-function detectDisplayMode() {
-    try {
-        const url = new URL(window.location.href);
-        const mode = url.searchParams.get('mode');
-        const urlSessionId = url.searchParams.get('session_id');
-        
-        if (mode === 'display') {
-            displayMode = true;
-            document.body.classList.add('display-mode');
-            console.log('Display mode enabled');
-            
-            // If session_id is provided in URL, use it
-            if (urlSessionId) {
-                sessionId = urlSessionId;
-                localStorage.setItem('sessionId', sessionId);
-            }
-        }
-    } catch (e) {
-        console.warn('Failed to detect display mode:', e);
-    }
-    return displayMode;
-}
-
-function startDisplayPolling() {
-    if (!displayMode || displayPollInterval) return;
-    
-    // Track the last round number we displayed (for overlay triggering)
-    let lastDisplayedRound = null;
-    
-    console.log('Starting display mode polling...');
-    displayPollInterval = setInterval(async () => {
-        // Skip polling while transition overlay is showing
-        if (roundTransitionInProgress) return;
-        
-        try {
-            const state = await fetchCanonicalState();
-            if (state) {
-                const currentRound = state.round?.number || null;
-                
-                // Check if round went forward (not backwards like in an undo)
-                const roundWentForward = lastDisplayedRound !== null && 
-                                         currentRound !== null && 
-                                         currentRound > lastDisplayedRound;
-                
-                if (roundWentForward) {
-                    // Full transition sequence:
-                    // 1. Hide sections immediately (invisible during overlay)
-                    // 2. Show overlay
-                    // 3. Render state (skip queue animation, keep old order for animation)
-                    // 4. Staggered fade-in of sections
-                    // 5. Trigger queue animation (from old order to new order)
-                    // 6. Clear transition flag when complete
-                    
-                    // Hide sections before overlay so they're invisible during it
-                    hideSectionsForTransition();
-                    
-                    showRoundTransitionOverlay(currentRound, () => {
-                        // Skip queue animation during initial render - we'll trigger it after stagger
-                        skipQueueAnimationOnNextRender = true;
-                        renderFromState(state);
-                        skipQueueAnimationOnNextRender = false;
-                        lastDisplayedRound = currentRound;
-                        
-                        // Re-hide sections after render (render may have reset DOM)
-                        hideSectionsForTransition();
-                        
-                        // Perform staggered fade-in, then trigger queue animation
-                        performStaggeredFadeIn(() => {
-                            // Check if queue animation will run before triggering
-                            const willAnimateQueue = pendingQueueAnimationData && 
-                                (pendingQueueAnimationData.leadLosers.length > 0 || 
-                                 pendingQueueAnimationData.followLosers.length > 0);
-                            
-                            triggerPendingQueueAnimation();
-                            
-                            // Wait for queue animation to complete before allowing next poll
-                            // Queue animation takes EXIT_DURATION + ENTRY_DURATION + CLEANUP_BUFFER = ~2.4s
-                            const QUEUE_ANIMATION_TOTAL = 2500;
-                            setTimeout(() => {
-                                roundTransitionInProgress = false;
-                            }, willAnimateQueue ? QUEUE_ANIMATION_TOTAL : 0);
-                        });
-                    });
-                } else {
-                    // No round change, just update normally
-                    renderFromState(state);
-                    lastDisplayedRound = currentRound;
-                }
-                
-                // Check if game is finished and redirect to results
-                if (state.flags && state.flags.finished) {
-                    stopDisplayPolling();
-                    // Trigger end game to show results
-                    endCompetition();
-                }
-            }
-        } catch (e) {
-            console.warn('Display polling error:', e);
-        }
-    }, DISPLAY_POLL_INTERVAL_MS);
-}
-
-function stopDisplayPolling() {
-    if (displayPollInterval) {
-        clearInterval(displayPollInterval);
-        displayPollInterval = null;
-        console.log('Display mode polling stopped');
-    }
-}
-
-// Round transition overlay for display mode
-const ROUND_OVERLAY_FADE_IN = 400;   // ms - fade in duration
-const ROUND_OVERLAY_HOLD = 1500;     // ms - hold duration
-const ROUND_OVERLAY_FADE_OUT = 400;  // ms - fade out duration
-
-function showRoundTransitionOverlay(roundNumber, callback) {
-    const overlay = document.getElementById('round-transition-overlay');
-    const roundNumberEl = document.getElementById('overlay-round-number');
-    
-    if (!overlay || !roundNumberEl) {
-        // Overlay elements not found, just run callback
-        if (callback) callback();
-        return;
-    }
-    
-    roundTransitionInProgress = true;
-    
-    // Set the round number
-    roundNumberEl.textContent = roundNumber;
-    
-    // Show overlay (remove hidden, add active after a frame for transition)
-    overlay.classList.remove('hidden');
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-    });
-    
-    // Hold, then fade out
-    setTimeout(() => {
-        overlay.classList.remove('active');
-        
-        // After fade out, hide completely and run callback
-        // NOTE: Keep roundTransitionInProgress = true until entire sequence completes
-        setTimeout(() => {
-            overlay.classList.add('hidden');
-            // Don't set roundTransitionInProgress to false here - let the full sequence control it
-            if (callback) callback();
-        }, ROUND_OVERLAY_FADE_OUT);
-    }, ROUND_OVERLAY_FADE_IN + ROUND_OVERLAY_HOLD);
-}
-
-// Staggered fade-in animation timing
-const STAGGER_DELAY_MS = 150; // Delay between each section
-const STAGGER_ANIMATION_MS = 400; // Duration of each fade-in
-
-// Get the display mode sections to animate (grid children in display mode)
-function getDisplaySections() {
-    return [
-        document.getElementById('current-matchup'),
-        document.querySelector('.judges'),
-        document.getElementById('next-up-section'),
-        document.querySelector('.scores-display')
-    ].filter(Boolean);
-}
-
-// Hide sections before overlay (so they're invisible during overlay)
-function hideSectionsForTransition() {
-    getDisplaySections().forEach(section => {
-        section.style.opacity = '0';
-    });
-}
-
-function performStaggeredFadeIn(callback) {
-    const sections = getDisplaySections();
-    if (sections.length === 0) {
-        if (callback) callback();
-        return;
-    }
-
-    // Ensure all sections start hidden
-    sections.forEach(section => {
-        section.style.opacity = '0';
-        section.style.transform = 'translateY(12px)';
-    });
-
-    // Stagger each section's fade-in
-    sections.forEach((section, index) => {
-        setTimeout(() => {
-            section.style.transition = `opacity ${STAGGER_ANIMATION_MS}ms ease, transform ${STAGGER_ANIMATION_MS}ms ease`;
-            section.style.opacity = '1';
-            section.style.transform = 'translateY(0)';
-        }, index * STAGGER_DELAY_MS);
-    });
-
-    // Calculate total animation time and run callback after completion
-    const totalAnimationTime = (sections.length - 1) * STAGGER_DELAY_MS + STAGGER_ANIMATION_MS + 50;
-    setTimeout(() => {
-        // Clean up inline styles
-        sections.forEach(section => {
-            section.style.transition = '';
-            section.style.opacity = '';
-            section.style.transform = '';
-        });
-        if (callback) callback();
-    }, totalAnimationTime);
 }
 
 function triggerPendingQueueAnimation() {
@@ -840,135 +663,22 @@ function triggerPendingQueueAnimation() {
     pendingQueueAnimationData = null;
 }
 
-function applyDisplayModeUI() {
-    if (!displayMode) return;
-    
-    // Hide voting sections
-    const combinedVoting = document.getElementById('combined-voting');
-    if (combinedVoting) combinedVoting.style.display = 'none';
-    
-    // Hide round results section (Next Round / End Battle buttons)
-    const roundResults = document.getElementById('round-results');
-    if (roundResults) roundResults.style.display = 'none';
-    
-    // Hide spotify-related controls for cleaner display
-    const spotifyToggleEl = document.getElementById('spotify-toggle');
-    if (spotifyToggleEl) spotifyToggleEl.parentElement.style.display = 'none';
-}
-
-async function initDisplayMode() {
-    if (!displayMode) return;
-    
-    if (!sessionId) {
-        // No session ID - show error on home screen
-        alert('Display mode requires a session_id parameter. Example: ?mode=display&session_id=YOUR_SESSION_ID');
-        return;
-    }
-    
-    // Apply display mode UI changes
-    applyDisplayModeUI();
-    
-    // Fetch initial state and go directly to battle screen
-    try {
-        const state = await fetchCanonicalState();
-        if (state) {
-            // Update session ID display
-            const sessionIdDisplay = document.getElementById('session-id-display');
-            if (sessionIdDisplay) {
-                sessionIdDisplay.textContent = `Session: ${sessionId}`;
-                sessionIdDisplay.style.display = 'block';
-            }
-            
-            // Go directly to battle screen
-            showScreen(roundScreen);
-            renderFromState(state);
-            
-            // Start polling for updates
-            startDisplayPolling();
-        } else {
-            alert('Failed to load game state. Session may not exist.');
-        }
-    } catch (e) {
-        console.error('Failed to initialize display mode:', e);
-        alert('Failed to connect to game session.');
-    }
-}
-
 // Canonical state helpers
 async function fetchCanonicalState() {
     if (!sessionId) return null;
     return await apiGetState(sessionId);
 }
 
-function renderDisplayModeTiebreak(tb) {
-    document.getElementById('tiebreak-display-section').style.display = '';
-    document.querySelector('.round-header').style.display = 'none';
-
-    const phaseEl = document.getElementById('tiebreak-display-phase-label');
-    const contestantsEl = document.getElementById('tiebreak-display-contestants');
-    const pairingsEl = document.getElementById('tiebreak-display-pairings');
-    const winnersEl = document.getElementById('tiebreak-display-winners');
-
-    const phaseLabels = {
-        0: 'Tie-Break — Selecting Partners',
-        1: 'Tie-Break — Sub-Round 1',
-        2: 'Tie-Break — Sub-Round 2',
-        3: 'Tie-Break — Final Vote',
-    };
-    phaseEl.textContent = phaseLabels[tb.sub_round] ?? 'Tie-Break';
-
-    if (tb.sub_round === 0 || tb.sub_round === 3) {
-        let html = '';
-        if (tb.lead_needed && tb.tied_leads.length && !tb.lead_winner) {
-            html += `<div class="tiebreak-display-role-group">
-                <span class="tiebreak-display-role-label">Leads</span>
-                ${tb.tied_leads.map(n => `<span class="contestant lead tiebreak-display-name">${n}</span>`).join('<span class="tiebreak-display-vs">vs</span>')}
-            </div>`;
-        }
-        if (tb.follow_needed && tb.tied_follows.length && !tb.follow_winner) {
-            html += `<div class="tiebreak-display-role-group">
-                <span class="tiebreak-display-role-label">Follows</span>
-                ${tb.tied_follows.map(n => `<span class="contestant follow tiebreak-display-name">${n}</span>`).join('<span class="tiebreak-display-vs">vs</span>')}
-            </div>`;
-        }
-        contestantsEl.innerHTML = html;
-        pairingsEl.innerHTML = '';
-    }
-
-    if (tb.sub_round === 1 || tb.sub_round === 2) {
-        const pairings = tb.sub_round === 1 ? tb.sr1_pairings : tb.sr2_pairings;
-        contestantsEl.innerHTML = '';
-        pairingsEl.innerHTML = pairings.map(([lead, follow]) =>
-            `<div class="tiebreak-display-pairing-card">
-                <span class="contestant lead">${lead}</span>
-                <span class="tiebreak-display-plus">+</span>
-                <span class="contestant follow">${follow}</span>
-            </div>`
-        ).join('');
-    }
-
-    let winnerHtml = '';
-    if (tb.lead_winner) winnerHtml += `<div class="tiebreak-display-winner-banner">
-        <span class="tiebreak-display-role-label">Lead Winner</span>
-        <span class="tiebreak-display-winner-name contestant lead">${tb.lead_winner}</span>
-    </div>`;
-    if (tb.follow_winner) winnerHtml += `<div class="tiebreak-display-winner-banner">
-        <span class="tiebreak-display-role-label">Follow Winner</span>
-        <span class="tiebreak-display-winner-name contestant follow">${tb.follow_winner}</span>
-    </div>`;
-    winnersEl.innerHTML = winnerHtml;
-}
-
 function renderFromState(state) {
     if (!state || !state.round || !state.round.pairs) return;
 
     // Display mode: hand off to tiebreak renderer when a tiebreak is active
-    if (displayMode && state.tiebreak?.active) {
+    if (display.active && state.tiebreak?.active) {
         renderDisplayModeTiebreak(state.tiebreak);
         return;
     }
     // Restore normal display layout if tiebreak just ended
-    if (displayMode) {
+    if (display.active) {
         document.getElementById('tiebreak-display-section').style.display = 'none';
         document.querySelector('.round-header').style.display = '';
     }
@@ -1059,7 +769,7 @@ function renderFromState(state) {
     // Update undo button state - enabled if there are completed rounds to undo
     if (undoRoundBtn) {
         const hasRoundsToUndo = Array.isArray(state.rounds) && state.rounds.length > 0;
-        undoRoundBtn.disabled = !hasRoundsToUndo || displayMode;
+        undoRoundBtn.disabled = !hasRoundsToUndo || display.active;
     }
 
     // Rebuild voting cards based on current state
@@ -1288,7 +998,7 @@ function updateContestantOrder(state) {
     // Detect if this is a round change in display mode and identify losers
     // Skip animation if round went backwards (undo) or if undo is in progress
     const roundWentForward = previousRoundNumber !== null && currentRoundNumber > previousRoundNumber;
-    const roundChanged = displayMode && roundWentForward && !isUndoInProgress;
+    const roundChanged = display.active && roundWentForward && !isUndoInProgress;
     
     // Find losers: contestants who were in top 2 but are now at the back
     // Returns an array to handle both normal (1 loser) and no-contest (2 losers) cases
@@ -1310,7 +1020,7 @@ function updateContestantOrder(state) {
     const followLosers = roundChanged ? findLosers(previousFollowOrder, followOrder) : [];
     
     // If we have losers and are in display mode, animate the transition (unless skipped for stagger sequence)
-    if (displayMode && roundChanged && (leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
+    if (display.active && roundChanged && (leadLosers.length > 0 || followLosers.length > 0) && !animationInProgress) {
         if (skipQueueAnimationOnNextRender) {
             // Store animation data for later - will be triggered after stagger fade-in
             // KEEP the old order in DOM - don't render new order yet
@@ -1575,7 +1285,7 @@ function updateSessionIdDisplay() {
         return;
     }
     const isMinimized = localStorage.getItem('session-info-minimized') !== 'false';
-    if (sessionId && !displayMode) {
+    if (sessionId && !display.active) {
         const displayUrl = `${window.location.origin}/battle/${encodeURIComponent(sessionId)}?mode=display`;
         sessionIdDisplay.innerHTML = `
             <div class="session-id-display-header">
@@ -2986,7 +2696,7 @@ function showResults(data, opts) {
 function hydrateBattleRoute(sid) {
     if (!sid) { navigate('/', { replace: true }); return; }
     // Already live in-memory for this session (e.g. just started) — no refetch needed.
-    if (sessionId === sid && liveBattleActive && !displayMode) {
+    if (sessionId === sid && liveBattleActive && !display.active) {
         updateSessionIdDisplay();
         return;
     }
@@ -2999,7 +2709,7 @@ function hydrateBattleRoute(sid) {
                 navigate('/results/' + encodeURIComponent(sid), { replace: true });
                 return;
             }
-            if (displayMode) { initDisplayMode(); return; }
+            if (display.active) { initDisplayMode(sessionId); return; }
             liveBattleActive = true;
             renderFromState(state);
             updateSessionIdDisplay();
