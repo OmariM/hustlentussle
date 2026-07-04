@@ -13,16 +13,16 @@ import { getResults } from './api';
 import { stopDisplayPolling } from './display';
 import { getSpotifyToken, isSpotifyEnabled } from './spotify';
 import { showToast } from './toast';
-import type { BattleExportV1, ExportRound, ResultRow, ResultsResponse, ResultsRound } from './types';
+import type { BattleExportV1, ExportRound, ResultRow, ResultsResponse, ResultsRound, ScoreboardRow } from './types';
 
 export type ResultsData = ResultsResponse & { uploaded?: boolean };
 
 interface ResultsDeps {
     getSessionId: () => string | null;
     getGuestJudges: () => string[];
-    /** Sync the live scoreboard globals in app.js (kept for the battle screen). */
-    setScoreboard: (leads: ResultRow[], follows: ResultRow[]) => void;
-    getScoreboard: () => { leads: ResultRow[]; follows: ResultRow[] };
+    /** Sync the live scoreboard globals in app.ts (kept for the battle screen). */
+    setScoreboard: (leads: ScoreboardRow[], follows: ScoreboardRow[]) => void;
+    getScoreboard: () => { leads: ScoreboardRow[]; follows: ScoreboardRow[] };
 }
 
 let deps: ResultsDeps | null = null;

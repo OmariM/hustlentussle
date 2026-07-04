@@ -9,7 +9,7 @@
  * bootstrap in index.html) means any of them can be absent at call time.
  */
 
-import type { BattleExportV1 } from './types';
+import type { BattleExportV1, GameStateResponse } from './types';
 
 declare global {
     interface Window {
@@ -22,7 +22,7 @@ declare global {
         hydrateBattleRoute?: (sessionId: string) => void;
         hydrateResultsRoute?: (sessionId: string | null) => void;
         updateSessionIdDisplay?: () => void;
-        renderFromState?: (state: unknown) => void;
+        renderFromState?: (state: GameStateResponse) => void;
         refreshCanonicalState?: () => Promise<void>;
         endGame?: () => void;
 

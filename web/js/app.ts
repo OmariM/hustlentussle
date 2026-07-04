@@ -1,10 +1,10 @@
 import { getState as apiGetState } from './api';
+import type { GameStateResponse, ScoreboardRow } from './types';
 import { showToast } from './toast';
 import {
     playlist,
     isSpotifyEnabled,
     syncPlaylistUI,
-    getSpotifyToken,
     preparePlaylistSongForRound,
     maybeEnablePlaylistMode,
     disablePlaylistMode,
@@ -20,7 +20,6 @@ import {
     initResultsUI,
     showResults,
     hydrateResultsRoute,
-    displayResults,
     setUploadedBattlePayload,
     resetResultsState,
 } from './results';
@@ -72,32 +71,46 @@ initDisplayDeps({
     showBattleScreen: () => showScreen(roundScreen),
 });
 
+// Client-side routing lives in router.ts; it publishes navigate() on window.
+function navigate(path: string, opts?: { replace?: boolean }): void {
+    window.navigate?.(path, opts);
+}
+
+type VoteType = 'lead' | 'follow';
+type VotesByJudge = Record<string, number>;
+
+interface PendingQueueAnimation {
+    leadContainer: HTMLElement;
+    followContainer: HTMLElement;
+    leadOrder: string[];
+    followOrder: string[];
+    leadLosers: string[];
+    followLosers: string[];
+}
+
 // Global variables
-let sessionId = null;
+let sessionId: string | null = null;
 let liveBattleActive = false;      // a battle is live in-memory (skip refetch on route enter)
 // Results state (rendered payload, uploaded battle, editor modal) lives in results.ts
-let guestJudges = [];
-let leadVotes = {};  // Changed to an object to easily update votes
-let followVotes = {}; // Changed to an object to easily update votes
-let votingLocked = { lead: false, follow: false }; // Track if voting is locked
-    let currentLeads = []; // Store current lead contestants with points
-    let currentFollows = []; // Store current follow contestants with points
-    let liveRounds = []; // Accumulate round records for live battle graphic
-let initialLeads = []; // Store initial order of leads
-let initialFollows = []; // Store initial order of follows
+let guestJudges: string[] = [];
+let leadVotes: VotesByJudge = {};  // Changed to an object to easily update votes
+let followVotes: VotesByJudge = {}; // Changed to an object to easily update votes
+let votingLocked: Record<VoteType, boolean> = { lead: false, follow: false }; // Track if voting is locked
+let currentLeads: ScoreboardRow[] = []; // Store current lead contestants with points
+let currentFollows: ScoreboardRow[] = []; // Store current follow contestants with points
+let initialLeads: string[] = []; // Store initial order of leads
+let initialFollows: string[] = []; // Store initial order of follows
 let contestantJudgingEnabled = true; // Track whether contestant judging is enabled for the battle
 
-// Display mode state (for viewer-only mode without voting controls)
 // Display mode state lives in display.ts (`display.active` + polling internals)
 
 // Queue order animation state (for display mode)
-let previousLeadOrder = [];
-let previousFollowOrder = [];
-let previousRoundNumber = null;
+let previousLeadOrder: string[] = [];
+let previousFollowOrder: string[] = [];
+let previousRoundNumber: number | null = null;
 let animationInProgress = false;
-let roundTransitionInProgress = false; // Track if round transition overlay is showing
 let skipQueueAnimationOnNextRender = false; // Skip queue animation during stagger sequence
-let pendingQueueAnimationData = null; // Store data for queue animation after stagger
+let pendingQueueAnimationData: PendingQueueAnimation | null = null; // Store data for queue animation after stagger
 let isUndoInProgress = false; // Skip animations during undo operations
 let isSubmitting = false; // Prevent double-submission
 
@@ -111,7 +124,7 @@ const PROXY_CONTESTANT_JUDGES_NAME = 'Contestant Judges';
 const VOTE_MIXED = 5; // Special option used only for the proxy judge UI (never sent to backend)
 
 // Playlist mode state lives in spotify.ts (the imported `playlist` object)
-let playlistUrlInput;
+let playlistUrlInput: HTMLInputElement;
 let simpleContestantJudgesEnabled = false;
 
 // Apply mode (layout) and color (light/dark) independently
@@ -135,7 +148,7 @@ function toggleTheme() {
 }
 
 // Loading state utility
-function setButtonLoading(button, loading) {
+function setButtonLoading(button: HTMLButtonElement | null, loading: boolean) {
     if (!button) return;
     if (loading) {
         button.dataset.originalText = button.textContent;
@@ -150,33 +163,33 @@ function setButtonLoading(button, loading) {
     }
 }
 
-// DOM Elements (initialized in the DOMContentLoaded event)
-let homeScreen, uploadScreen, setupScreen, roundScreen, resultsScreen;
-let goToBattleBtn, goToUploadBtn;
-let battleFileUpload, uploadFileName, uploadBattleDataBtn, backToHomeBtn, uploadError;
-let leadNamesInput, followNamesInput, judgeNamesInput, startCompetitionBtn, setupBackToHomeBtn;
-let pointsToWinInput, pointsToWinModeSelect, customPointsContainer, pointsToWinHelper;
-let numContestantJudgesInput, contestantJudgesWarning;
-let contestantJudgingToggle, simpleContestantJudgesInput, randomizeOrderToggle;
-let roundNumber, lead1Name, lead2Name, follow1Name, follow2Name, contestantJudgesList, guestJudgesList;
-    let currentLeadScores, currentFollowScores;
-    let liveLeadGraphic, liveFollowGraphic;
-let leadVotingSection, followVotingSection, leadJudgesContainer, followJudgesContainer;
-let leadResults, followResults, leadWinner, followWinner;
-let leadGuestVotes, leadContestantVotes, followGuestVotes, followContestantVotes;
-let submitVotesBtn, votingResults;
-let leadWinnerPreview, followWinnerPreview, leadPreviewName, followPreviewName;
-let roundResultsSection, winMessages, nextRoundBtn, endBattleBtn;
-let leadsLeaderboard, followsLeaderboard;
-let backToHomeFromResultsBtn;
+// DOM Elements (initialized in the DOMContentLoaded event; assigned with `!`/casts
+// there — code that runs before that event must not touch them)
+let homeScreen: HTMLElement, uploadScreen: HTMLElement, setupScreen: HTMLElement, roundScreen: HTMLElement, resultsScreen: HTMLElement;
+let goToBattleBtn: HTMLElement, goToUploadBtn: HTMLElement;
+let battleFileUpload: HTMLInputElement, uploadFileName: HTMLElement, uploadBattleDataBtn: HTMLButtonElement, backToHomeBtn: HTMLElement, uploadError: HTMLElement;
+let leadNamesInput: HTMLInputElement, followNamesInput: HTMLInputElement, judgeNamesInput: HTMLInputElement, startCompetitionBtn: HTMLButtonElement, setupBackToHomeBtn: HTMLElement;
+let pointsToWinInput: HTMLInputElement, pointsToWinModeSelect: HTMLSelectElement, customPointsContainer: HTMLElement, pointsToWinHelper: HTMLElement;
+let numContestantJudgesInput: HTMLInputElement, contestantJudgesWarning: HTMLElement;
+let contestantJudgingToggle: HTMLInputElement, simpleContestantJudgesInput: HTMLInputElement, randomizeOrderToggle: HTMLInputElement;
+let roundNumber: HTMLElement, lead1Name: HTMLElement, lead2Name: HTMLElement, follow1Name: HTMLElement, follow2Name: HTMLElement, contestantJudgesList: HTMLElement, guestJudgesList: HTMLElement;
+let currentLeadScores: HTMLElement, currentFollowScores: HTMLElement;
+let liveLeadGraphic: HTMLElement, liveFollowGraphic: HTMLElement;
+let leadJudgesContainer: HTMLElement, followJudgesContainer: HTMLElement;
+let leadWinner: HTMLElement, followWinner: HTMLElement;
+let leadGuestVotes: HTMLElement, leadContestantVotes: HTMLElement, followGuestVotes: HTMLElement, followContestantVotes: HTMLElement;
+let submitVotesBtn: HTMLButtonElement, votingResults: HTMLElement;
+let leadWinnerPreview: HTMLElement, followWinnerPreview: HTMLElement, leadPreviewName: HTMLElement, followPreviewName: HTMLElement;
+let roundResultsSection: HTMLElement, winMessages: HTMLElement, nextRoundBtn: HTMLButtonElement, endBattleBtn: HTMLButtonElement;
+let backToHomeFromResultsBtn: HTMLElement;
 // Vote confirmation modal elements
-let voteConfirmModal, voteConfirmCloseBtn, voteConfirmCancelBtn, voteConfirmSubmitBtn;
-let voteConfirmRound, voteConfirmLead1, voteConfirmLead2, voteConfirmFollow1, voteConfirmFollow2;
-let voteConfirmLeadWinner, voteConfirmFollowWinner, voteConfirmError;
+let voteConfirmModal: HTMLElement, voteConfirmCloseBtn: HTMLElement, voteConfirmCancelBtn: HTMLElement, voteConfirmSubmitBtn: HTMLButtonElement;
+let voteConfirmRound: HTMLElement, voteConfirmLead1: HTMLElement, voteConfirmLead2: HTMLElement, voteConfirmFollow1: HTMLElement, voteConfirmFollow2: HTMLElement;
+let voteConfirmLeadWinner: HTMLElement, voteConfirmFollowWinner: HTMLElement, voteConfirmError: HTMLElement;
 // End battle early modal elements
-let endEarlyBtn, endEarlyModal, endEarlyCloseBtn, endEarlyCancelBtn, endEarlyConfirmBtn;
+let endEarlyBtn: HTMLButtonElement, endEarlyModal: HTMLElement, endEarlyCloseBtn: HTMLElement, endEarlyCancelBtn: HTMLElement, endEarlyConfirmBtn: HTMLButtonElement;
 // Undo round button
-let undoRoundBtn;
+let undoRoundBtn: HTMLButtonElement;
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -191,39 +204,39 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme();
 
     // Initialize DOM elements
-    homeScreen = document.getElementById('home-screen');
-    uploadScreen = document.getElementById('upload-screen');
-    setupScreen = document.getElementById('setup-screen');
-    roundScreen = document.getElementById('battle-screen');
-    resultsScreen = document.getElementById('results-screen');
+    homeScreen = document.getElementById('home-screen')!;
+    uploadScreen = document.getElementById('upload-screen')!;
+    setupScreen = document.getElementById('setup-screen')!;
+    roundScreen = document.getElementById('battle-screen')!;
+    resultsScreen = document.getElementById('results-screen')!;
     
     // Home screen elements
-    goToBattleBtn = document.getElementById('go-to-battle');
-    goToUploadBtn = document.getElementById('go-to-upload');
+    goToBattleBtn = document.getElementById('go-to-battle')!;
+    goToUploadBtn = document.getElementById('go-to-upload')!;
     
     // Upload screen elements
-    battleFileUpload = document.getElementById('battle-file-upload');
-    uploadFileName = document.getElementById('upload-file-name');
-    uploadBattleDataBtn = document.getElementById('upload-battle-data');
-    backToHomeBtn = document.getElementById('back-to-home');
-    uploadError = document.getElementById('upload-error');
+    battleFileUpload = document.getElementById('battle-file-upload') as HTMLInputElement;
+    uploadFileName = document.getElementById('upload-file-name')!;
+    uploadBattleDataBtn = document.getElementById('upload-battle-data') as HTMLButtonElement;
+    backToHomeBtn = document.getElementById('back-to-home')!;
+    uploadError = document.getElementById('upload-error')!;
 
 // Setup screen elements
-    leadNamesInput = document.getElementById('lead-names');
-    followNamesInput = document.getElementById('follow-names');
-    judgeNamesInput = document.getElementById('judge-names');
-    pointsToWinInput = document.getElementById('points-to-win');
-    pointsToWinModeSelect = document.getElementById('points-to-win-mode');
-    customPointsContainer = document.getElementById('custom-points-container');
-    pointsToWinHelper = document.getElementById('points-to-win-helper');
-    numContestantJudgesInput = document.getElementById('num-contestant-judges');
-    contestantJudgesWarning = document.getElementById('contestant-judges-warning');
-    startCompetitionBtn = document.getElementById('start-competition');
-    setupBackToHomeBtn = document.getElementById('setup-back-to-home');
-    playlistUrlInput = document.getElementById('playlist-url');
-    simpleContestantJudgesInput = document.getElementById('simple-contestant-judges');
-    contestantJudgingToggle = document.getElementById('contestant-judging-toggle');
-    randomizeOrderToggle = document.getElementById('randomize-order-toggle');
+    leadNamesInput = document.getElementById('lead-names') as HTMLInputElement;
+    followNamesInput = document.getElementById('follow-names') as HTMLInputElement;
+    judgeNamesInput = document.getElementById('judge-names') as HTMLInputElement;
+    pointsToWinInput = document.getElementById('points-to-win') as HTMLInputElement;
+    pointsToWinModeSelect = document.getElementById('points-to-win-mode') as HTMLSelectElement;
+    customPointsContainer = document.getElementById('custom-points-container')!;
+    pointsToWinHelper = document.getElementById('points-to-win-helper')!;
+    numContestantJudgesInput = document.getElementById('num-contestant-judges') as HTMLInputElement;
+    contestantJudgesWarning = document.getElementById('contestant-judges-warning')!;
+    startCompetitionBtn = document.getElementById('start-competition') as HTMLButtonElement;
+    setupBackToHomeBtn = document.getElementById('setup-back-to-home')!;
+    playlistUrlInput = document.getElementById('playlist-url') as HTMLInputElement;
+    simpleContestantJudgesInput = document.getElementById('simple-contestant-judges') as HTMLInputElement;
+    contestantJudgingToggle = document.getElementById('contestant-judging-toggle') as HTMLInputElement;
+    randomizeOrderToggle = document.getElementById('randomize-order-toggle') as HTMLInputElement;
 
     if (contestantJudgingToggle && simpleContestantJudgesInput) {
         const syncContestantJudgingControls = () => {
@@ -287,70 +300,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // Round screen elements
-    roundNumber = document.getElementById('round-number');
-    lead1Name = document.getElementById('lead1-name');
-    lead2Name = document.getElementById('lead2-name');
-    follow1Name = document.getElementById('follow1-name');
-    follow2Name = document.getElementById('follow2-name');
-    contestantJudgesList = document.getElementById('contestant-judges-list');
-    guestJudgesList = document.getElementById('guest-judges-list');
-    currentLeadScores = document.getElementById('current-lead-scores');
-    currentFollowScores = document.getElementById('current-follow-scores');
-    liveLeadGraphic = document.getElementById('live-lead-graphic');
-    liveFollowGraphic = document.getElementById('live-follow-graphic');
+    roundNumber = document.getElementById('round-number')!;
+    lead1Name = document.getElementById('lead1-name')!;
+    lead2Name = document.getElementById('lead2-name')!;
+    follow1Name = document.getElementById('follow1-name')!;
+    follow2Name = document.getElementById('follow2-name')!;
+    contestantJudgesList = document.getElementById('contestant-judges-list')!;
+    guestJudgesList = document.getElementById('guest-judges-list')!;
+    currentLeadScores = document.getElementById('current-lead-scores')!;
+    currentFollowScores = document.getElementById('current-follow-scores')!;
+    liveLeadGraphic = document.getElementById('live-lead-graphic')!;
+    liveFollowGraphic = document.getElementById('live-follow-graphic')!;
 
 // Voting elements
-    leadVotingSection = document.getElementById('lead-voting');
-    followVotingSection = document.getElementById('follow-voting');
-    leadJudgesContainer = document.getElementById('lead-judges-container');
-    followJudgesContainer = document.getElementById('follow-judges-container');
-    leadResults = document.getElementById('lead-results');
-    followResults = document.getElementById('follow-results');
-    leadWinner = document.getElementById('lead-winner');
-    followWinner = document.getElementById('follow-winner');
-    leadGuestVotes = document.getElementById('lead-guest-votes');
-    leadContestantVotes = document.getElementById('lead-contestant-votes');
-    followGuestVotes = document.getElementById('follow-guest-votes');
-    followContestantVotes = document.getElementById('follow-contestant-votes');
-    submitVotesBtn = document.getElementById('submit-votes');
-    votingResults = document.getElementById('voting-results');
-    leadWinnerPreview = document.getElementById('lead-winner-preview');
-    followWinnerPreview = document.getElementById('follow-winner-preview');
-    leadPreviewName = document.getElementById('lead-preview-name');
-    followPreviewName = document.getElementById('follow-preview-name');
+    leadJudgesContainer = document.getElementById('lead-judges-container')!;
+    followJudgesContainer = document.getElementById('follow-judges-container')!;
+    leadWinner = document.getElementById('lead-winner')!;
+    followWinner = document.getElementById('follow-winner')!;
+    leadGuestVotes = document.getElementById('lead-guest-votes')!;
+    leadContestantVotes = document.getElementById('lead-contestant-votes')!;
+    followGuestVotes = document.getElementById('follow-guest-votes')!;
+    followContestantVotes = document.getElementById('follow-contestant-votes')!;
+    submitVotesBtn = document.getElementById('submit-votes') as HTMLButtonElement;
+    votingResults = document.getElementById('voting-results')!;
+    leadWinnerPreview = document.getElementById('lead-winner-preview')!;
+    followWinnerPreview = document.getElementById('follow-winner-preview')!;
+    leadPreviewName = document.getElementById('lead-preview-name')!;
+    followPreviewName = document.getElementById('follow-preview-name')!;
 
     // Vote confirmation modal
-    voteConfirmModal = document.getElementById('vote-confirm-modal');
-    voteConfirmCloseBtn = document.getElementById('vote-confirm-close');
-    voteConfirmCancelBtn = document.getElementById('vote-confirm-cancel');
-    voteConfirmSubmitBtn = document.getElementById('vote-confirm-submit');
-    voteConfirmRound = document.getElementById('vote-confirm-round');
-    voteConfirmLead1 = document.getElementById('vote-confirm-lead1');
-    voteConfirmLead2 = document.getElementById('vote-confirm-lead2');
-    voteConfirmFollow1 = document.getElementById('vote-confirm-follow1');
-    voteConfirmFollow2 = document.getElementById('vote-confirm-follow2');
-    voteConfirmLeadWinner = document.getElementById('vote-confirm-lead-winner');
-    voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner');
-    voteConfirmError = document.getElementById('vote-confirm-error');
+    voteConfirmModal = document.getElementById('vote-confirm-modal')!;
+    voteConfirmCloseBtn = document.getElementById('vote-confirm-close')!;
+    voteConfirmCancelBtn = document.getElementById('vote-confirm-cancel')!;
+    voteConfirmSubmitBtn = document.getElementById('vote-confirm-submit') as HTMLButtonElement;
+    voteConfirmRound = document.getElementById('vote-confirm-round')!;
+    voteConfirmLead1 = document.getElementById('vote-confirm-lead1')!;
+    voteConfirmLead2 = document.getElementById('vote-confirm-lead2')!;
+    voteConfirmFollow1 = document.getElementById('vote-confirm-follow1')!;
+    voteConfirmFollow2 = document.getElementById('vote-confirm-follow2')!;
+    voteConfirmLeadWinner = document.getElementById('vote-confirm-lead-winner')!;
+    voteConfirmFollowWinner = document.getElementById('vote-confirm-follow-winner')!;
+    voteConfirmError = document.getElementById('vote-confirm-error')!;
 
     // End battle early modal
-    endEarlyBtn = document.getElementById('end-battle-early');
-    endEarlyModal = document.getElementById('end-early-modal');
-    endEarlyCloseBtn = document.getElementById('end-early-close');
-    endEarlyCancelBtn = document.getElementById('end-early-cancel');
-    endEarlyConfirmBtn = document.getElementById('end-early-confirm');
+    endEarlyBtn = document.getElementById('end-battle-early') as HTMLButtonElement;
+    endEarlyModal = document.getElementById('end-early-modal')!;
+    endEarlyCloseBtn = document.getElementById('end-early-close')!;
+    endEarlyCancelBtn = document.getElementById('end-early-cancel')!;
+    endEarlyConfirmBtn = document.getElementById('end-early-confirm') as HTMLButtonElement;
 
     // Undo round button
-    undoRoundBtn = document.getElementById('undo-round');
+    undoRoundBtn = document.getElementById('undo-round') as HTMLButtonElement;
 
 // Results elements
-    roundResultsSection = document.getElementById('round-results');
-    winMessages = document.getElementById('win-messages');
-    nextRoundBtn = document.getElementById('next-round');
-    endBattleBtn = document.getElementById('end-battle');
-    leadsLeaderboard = document.getElementById('leads-leaderboard');
-    followsLeaderboard = document.getElementById('follows-leaderboard');
-    backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results');
+    roundResultsSection = document.getElementById('round-results')!;
+    winMessages = document.getElementById('win-messages')!;
+    nextRoundBtn = document.getElementById('next-round') as HTMLButtonElement;
+    endBattleBtn = document.getElementById('end-battle') as HTMLButtonElement;
+    backToHomeFromResultsBtn = document.getElementById('back-to-home-from-results')!;
     
     // Check if elements exist
     console.log('Checking elements:');
@@ -399,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDemo({ resetAndGoHome });
     
     // Battle flow
-    submitVotesBtn.addEventListener('click', (e) => openVoteConfirmModal(e));
+    submitVotesBtn.addEventListener('click', () => openVoteConfirmModal());
     nextRoundBtn.addEventListener('click', goToNextRound);
     endBattleBtn.addEventListener('click', endCompetition);
 
@@ -414,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (voteConfirmSubmitBtn) {
         voteConfirmSubmitBtn.addEventListener('click', async () => {
-            await submitCombinedVotes({ autoAdvance: true, source: 'modal' });
+            await submitCombinedVotes({ autoAdvance: true });
         });
     }
     window.addEventListener('keydown', (e) => {
@@ -474,14 +481,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Nav pills are status indicators only — no click navigation
-    document.querySelectorAll('.nav-pill').forEach(pill => {
+    document.querySelectorAll<HTMLElement>('.nav-pill').forEach(pill => {
         pill.style.pointerEvents = 'none';
         pill.style.cursor = 'default';
     });
 
     // Spotify integration UI gating
     const playlistUrlGroup = document.getElementById('playlist-url-group');
-    const spotifyToggleCheckbox = document.getElementById('spotify-toggle');
+    const spotifyToggleCheckbox = document.getElementById('spotify-toggle') as HTMLInputElement | null;
     const spotifyAuthGroup = document.getElementById('spotify-auth-group');
     const spotifyAuthSetupBtn = document.getElementById('spotify-auth-setup-btn');
     const spotifyAuthStatus = document.getElementById('spotify-auth-status');
@@ -526,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
                 spotifyAuthSetupBtn.textContent = 'Connect Spotify';
             }
-        } catch (_) {
+        } catch {
             spotifyAuthStatus.textContent = 'Not connected';
             spotifyAuthStatus.className = 'spotify-status spotify-status--disconnected';
             spotifyAuthSetupBtn.textContent = 'Connect Spotify';
@@ -545,8 +552,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Functions
-function updateNavPills(activeScreen) {
-    document.querySelectorAll('.nav-pill').forEach(pill => {
+function updateNavPills(activeScreen: HTMLElement) {
+    document.querySelectorAll<HTMLElement>('.nav-pill').forEach(pill => {
         pill.classList.remove('active');
         if (activeScreen && pill.dataset.screen === activeScreen.id) {
             pill.classList.add('active');
@@ -554,7 +561,7 @@ function updateNavPills(activeScreen) {
     });
 }
 
-function showScreen(screen) {
+function showScreen(screen: HTMLElement) {
     // Deactivate every screen (includes stats-screen and any future screens)
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
 
@@ -582,7 +589,7 @@ function showScreen(screen) {
         if (pug) pug.style.display = spotifyOn ? '' : 'none';
         if (sig) sig.style.display = spotifyOn ? (playlist.modeEnabled ? 'none' : '') : 'none';
         if (pes) pes.style.display = spotifyOn && playlist.modeEnabled ? '' : 'none';
-    } catch (_) {}
+    } catch { /* ignore */ }
 
     // Apply display mode UI changes when switching screens
     if (display.active) {
@@ -614,7 +621,7 @@ async function fetchCanonicalState() {
     return await apiGetState(sessionId);
 }
 
-function renderFromState(state) {
+function renderFromState(state: GameStateResponse) {
     if (!state || !state.round || !state.round.pairs) return;
 
     // Display mode: hand off to tiebreak renderer when a tiebreak is active
@@ -624,8 +631,10 @@ function renderFromState(state) {
     }
     // Restore normal display layout if tiebreak just ended
     if (display.active) {
-        document.getElementById('tiebreak-display-section').style.display = 'none';
-        document.querySelector('.round-header').style.display = '';
+        const tds = document.getElementById('tiebreak-display-section');
+        if (tds) tds.style.display = 'none';
+        const rh = document.querySelector<HTMLElement>('.round-header');
+        if (rh) rh.style.display = '';
     }
 
     // Store initial order for results display (important for display mode)
@@ -639,7 +648,7 @@ function renderFromState(state) {
     }
 
     // Round number
-    if (roundNumber) roundNumber.textContent = state.round.number;
+    if (roundNumber) roundNumber.textContent = String(state.round.number);
 
     // If Spotify enabled and playlist mode is on and the round changed, prepare a song for this round
     if (isSpotifyEnabled() && playlist.modeEnabled) {
@@ -680,7 +689,7 @@ function renderFromState(state) {
                 contestantJudgesList.appendChild(el);
             });
         }
-        const contestantSection = contestantJudgesList.closest('.judges-section');
+        const contestantSection = contestantJudgesList.closest<HTMLElement>('.judges-section');
         if (contestantSection) {
             contestantSection.style.display = contestantEnabledFromState ? '' : 'none';
         }
@@ -688,7 +697,7 @@ function renderFromState(state) {
     // Store simple mode flag from state
     try {
         simpleContestantJudgesEnabled = contestantJudgingEnabled && Boolean(state.round?.judges?.simple_contestant_judges);
-    } catch (_) {
+    } catch {
         simpleContestantJudgesEnabled = false;
     }
 
@@ -723,7 +732,7 @@ function renderFromState(state) {
     // Enforce Spotify UI gating after state render
     try {
         syncPlaylistUI();
-    } catch (_) {}
+    } catch { /* ignore */ }
 }
 
 function getContestantJudgeNames() {
@@ -749,7 +758,7 @@ function buildJudgeRoster() {
     return roster;
 }
 
-function computeGuestWinnerDecision(votesObj) {
+function computeGuestWinnerDecision(votesObj: VotesByJudge) {
     // Decide which contestant is "winning" based on guest judges only.
     // vote=1 => contestant 1 (+2), vote=2 => contestant 2 (+2), vote=3 => tie (+1 each), vote=4 => no contest (+0).
     let s1 = 0;
@@ -763,7 +772,7 @@ function computeGuestWinnerDecision(votesObj) {
     return s1 >= s2 ? 1 : 2;
 }
 
-function expandSimpleContestantJudgesVotes(votesObj) {
+function expandSimpleContestantJudgesVotes(votesObj: VotesByJudge): Array<[string, number]> {
     const proxyVote = votesObj ? votesObj[PROXY_CONTESTANT_JUDGES_NAME] : undefined;
     const cjNames = getContestantJudgeNames();
     if (!contestantJudgingEnabled || !simpleContestantJudgesEnabled) {
@@ -775,7 +784,7 @@ function expandSimpleContestantJudgesVotes(votesObj) {
     }
 
     if (proxyVote === 1 || proxyVote === 2) {
-        return cjNames.map(n => [n, proxyVote]);
+        return cjNames.map(n => [n, proxyVote] as [string, number]);
     }
 
     if (proxyVote === VOTE_MIXED) {
@@ -784,17 +793,17 @@ function expandSimpleContestantJudgesVotes(votesObj) {
         const winnerDecision = computeGuestWinnerDecision(votesObj);
         const loserDecision = winnerDecision === 1 ? 2 : 1;
         const majorityCount = Math.floor(cjNames.length / 2) + 1;
-        return cjNames.map((n, idx) => [n, idx < majorityCount ? winnerDecision : loserDecision]);
+        return cjNames.map((n, idx) => [n, idx < majorityCount ? winnerDecision : loserDecision] as [string, number]);
     }
 
     return [];
 }
 
-function buildEffectiveVotesArray(voteType) {
+function buildEffectiveVotesArray(voteType: VoteType) {
     const roster = buildJudgeRoster();
     const votesObj = voteType === 'lead' ? leadVotes : followVotes;
 
-    const out = [];
+    const out: Array<[string, number]> = [];
 
     roster.forEach(judge => {
         if (judge === PROXY_CONTESTANT_JUDGES_NAME && contestantJudgingEnabled && simpleContestantJudgesEnabled) {
@@ -811,7 +820,7 @@ function buildEffectiveVotesArray(voteType) {
     return out;
 }
 
-function updateLiveGraphicFromState(state) {
+function updateLiveGraphicFromState(state: GameStateResponse) {
     if (!state || !state.scoreboard) return;
     const leads = state.scoreboard.leads || [];
     const follows = state.scoreboard.follows || [];
@@ -820,13 +829,10 @@ function updateLiveGraphicFromState(state) {
     // Cache current arrays for possible other uses
     currentLeads = leads;
     currentFollows = follows;
-    liveRounds = rounds;
 
     if (!liveLeadGraphic || !liveFollowGraphic) return;
 
     // Build quick lookups for current points
-    const leadPointsMap = Object.fromEntries((leads || []).map(l => [l.name, l.points]));
-    const followPointsMap = Object.fromEntries((follows || []).map(f => [f.name, f.points]));
     const winThreshold = (state.thresholds && typeof state.thresholds.win === 'number') ? state.thresholds.win : Infinity;
     
     // Determine crown holders: first to reach threshold per role. We rely on flags
@@ -857,9 +863,9 @@ function updateLiveGraphicFromState(state) {
     liveLeadGraphic.innerHTML = '';
     liveFollowGraphic.innerHTML = '';
 
-    const renderColumn = (ordered, map, crownName, container, showCrown) => {
+    const renderColumn = (ordered: string[], map: Map<string, { round: number; win: boolean }[]>, crownName: string | null, container: HTMLElement, showCrown: boolean) => {
         ordered.forEach((entry, idx) => {
-            const name = typeof entry === 'string' ? entry : entry.name;
+            const name = entry;
             const row = document.createElement('div');
             row.className = 'graphic-row';
             const rank = document.createElement('div');
@@ -880,7 +886,7 @@ function updateLiveGraphicFromState(state) {
             roundsFor.forEach(info => {
                 const b = document.createElement('div');
                 b.className = 'badge' + (info.win ? ' win' : '');
-                b.textContent = info.round;
+                b.textContent = String(info.round);
                 badges.appendChild(b);
             });
             row.appendChild(rank);
@@ -902,11 +908,11 @@ function updateLiveGraphicFromState(state) {
 }
 
 function updateMiniLeaderboard() {
-    const leadContainer = document.getElementById('mini-lead-standings');
-    const followContainer = document.getElementById('mini-follow-standings');
+    const leadContainer = document.getElementById('mini-lead-standings')!;
+    const followContainer = document.getElementById('mini-follow-standings')!;
     if (!leadContainer || !followContainer) return;
 
-    function renderStandings(contestants, container) {
+    function renderStandings(contestants: ScoreboardRow[], container: HTMLElement) {
         container.innerHTML = '';
         if (!contestants || contestants.length === 0) return;
         const sorted = [...contestants].sort((a, b) => (b.points || 0) - (a.points || 0));
@@ -928,7 +934,7 @@ function updateMiniLeaderboard() {
     renderStandings(currentFollows, followContainer);
 }
 
-function updateContestantOrder(state) {
+function updateContestantOrder(state: GameStateResponse) {
     // Update the contestant order visualization showing who's competing now and who's next
     const leadOrderList = document.getElementById('lead-order-list');
     const followOrderList = document.getElementById('follow-order-list');
@@ -942,16 +948,16 @@ function updateContestantOrder(state) {
     
     // Detect if this is a round change in display mode and identify losers
     // Skip animation if round went backwards (undo) or if undo is in progress
-    const roundWentForward = previousRoundNumber !== null && currentRoundNumber > previousRoundNumber;
+    const roundWentForward = previousRoundNumber !== null && currentRoundNumber !== null && currentRoundNumber > previousRoundNumber;
     const roundChanged = display.active && roundWentForward && !isUndoInProgress;
     
     // Find losers: contestants who were in top 2 but are now at the back
     // Returns an array to handle both normal (1 loser) and no-contest (2 losers) cases
-    const findLosers = (prevOrder, newOrder) => {
+    const findLosers = (prevOrder: string[], newOrder: string[]) => {
         if (prevOrder.length < 2 || newOrder.length < 2) return [];
         const prevTop2 = prevOrder.slice(0, 2);
         const newTop2 = newOrder.slice(0, 2);
-        const losers = [];
+        const losers: string[] = [];
         // Find all contestants who were in prevTop2 but are not in newTop2 (moved to back)
         for (const name of prevTop2) {
             if (!newTop2.includes(name) && newOrder.includes(name)) {
@@ -1001,7 +1007,7 @@ function updateContestantOrder(state) {
     if (nextUpFollow) nextUpFollow.textContent = followOrder[2] || '—';
 }
 
-function renderOrderListImmediate(order, container, role, loserNames) {
+function renderOrderListImmediate(order: string[], container: HTMLElement, role: 'lead' | 'follow', loserNames: string[]) {
     // Clear existing list
     container.innerHTML = '';
     // Ensure loserNames is an array
@@ -1034,7 +1040,7 @@ function renderOrderListImmediate(order, container, role, loserNames) {
     });
 }
 
-function animateQueueTransition(leadContainer, followContainer, newLeadOrder, newFollowOrder, leadLosers, followLosers) {
+function animateQueueTransition(leadContainer: HTMLElement, followContainer: HTMLElement, newLeadOrder: string[], newFollowOrder: string[], leadLosers: string[], followLosers: string[]) {
     animationInProgress = true;
     
     // Animation timing constants (longer for spectator visibility)
@@ -1047,11 +1053,11 @@ function animateQueueTransition(leadContainer, followContainer, newLeadOrder, ne
     const followLosersArr = Array.isArray(followLosers) ? followLosers : (followLosers ? [followLosers] : []);
     
     // Phase 1: Mark losers in the old list with exit animation
-    const animateColumnExit = (container, loserNames) => {
+    const animateColumnExit = (container: HTMLElement, loserNames: string[]) => {
         if (loserNames.length === 0) return;
-        const items = container.querySelectorAll('.order-item');
+        const items = container.querySelectorAll<HTMLElement>('.order-item');
         items.forEach(item => {
-            if (loserNames.includes(item.dataset.name)) {
+            if (loserNames.includes(item.dataset.name ?? '')) {
                 item.classList.add('animating-out');
             }
         });
@@ -1067,11 +1073,11 @@ function animateQueueTransition(leadContainer, followContainer, newLeadOrder, ne
         
         // Apply entry animation to losers at their new position
         requestAnimationFrame(() => {
-            const applyEntryAnimation = (container, loserNames) => {
+            const applyEntryAnimation = (container: HTMLElement, loserNames: string[]) => {
                 if (loserNames.length === 0) return;
-                const items = container.querySelectorAll('.order-item');
+                const items = container.querySelectorAll<HTMLElement>('.order-item');
                 items.forEach(item => {
-                    if (loserNames.includes(item.dataset.name)) {
+                    if (loserNames.includes(item.dataset.name ?? '')) {
                         item.classList.add('animating-in');
                         // Remove animation class after animation completes
                         setTimeout(() => {
@@ -1106,8 +1112,8 @@ async function refreshCanonicalState() {
     }
 }
 
-function handleFileSelect(event) {
-    const file = event.target.files[0];
+function handleFileSelect(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
     if (file) {
         uploadFileName.textContent = file.name;
         uploadError.textContent = '';
@@ -1118,7 +1124,7 @@ function handleFileSelect(event) {
 }
 
 async function processUploadedFile() {
-    const file = battleFileUpload.files[0];
+    const file = battleFileUpload.files?.[0];
     
     if (!file) {
         uploadError.textContent = 'Please select a file to upload.';
@@ -1134,7 +1140,7 @@ async function processUploadedFile() {
     let rawPayload = null;
     try {
         rawPayload = JSON.parse(await file.text());
-    } catch (e) {
+    } catch {
         rawPayload = null;
     }
 
@@ -1171,7 +1177,7 @@ async function processUploadedFile() {
         if (data.leads) {
             console.log("Lead data:", data.leads);
             console.log(`Processing ${data.leads.length} leads:`);
-            data.leads.forEach((lead, i) => {
+            data.leads.forEach((lead: { name?: string; points?: number | string | null }, i: number) => {
                 console.log(`Lead ${i}:`, lead, "Points:", lead.points, "Type:", typeof lead.points);
                 // Convert points to number if needed
                 if (lead.points !== undefined && lead.points !== null) {
@@ -1190,7 +1196,7 @@ async function processUploadedFile() {
         if (data.follows) {
             console.log("Follow data:", data.follows);
             console.log(`Processing ${data.follows.length} follows:`);
-            data.follows.forEach((follow, i) => {
+            data.follows.forEach((follow: { name?: string; points?: number | string | null }, i: number) => {
                 console.log(`Follow ${i}:`, follow, "Points:", follow.points, "Type:", typeof follow.points);
                 // Convert points to number if needed
                 if (follow.points !== undefined && follow.points !== null) {
@@ -1211,11 +1217,11 @@ async function processUploadedFile() {
         showResults(data, { sessionId: null });
     } catch (error) {
         console.error('Error processing file:', error);
-        showUploadError(`Failed to process the file: ${error.message}`);
+        showUploadError(`Failed to process the file: ${error instanceof Error ? error.message : error}`);
     }
 }
 
-function showUploadError(message) {
+function showUploadError(message: string) {
     uploadError.textContent = message;
     uploadError.classList.add('visible');
 }
@@ -1249,7 +1255,7 @@ function updateSessionIdDisplay() {
             </div>
         `;
         sessionIdDisplay.classList.toggle('session-id-display--minimized', isMinimized);
-        const toggleBtn = sessionIdDisplay.querySelector('.session-id-display-toggle');
+        const toggleBtn = sessionIdDisplay.querySelector<HTMLElement>('.session-id-display-toggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
                 const minimized = sessionIdDisplay.classList.toggle('session-id-display--minimized');
@@ -1268,7 +1274,7 @@ function updateSessionIdDisplay() {
             <div class="session-id-display-body">Session: ${sessionId}</div>
         `;
         sessionIdDisplay.classList.toggle('session-id-display--minimized', isMinimized);
-        const toggleBtn = sessionIdDisplay.querySelector('.session-id-display-toggle');
+        const toggleBtn = sessionIdDisplay.querySelector<HTMLElement>('.session-id-display-toggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
                 const minimized = sessionIdDisplay.classList.toggle('session-id-display--minimized');
@@ -1282,7 +1288,7 @@ function updateSessionIdDisplay() {
 }
 
 // Update the startCompetition function
-async function startCompetition(useSimpleContestantJudges, allowContestantJudging = true) {
+async function startCompetition(useSimpleContestantJudges: boolean, allowContestantJudging = true) {
     const leads = leadNamesInput.value.trim();
     const follows = followNamesInput.value.trim();
     const judges = judgeNamesInput.value.trim();
@@ -1380,13 +1386,13 @@ async function startCompetition(useSimpleContestantJudges, allowContestantJudgin
 
         // Navigate to the battle route (shareable/reloadable URL)
         liveBattleActive = true;
-        navigate('/battle/' + encodeURIComponent(sessionId));
+        navigate('/battle/' + encodeURIComponent(sessionId ?? ''));
 
         // Demo mode hook: advance past the "Start Competition" step
         demoActionCompleted('wait-for-start');
     } catch (error) {
         console.error('Error starting game:', error);
-        showToast('Failed to start game: ' + (error.message || 'Unknown error'), 'error');
+        showToast('Failed to start game: ' + ((error instanceof Error && error.message) || 'Unknown error'), 'error');
     } finally {
         setButtonLoading(startCompetitionBtn, false);
     }
@@ -1405,10 +1411,10 @@ function fetchScores() {
                 const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
                 if (spotifyOn && !playlist.modeEnabled && data.playlist_url) {
                     playlist.pendingUrl = data.playlist_url;
-                    await maybeEnablePlaylistMode(playlist.pendingUrl, sessionId);
+                    await maybeEnablePlaylistMode(data.playlist_url, sessionId);
                     playlist.pendingUrl = null;
                 }
-            } catch (_) {}
+            } catch { /* ignore */ }
 
             // Update current scores display
             updateScoresDisplay();
@@ -1449,77 +1455,6 @@ function updateScoresDisplay() {
     });
 }
 
-function updateRoundUI(data) {
-    roundNumber.textContent = data.round;
-    lead1Name.textContent = data.pair_1[0];
-    follow1Name.textContent = data.pair_1[1];
-    lead2Name.textContent = data.pair_2[0];
-    follow2Name.textContent = data.pair_2[1];
-    
-    // Update guest judges
-    guestJudgesList.innerHTML = '';
-    if (guestJudges.length > 0) {
-        guestJudges.forEach(judge => {
-            const judgeItem = document.createElement('div');
-            judgeItem.className = 'judge-item guest';
-            judgeItem.textContent = judge;
-            guestJudgesList.appendChild(judgeItem);
-        });
-    } else {
-        const noJudges = document.createElement('div');
-        noJudges.className = 'judge-item';
-        noJudges.textContent = 'No guest judges assigned';
-        guestJudgesList.appendChild(noJudges);
-    }
-    
-    // Update contestant judges
-    contestantJudgesList.innerHTML = '';
-    const contestantSection = contestantJudgesList.closest('.judges-section');
-    if (!contestantJudgingEnabled) {
-        if (contestantSection) contestantSection.style.display = 'none';
-    } else {
-        if (contestantSection) contestantSection.style.display = '';
-        if (data.contestant_judges && data.contestant_judges.length > 0) {
-            data.contestant_judges.forEach(judge => {
-                const judgeItem = document.createElement('div');
-                judgeItem.className = 'judge-item contestant';
-                judgeItem.textContent = judge;
-                contestantJudgesList.appendChild(judgeItem);
-            });
-        } else {
-            const noJudges = document.createElement('div');
-            noJudges.className = 'judge-item';
-            noJudges.textContent = 'No contestant judges assigned';
-            contestantJudgesList.appendChild(noJudges);
-        }
-    }
-    
-    // Reset voting sections - both are now visible side by side
-    closeVoteConfirmModal();
-    votingResults.classList.add('hidden');
-    roundResultsSection.classList.add('hidden');
-    winMessages.innerHTML = '';
-    
-    // Hide winner previews
-    leadWinnerPreview.classList.add('hidden');
-    followWinnerPreview.classList.add('hidden');
-    
-    // Reset collected votes
-    leadVotes = {};
-    followVotes = {};
-    votingLocked = { lead: false, follow: false };
-    
-    // Reset submit button
-    submitVotesBtn.disabled = false;
-    
-	// Only reset song input if we're not in auto-advance mode
-	if (!window.debugTools || !window.debugTools.autoAdvance) {
-		const si = document.getElementById('song-input');
-		if (si) si.value = '';
-		syncPlaylistUI();
-	}
-}
-
 function setupVotingUI() {
     // Clear previous voting UI
     leadJudgesContainer.innerHTML = '';
@@ -1549,7 +1484,7 @@ function setupVotingUI() {
     updateSubmitButtonState();
 }
 
-function createJudgeVotingCard(judgeName, isGuest, voteType) {
+function createJudgeVotingCard(judgeName: string, isGuest: boolean, voteType: VoteType) {
     const row = document.createElement('div');
     row.className = 'judge-row';
     row.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
@@ -1574,7 +1509,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     const isProxyContestantJudges = simpleContestantJudgesEnabled && judgeName === PROXY_CONTESTANT_JUDGES_NAME;
 
     // Helper to handle chip click
-    function onChipClick(chip, voteValue) {
+    function onChipClick(chip: HTMLButtonElement, voteValue: number) {
         if (votingLocked[voteType]) return;
         if (chip.disabled) return;
         voteChips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
@@ -1591,14 +1526,15 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     option1Chip.addEventListener('click', () => onChipClick(option1Chip, 1));
 
     // Mixed chip (proxy contestant judges only)
-    let mixedChip = null;
+    let mixedChip: HTMLButtonElement | null = null;
     if (isProxyContestantJudges) {
         mixedChip = document.createElement('button');
         mixedChip.className = 'vote-chip vote-option-mixed';
         mixedChip.textContent = 'Mixed';
         mixedChip.disabled = true;
         mixedChip.style.display = 'none'; // Hidden until a guest judge picks Tie or NC
-        mixedChip.addEventListener('click', () => onChipClick(mixedChip, VOTE_MIXED));
+        const chip = mixedChip;
+        chip.addEventListener('click', () => onChipClick(chip, VOTE_MIXED));
     }
 
     // Option 2 chip
@@ -1634,7 +1570,7 @@ function createJudgeVotingCard(judgeName, isGuest, voteType) {
     return row;
 }
 
-function recordVote(judgeName, voteOption, voteType) {
+function recordVote(judgeName: string, voteOption: number, voteType: VoteType) {
     if (voteType === 'lead') {
         leadVotes[judgeName] = voteOption;
     } else if (voteType === 'follow') {
@@ -1663,7 +1599,7 @@ function recordVote(judgeName, voteOption, voteType) {
 }
 
 // Check if any guest judge has voted tie (3) or no contest (4) for the given vote type
-function hasGuestTieOrNoContest(voteType) {
+function hasGuestTieOrNoContest(voteType: VoteType) {
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     return (guestJudges || []).some(judge => {
         const vote = votes[judge];
@@ -1673,7 +1609,7 @@ function hasGuestTieOrNoContest(voteType) {
 
 // Check if ALL guest judges who have voted have ONLY voted tie or no contest (no votes for contestant 1 or 2)
 // Returns true if all guest votes are tie/no contest, meaning there's no clear winner to base the mixed vote on
-function allGuestsOnlyTieOrNoContest(voteType) {
+function allGuestsOnlyTieOrNoContest(voteType: VoteType) {
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     const guestVotes = (guestJudges || []).map(judge => votes[judge]).filter(v => v !== undefined);
     
@@ -1685,14 +1621,14 @@ function allGuestsOnlyTieOrNoContest(voteType) {
 }
 
 // Update the mixed button's enabled/disabled state for the given vote type
-function updateMixedButtonState(voteType) {
+function updateMixedButtonState(voteType: VoteType) {
     if (!simpleContestantJudgesEnabled) return;
     
     const proxyCardId = `${voteType}-judge-${PROXY_CONTESTANT_JUDGES_NAME.replace(/\s+/g, '-').toLowerCase()}`;
     const proxyCard = document.getElementById(proxyCardId);
     if (!proxyCard) return;
     
-    const mixedBtn = proxyCard.querySelector('.vote-option-mixed');
+    const mixedBtn = proxyCard.querySelector<HTMLButtonElement>('.vote-option-mixed');
     if (!mixedBtn) return;
     
     // Enable mixed only if there's a tie/no contest vote AND at least one guest voted for a contestant
@@ -1723,7 +1659,7 @@ function updateSubmitButtonState() {
     const leadVotesComplete = allJudges.every(judge => leadVotes[judge]);
     const followVotesComplete = allJudges.every(judge => followVotes[judge]);
     
-    const submitBtn = document.getElementById('submit-votes');
+    const submitBtn = document.getElementById('submit-votes') as HTMLButtonElement | null;
     if (submitBtn) {
         const leadCount = allJudges.filter(judge => leadVotes[judge]).length;
         const followCount = allJudges.filter(judge => followVotes[judge]).length;
@@ -1756,7 +1692,7 @@ function updateSubmitButtonState() {
     }
 }
 
-function showVoteConfirmError(message) {
+function showVoteConfirmError(message: string) {
     if (!voteConfirmError) return;
     voteConfirmError.textContent = message || '';
     if (message) {
@@ -1766,7 +1702,7 @@ function showVoteConfirmError(message) {
     }
 }
 
-function openVoteConfirmModal(evt) {
+function openVoteConfirmModal() {
     if (!voteConfirmModal) return;
 
     // Guard: should not be available until after votes are cast
@@ -1804,7 +1740,7 @@ function openVoteConfirmModal(evt) {
     voteConfirmModal.classList.remove('hidden');
     try {
         if (voteConfirmSubmitBtn) voteConfirmSubmitBtn.focus();
-    } catch (_) {}
+    } catch { /* ignore */ }
 }
 
 function closeVoteConfirmModal() {
@@ -1813,7 +1749,7 @@ function closeVoteConfirmModal() {
     showVoteConfirmError('');
     try {
         if (submitVotesBtn) submitVotesBtn.focus();
-    } catch (_) {}
+    } catch { /* ignore */ }
 }
 
 function openEndEarlyModal() {
@@ -1821,7 +1757,7 @@ function openEndEarlyModal() {
     endEarlyModal.classList.remove('hidden');
     try {
         if (endEarlyConfirmBtn) endEarlyConfirmBtn.focus();
-    } catch (_) {}
+    } catch { /* ignore */ }
 }
 
 function closeEndEarlyModal() {
@@ -1829,7 +1765,7 @@ function closeEndEarlyModal() {
     endEarlyModal.classList.add('hidden');
 }
 
-function calculateWinner(voteType) {
+function calculateWinner(voteType: VoteType) {
     const votes = voteType === 'lead' ? leadVotes : followVotes;
     
     // Get contestant names
@@ -1847,7 +1783,7 @@ function calculateWinner(voteType) {
     const votesArray = buildEffectiveVotesArray(voteType);
     
     // Calculate winner using the same logic as the backend
-    const guestVotes = votesArray.filter(([judge, vote]) => guestJudges.includes(judge)).map(([judge, vote]) => vote);
+    const guestVotes = votesArray.filter(([judge]) => guestJudges.includes(judge)).map(([, vote]) => vote);
     
     // Check for special cases - need all guest judges to vote the same
     if (guestVotes.length > 0 && guestVotes.every(vote => vote === 3)) {
@@ -1880,7 +1816,7 @@ function calculateWinner(voteType) {
     return score1 >= score2 ? contestant1 : contestant2;
 }
 
-function showWinnerPreview(voteType) {
+function showWinnerPreview(voteType: VoteType) {
     const winner = calculateWinner(voteType);
     
     // Only show preview if we have a calculated winner
@@ -1897,7 +1833,7 @@ function showWinnerPreview(voteType) {
     }
 }
 
-function hideWinnerPreview(voteType) {
+function hideWinnerPreview(voteType: VoteType) {
     if (voteType === 'lead') {
         leadWinnerPreview.classList.add('hidden');
     } else {
@@ -1906,7 +1842,7 @@ function hideWinnerPreview(voteType) {
 }
 
 // Lock all voting buttons for a specific vote type (lead or follow)
-function lockVoting(voteType) {
+function lockVoting(voteType: VoteType) {
     votingLocked[voteType] = true;
     
     // Get all judge rows for this vote type
@@ -1922,7 +1858,7 @@ function lockVoting(voteType) {
     });
 }
 
-async function submitCombinedVotes(options = {}) {
+async function submitCombinedVotes(options: { autoAdvance?: boolean } = {}) {
     if (isSubmitting) return;
     isSubmitting = true;
     const allJudges = buildJudgeRoster();
@@ -1949,8 +1885,8 @@ async function submitCombinedVotes(options = {}) {
     const followVotesArray = buildEffectiveVotesArray('follow');
     
     // Get song information (Spotify fields only when integration is enabled)
-    const songInput = document.getElementById('song-input');
-    const songInfo = {};
+    const songInput = document.getElementById('song-input') as HTMLInputElement | null;
+    const songInfo: { spotify_url?: string; title?: string; artist?: string } = {};
     const spotifyOn = localStorage.getItem('spotify.enabled') === 'true';
     if (spotifyOn) {
         if (playlist.modeEnabled && playlist.currentRoundTrack && playlist.currentRoundTrack.id) {
@@ -2016,7 +1952,7 @@ async function submitCombinedVotes(options = {}) {
             
             // Show win messages if any
             if (data.win_messages && data.win_messages.length > 0) {
-                winMessages.innerHTML = data.win_messages.map(msg => `<p>${msg}</p>`).join('');
+                winMessages.innerHTML = data.win_messages.map((msg: string) => `<p>${msg}</p>`).join('');
             }
             
             // Show round results section
@@ -2040,13 +1976,13 @@ async function submitCombinedVotes(options = {}) {
                 updateLiveGraphicFromState(state);
                 updateMiniLeaderboard();
             }
-        } catch (_) {}
+        } catch { /* ignore */ }
 
         // Auto-advance to the next round (unless game finished)
         if (shouldAutoAdvance && !data.game_finished) {
             try {
                 await goToNextRound();
-            } catch (_) {
+            } catch {
                 // If next round fails, allow the user to try again
                 votingLocked.lead = false;
                 votingLocked.follow = false;
@@ -2205,10 +2141,11 @@ function resetCompetition() {
 }
 
 // Update score table with current standings
-function updateScoreTable(leads, follows) {
+function updateScoreTable(leads: ScoreboardRow[], follows: ScoreboardRow[]) {
     // Clear existing scores
     const leadScoreBody = document.getElementById('lead-results-body');
     const followScoreBody = document.getElementById('follow-results-body');
+    if (!leadScoreBody || !followScoreBody) return;
     leadScoreBody.innerHTML = '';
     followScoreBody.innerHTML = '';
 
@@ -2222,7 +2159,7 @@ function updateScoreTable(leads, follows) {
         const nameCell = document.createElement('td');
         nameCell.textContent = lead.name + (lead.is_winner ? ' 👑' : '');
         const pointsCell = document.createElement('td');
-        pointsCell.textContent = lead.points;
+        pointsCell.textContent = String(lead.points);
         row.appendChild(nameCell);
         row.appendChild(pointsCell);
         leadScoreBody.appendChild(row);
@@ -2234,7 +2171,7 @@ function updateScoreTable(leads, follows) {
         const nameCell = document.createElement('td');
         nameCell.textContent = follow.name + (follow.is_winner ? ' 👑' : '');
         const pointsCell = document.createElement('td');
-        pointsCell.textContent = follow.points;
+        pointsCell.textContent = String(follow.points);
         row.appendChild(nameCell);
         row.appendChild(pointsCell);
         followScoreBody.appendChild(row);
@@ -2244,7 +2181,7 @@ function updateScoreTable(leads, follows) {
 // --- Router hydration helpers (called by js/router.js) -------------------
 
 // Enter /battle/<id>: rebuild the interactive (or display) battle from server state.
-function hydrateBattleRoute(sid) {
+function hydrateBattleRoute(sid: string | null) {
     if (!sid) { navigate('/', { replace: true }); return; }
     // Already live in-memory for this session (e.g. just started) — no refetch needed.
     if (sessionId === sid && liveBattleActive && !display.active) {
@@ -2252,7 +2189,7 @@ function hydrateBattleRoute(sid) {
         return;
     }
     sessionId = sid;
-    try { localStorage.setItem('sessionId', sid); } catch (e) {}
+    try { localStorage.setItem('sessionId', sid); } catch { /* ignore */ }
     fetch(`/api/state?session_id=${encodeURIComponent(sid)}`)
         .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
         .then(state => {
@@ -2267,7 +2204,7 @@ function hydrateBattleRoute(sid) {
             if (typeof fetchScores === 'function') fetchScores();
         })
         .catch(() => {
-            try { showToast('That battle was not found or has expired.', 'error'); } catch (e) {}
+            try { showToast('That battle was not found or has expired.', 'error'); } catch { /* ignore */ }
             navigate('/', { replace: true });
         });
 }
@@ -2275,7 +2212,7 @@ function hydrateBattleRoute(sid) {
 // End game function
 function endGame() {
     // Disable voting buttons
-    document.querySelectorAll('.vote-button').forEach(button => {
+    document.querySelectorAll<HTMLButtonElement>('.vote-button').forEach(button => {
         button.disabled = true;
     });
     
@@ -2335,7 +2272,7 @@ function endGame() {
         if (isSpotifyEnabled()) {
             actions.appendChild(btn);
         }
-    } catch (_) {}
+    } catch { /* ignore */ }
 })();
 
 // Resume session UI if returning from OAuth with session_id in URL
@@ -2355,7 +2292,7 @@ function endGame() {
                 }
             }).catch(() => {});
         }
-    } catch (_) {}
+    } catch { /* ignore */ }
 })();
 
 // ============================================================
