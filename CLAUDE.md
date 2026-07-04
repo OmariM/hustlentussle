@@ -9,7 +9,8 @@ Hustle n' Tussle is a partner dance competition management app. It randomly pair
 ## Tech Stack
 
 - **Backend:** Python 3.12 with Flask 3.1.1
-- **Frontend:** Vanilla HTML5/CSS3/ES6+ JavaScript (no npm, no frontend framework)
+- **Frontend:** Vanilla HTML5/CSS3/ES6+ JavaScript, built with esbuild into `web/js/dist/`
+  (`npm run build` / `npm run watch`; `tsc --noEmit` typechecks; no frontend framework)
 - **Database:** PostgreSQL (production) with in-memory fallback (development)
 - **Deployment:** Self-hosted Docker Compose stack (web + Postgres). See `DEPLOY.md`.
 
@@ -57,9 +58,9 @@ container, so edits to files here take effect on save (Flask's reloader) with no
 rebuild:
 
 ```bash
-./scripts/dev-server-start.sh   # start dev Postgres (Docker) + Flask dev server in tmux
+./scripts/dev-server-start.sh   # start dev Postgres (Docker) + Flask dev server + esbuild watch in tmux
 ./scripts/dev-server-stop.sh    # stop the tmux session (pass --db to also stop Postgres)
-tmux attach -t hustlentussle-dev   # watch logs (detach: Ctrl+B D)
+tmux attach -t hustlentussle-dev   # watch logs (detach: Ctrl+B D; window 'esbuild' has the frontend build)
 ```
 
 How it works:

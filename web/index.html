@@ -806,10 +806,11 @@
             });
         })();
     </script>
-    <script src="js/components/DebugTools.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/app.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/explainers.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/ytd.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/router.js?v={{ config.ASSET_VERSION }}"></script>
+    <!-- Built by esbuild into js/dist (npm run build / npm run watch) -->
+    <script src="js/dist/components/DebugTools.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/dist/app.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/dist/explainers.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/dist/ytd.js?v={{ config.ASSET_VERSION }}"></script>
+    <script src="js/dist/router.js?v={{ config.ASSET_VERSION }}"></script>
 </body>
 </html> 
