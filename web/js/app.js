@@ -4551,22 +4551,6 @@ function loadSpotifySDK() {
     });
 }
 
-async function ensureUserAuthForPlayback() {
-    if (!sessionId) return false;
-    try {
-        const resp = await fetch(`/api/spotify/user_token?session_id=${encodeURIComponent(sessionId)}`);
-        if (resp.status === 200) return true;
-        if (resp.status === 401) {
-            const returnTo = `${window.location.origin}${window.location.pathname}?session_id=${encodeURIComponent(sessionId)}`;
-            await startSpotifyAuth(returnTo);
-            return false;
-        }
-        return false;
-    } catch (_) {
-        return false;
-    }
-}
-
 async function initWebPlaybackPlayer() {
     await loadSpotifySDK();
     if (!await ensureUserAuthForPlayback()) return;

@@ -7,14 +7,12 @@ configurable fallback behavior when the primary database is unavailable.
 
 import logging
 import threading
-import time
 from typing import Optional
 import sys
 import os
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from game_logic import Game
 from persistence.interfaces import GameRepositoryInterface, PersistenceError
 from persistence.memory_repository import MemoryGameRepository
 from persistence.postgres_repository import PostgresGameRepository
@@ -70,135 +68,6 @@ class RepositoryFactory:
             else:
                 logger.error(f"PostgreSQL unavailable and fallback disabled: {e}")
                 raise
-
-
-class FallbackRepository(GameRepositoryInterface):
-    """
-    Repository wrapper that provides automatic fallback on errors.
-
-    Wraps a primary repository (PostgreSQL) and falls back to a
-    secondary repository (memory) when operations fail, with the
-    ability to sync back to primary when it recovers.
-    """
-
-    def __init__(
-        self,
-        primary: GameRepositoryInterface,
-        fallback: GameRepositoryInterface,
-        retry_interval_seconds: int = 60,
-    ):
-        """
-        Initialize the fallback repository.
-
-        Args:
-            primary: The primary repository (usually PostgreSQL)
-            fallback: The fallback repository (usually memory)
-            retry_interval_seconds: How often to retry primary when in fallback mode
-        """
-        self.primary = primary
-        self.fallback = fallback
-        self.retry_interval_seconds = retry_interval_seconds
-
-        self._using_fallback = False
-        self._last_primary_attempt = 0
-        self._lock = threading.RLock()
-
-    def _should_retry_primary(self) -> bool:
-        """Check if we should attempt to use primary again."""
-        if not self._using_fallback:
-            return True
-        return (time.time() - self._last_primary_attempt) > self.retry_interval_seconds
-
-    def _try_primary(self, operation, *args, **kwargs):
-        """
-        Try an operation on primary, fall back on failure.
-
-        Args:
-            operation: Name of the operation method
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-
-        Returns:
-            Result of the operation
-        """
-        with self._lock:
-            if self._should_retry_primary():
-                try:
-                    self._last_primary_attempt = time.time()
-                    result = getattr(self.primary, operation)(*args, **kwargs)
-
-                    if self._using_fallback:
-                        logger.info("Primary repository recovered")
-                        self._using_fallback = False
-
-                    return result
-                except PersistenceError as e:
-                    if not self._using_fallback:
-                        logger.warning(f"Primary repository failed ({e}), switching to fallback")
-                        self._using_fallback = True
-
-            # Use fallback
-            return getattr(self.fallback, operation)(*args, **kwargs)
-
-    def create(self, game: Game) -> str:
-        return self._try_primary("create", game)
-
-    def get(self, session_id: str) -> Optional[Game]:
-        # First try primary
-        result = self._try_primary("get", session_id)
-
-        # If not found in primary but we're using fallback, check fallback
-        if result is None and self._using_fallback:
-            result = self.fallback.get(session_id)
-
-        return result
-
-    def save(self, session_id: str, game: Game) -> bool:
-        return self._try_primary("save", session_id, game)
-
-    def delete(self, session_id: str) -> bool:
-        return self._try_primary("delete", session_id)
-
-    def exists(self, session_id: str) -> bool:
-        result = self._try_primary("exists", session_id)
-
-        # If not found in primary but we're using fallback, check fallback
-        if not result and self._using_fallback:
-            result = self.fallback.exists(session_id)
-
-        return result
-
-    def cleanup_expired(self) -> int:
-        count = 0
-
-        # Cleanup both repositories
-        try:
-            count += self.primary.cleanup_expired()
-        except PersistenceError:
-            pass
-
-        count += self.fallback.cleanup_expired()
-        return count
-
-    def list_sessions(self) -> list:
-        sessions = set()
-
-        # Get from primary
-        try:
-            sessions.update(self.primary.list_sessions())
-        except PersistenceError:
-            pass
-
-        # Get from fallback if in use
-        if self._using_fallback:
-            sessions.update(self.fallback.list_sessions())
-
-        return list(sessions)
-
-    @property
-    def is_using_fallback(self) -> bool:
-        """Check if currently using fallback repository."""
-        return self._using_fallback
 
 
 class CleanupScheduler:
