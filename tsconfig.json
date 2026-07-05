@@ -6,11 +6,8 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "lib": ["es2020", "dom", "dom.iterable"],
-    // Migration posture: new/renamed .ts files are strict; untouched legacy
-    // .js rides along in the build unchecked until it is converted.
+    // The frontend is fully TypeScript; everything is checked strict.
     "strict": true,
-    "allowJs": true,
-    "checkJs": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
