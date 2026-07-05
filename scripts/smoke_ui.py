@@ -62,9 +62,15 @@ def main() -> int:
         browser = p.chromium.launch(headless=not args.headed)
         page = browser.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+        # 503 resource logs are expected when optional features are disabled
+        # (e.g. the stats API without DATABASE_URL); everything else is a failure.
         page.on(
             "console",
-            lambda m: errors.append(f"console.error: {m.text}") if m.type == "error" else None,
+            lambda m: (
+                errors.append(f"console.error: {m.text}")
+                if m.type == "error" and "status of 503" not in m.text
+                else None
+            ),
         )
 
         print(f"1. Setup screen at {args.base_url}/setup")

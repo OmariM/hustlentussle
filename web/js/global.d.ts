@@ -9,7 +9,7 @@
  * bootstrap in index.html) means any of them can be absent at call time.
  */
 
-import type { BattleExportV1 } from './types';
+import type { BattleExportV1, GameStateResponse } from './types';
 
 declare global {
     interface Window {
@@ -21,6 +21,19 @@ declare global {
         showScreen?: (el: HTMLElement) => void;
         hydrateBattleRoute?: (sessionId: string) => void;
         hydrateResultsRoute?: (sessionId: string | null) => void;
+        updateSessionIdDisplay?: () => void;
+        renderFromState?: (state: GameStateResponse) => void;
+        refreshCanonicalState?: () => Promise<void>;
+        endGame?: () => void;
+
+        // Shared vote/roster state mirrored onto window (DebugTools keeps its
+        // own copies here; app.js's internal `let` state is separate)
+        guestJudges?: string[];
+        initialLeads?: string[];
+        initialFollows?: string[];
+        leadVotes?: Record<string, number>;
+        followVotes?: Record<string, number>;
+        votingLocked?: { lead: boolean; follow: boolean };
         openBattlePayloadEditor?: (
             payload: BattleExportV1,
             opts: {
@@ -29,7 +42,8 @@ declare global {
                 initialMeta?: { name?: string; battle_date?: string | null };
                 onSave: (
                     editedPayload: BattleExportV1,
-                    meta: { name: string; battle_date: string },
+                    // null when showMetaFields is false (the results-screen flow)
+                    meta: { name: string; battle_date: string } | null,
                 ) => Promise<void>;
             },
         ) => void;
@@ -38,14 +52,10 @@ declare global {
         // ytd.ts
         ytdOnEnterStats?: () => void;
 
-        // components/DebugTools.js + the inline bootstrap in index.html
+        // components/DebugTools.ts + the inline bootstrap in index.html
         ENABLE_DEBUG_TOOLS?: boolean;
         DebugTools?: new () => unknown;
-        debugTools?: { autoAdvance?: boolean } & Record<string, unknown>;
-
-        // Spotify Web Playback SDK (loaded on demand from sdk.scdn.co)
-        Spotify?: unknown;
-        onSpotifyWebPlaybackSDKReady?: () => void;
+        debugTools?: { autoAdvance?: boolean };
     }
 }
 

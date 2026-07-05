@@ -181,6 +181,7 @@ import type {
             showMetaFields: true,
             initialMeta: { name: battle.name, battle_date: battle.battle_date },
             onSave: async (editedPayload, meta) => {
+                if (!meta) throw new Error('Battle name/date missing.'); // showMetaFields is true, so meta is always set
                 const res = await fetch(`/api/stats/battles/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
