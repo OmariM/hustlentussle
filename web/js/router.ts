@@ -32,6 +32,13 @@
             },
         },
         {
+            re: /^\/prelims\/([^/]+)\/?$/,
+            enter: (m) => {
+                activate('prelims-screen');
+                if (typeof window.hydratePrelimRoute === 'function') window.hydratePrelimRoute(decodeURIComponent(m[1]));
+            },
+        },
+        {
             re: /^\/battle\/([^/]+)\/?$/,
             enter: (m) => {
                 activate('battle-screen');

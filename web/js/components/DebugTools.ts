@@ -31,6 +31,11 @@ class DebugTools {
     autoAdvanceInterval: number | null;
     autoAdvanceDelay: number;
     playlistId: string;
+    prelimLeads: number;
+    prelimFollows: number;
+    prelimLeadSpots: number;
+    prelimFollowSpots: number;
+    prelimGroupSize: number;
     panel!: HTMLDivElement;
     toggleButton!: HTMLButtonElement;
 
@@ -41,6 +46,12 @@ class DebugTools {
         this.autoAdvanceInterval = null;
         this.autoAdvanceDelay = parseInt(localStorage.getItem('debug.autoAdvanceDelay') || '3000', 10);
         this.playlistId = localStorage.getItem('debug.playlistId') || '3S34wIELHX7T82ChgdU9NS';
+        // Prelims debug config (defaults: oversized field that cuts both roles).
+        this.prelimLeads = parseInt(localStorage.getItem('debug.prelim.leads') || '16', 10);
+        this.prelimFollows = parseInt(localStorage.getItem('debug.prelim.follows') || '10', 10);
+        this.prelimLeadSpots = parseInt(localStorage.getItem('debug.prelim.leadSpots') || '8', 10);
+        this.prelimFollowSpots = parseInt(localStorage.getItem('debug.prelim.followSpots') || '8', 10);
+        this.prelimGroupSize = parseInt(localStorage.getItem('debug.prelim.groupSize') || '8', 10);
         this.init();
         this.setupNetworkMonitoring();
         this.setupKeyboardShortcuts();
@@ -254,6 +265,53 @@ class DebugTools {
         this.addSection('Setup Helpers');
         this.addButton('Fill Setup Form', () => this.fillSetupForm());
         this.addButton('Start with Random Names', () => this.startWithRandomNames());
+
+        // Prelims Helpers
+        this.addSection('Prelims Helpers');
+        const prelimConfig = document.createElement('div');
+        prelimConfig.style.cssText = `
+            padding: 5px;
+            background: #333;
+            border: 1px solid var(--primary-color);
+            border-radius: 3px;
+            margin-bottom: 6px;
+        `;
+        prelimConfig.appendChild(
+            this.prelimField('Leads', this.prelimLeads, 1, (v) => {
+                this.prelimLeads = v;
+                localStorage.setItem('debug.prelim.leads', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Follows', this.prelimFollows, 1, (v) => {
+                this.prelimFollows = v;
+                localStorage.setItem('debug.prelim.follows', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Lead spots', this.prelimLeadSpots, 1, (v) => {
+                this.prelimLeadSpots = v;
+                localStorage.setItem('debug.prelim.leadSpots', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Follow spots', this.prelimFollowSpots, 1, (v) => {
+                this.prelimFollowSpots = v;
+                localStorage.setItem('debug.prelim.followSpots', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Group size', this.prelimGroupSize, 2, (v) => {
+                this.prelimGroupSize = v;
+                localStorage.setItem('debug.prelim.groupSize', String(v));
+            }),
+        );
+        this.panel.appendChild(prelimConfig);
+        this.addButton('Fill Prelims Setup', () => this.fillPrelimsForm());
+        this.addButton('Start Prelims (Random)', () => this.startPrelimsRandom());
+        this.addButton('Jump to Selection', () => this.jumpToPrelimSelection());
+        this.addButton('Auto-Select & Advance', () => this.autoSelectPrelims());
+        this.addButton('Run Full Prelim (auto)', () => this.runFullPrelim());
 
         // Voting Helpers
         this.addSection('Voting Helpers');
@@ -598,6 +656,192 @@ class DebugTools {
             console.error('Error starting battle:', error);
             alert(`Failed to start battle: ${(error as Error).message}`);
         }
+    }
+
+    // ---- Prelims debug helpers ------------------------------------------------
+
+    // A compact labeled number input row for the prelims config block.
+    prelimField(label: string, value: number, min: number, onInput: (v: number) => void): HTMLElement {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; color:white; font-size:12px; margin:3px 0;';
+        const span = document.createElement('span');
+        span.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = String(min);
+        input.value = String(value);
+        input.style.cssText = 'width:64px; padding:2px 4px; background:#444; color:white; border:1px solid #666; border-radius:3px;';
+        input.onchange = () => {
+            const v = Math.max(min, parseInt(input.value) || min);
+            input.value = String(v);
+            onInput(v);
+        };
+        wrap.appendChild(span);
+        wrap.appendChild(input);
+        return wrap;
+    }
+
+    // Debug-friendly numbered names (e.g. "Lead 1") — unbounded, unlike the
+    // curated random-name pools, so oversized prelim fields are easy to build.
+    numberedNames(prefix: string, n: number): string[] {
+        return Array.from({ length: Math.max(0, n) }, (_, i) => `${prefix} ${i + 1}`);
+    }
+
+    // Fill the setup form for a prelim: oversized rosters + toggle + spots/group size.
+    // Leaves the user to click "Start Competition" (mirrors "Fill Setup Form").
+    fillPrelimsForm(): void {
+        const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
+        const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
+        const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
+        if (!leadsInput || !followsInput || !judgesInput) {
+            alert('Setup form not found. Make sure you are on the setup screen.');
+            return;
+        }
+
+        leadsInput.value = this.numberedNames('Lead', this.prelimLeads).join(', ');
+        followsInput.value = this.numberedNames('Follow', this.prelimFollows).join(', ');
+        judgesInput.value = this.numberedNames('Judge', 2).join(', ');
+
+        // Enable the prelims toggle and reveal its options (app.ts listens on 'change').
+        const toggle = document.getElementById('prelims-toggle') as HTMLInputElement | null;
+        if (toggle && !toggle.checked) {
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change'));
+        }
+        const setVal = (id: string, v: number) => {
+            const el = document.getElementById(id) as HTMLInputElement | null;
+            if (el) el.value = String(v);
+        };
+        setVal('prelims-lead-spots', this.prelimLeadSpots);
+        setVal('prelims-follow-spots', this.prelimFollowSpots);
+        setVal('prelims-group-size', this.prelimGroupSize);
+
+        console.log('Filled prelims setup:', {
+            leads: this.prelimLeads,
+            follows: this.prelimFollows,
+            leadSpots: this.prelimLeadSpots,
+            followSpots: this.prelimFollowSpots,
+            groupSize: this.prelimGroupSize,
+        });
+    }
+
+    // Create a prelim directly and route to the prelims screen.
+    async startPrelimsRandom(): Promise<{ session_id: string } | null> {
+        const leads = this.numberedNames('Lead', this.prelimLeads);
+        const follows = this.numberedNames('Follow', this.prelimFollows);
+        const judges = this.numberedNames('Judge', 2);
+
+        // Reflect it in the form too, for visibility if the user navigates back.
+        const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
+        const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
+        const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
+        if (leadsInput) leadsInput.value = leads.join(', ');
+        if (followsInput) followsInput.value = follows.join(', ');
+        if (judgesInput) judgesInput.value = judges.join(', ');
+
+        try {
+            const response = await fetch('/api/prelims/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    leads: leads.join(','),
+                    follows: follows.join(','),
+                    judges: judges.join(','),
+                    lead_spots: this.prelimLeadSpots,
+                    follow_spots: this.prelimFollowSpots,
+                    group_size: this.prelimGroupSize,
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to start prelims');
+            }
+            const data = (await response.json()) as { session_id: string };
+            console.log('Prelim started:', data);
+            if (typeof window.navigate === 'function') {
+                window.navigate('/prelims/' + encodeURIComponent(data.session_id));
+            }
+            return data;
+        } catch (error) {
+            console.error('Error starting prelims:', error);
+            alert(`Failed to start prelims: ${(error as Error).message}`);
+            return null;
+        }
+    }
+
+    // Skip the rotations and reveal the selection panel (clicks the built-in button).
+    jumpToPrelimSelection(): void {
+        const btn = document.getElementById('prelims-goto-selection') as HTMLButtonElement | null;
+        if (!btn) {
+            alert('Not on the prelims screen.');
+            return;
+        }
+        btn.click();
+    }
+
+    // On the selection panel, pick the required number per role and confirm — the
+    // required count is parsed from each role's "x / spots" counter (roles that
+    // auto-advance show "all N advance" and are skipped).
+    async autoSelectPrelims(): Promise<void> {
+        const screen = document.getElementById('prelims-screen');
+        if (!screen || !screen.classList.contains('active')) {
+            alert('Not on the prelims screen.');
+            return;
+        }
+        const selection = document.getElementById('prelims-selection');
+        if (selection && selection.style.display === 'none') {
+            this.jumpToPrelimSelection();
+        }
+        await this.waitFor(() => {
+            const s = document.getElementById('prelims-selection');
+            return !!s && s.style.display !== 'none';
+        }, 3000);
+
+        const pickRole = (role: 'lead' | 'follow') => {
+            const counter = document.getElementById(`prelims-${role}-counter`);
+            const match = (counter?.textContent || '').match(/\/\s*(\d+)/);
+            if (!match) return; // auto-advance role — nothing to select
+            const need = parseInt(match[1], 10);
+            const inputs = Array.from(
+                document.querySelectorAll<HTMLInputElement>(`#prelims-${role}-choices input:not([disabled])`),
+            );
+            for (let i = 0; i < Math.min(need, inputs.length); i++) inputs[i].click();
+        };
+        pickRole('lead');
+        pickRole('follow');
+
+        const confirm = document.getElementById('prelims-confirm-selection') as HTMLButtonElement | null;
+        if (confirm && !confirm.disabled) {
+            confirm.click();
+        } else {
+            alert('Could not satisfy the selection counts (check spots vs. eligible dancers).');
+        }
+    }
+
+    // One-click: start a random prelim, skip to selection, auto-pick, and advance
+    // into the battle.
+    async runFullPrelim(): Promise<void> {
+        const started = await this.startPrelimsRandom();
+        if (!started) return;
+        // Pass the roster confirmation step.
+        await this.waitFor(() => {
+            const b = document.getElementById('prelims-confirm-start');
+            return !!b && b.offsetParent !== null;
+        }, 8000);
+        const confirmBtn = document.getElementById('prelims-confirm-start') as HTMLButtonElement | null;
+        if (confirmBtn) confirmBtn.click();
+        // Now on the operator view — jump to selection and auto-pick.
+        const ready = await this.waitFor(() => {
+            const c = document.getElementById('prelims-screen');
+            const goto = document.getElementById('prelims-goto-selection');
+            return !!c && c.classList.contains('active') && !!goto && goto.offsetParent !== null;
+        }, 8000);
+        if (!ready) {
+            console.warn('Prelims screen did not render in time.');
+            return;
+        }
+        this.jumpToPrelimSelection();
+        await this.autoSelectPrelims();
     }
 
     // Helper method to record votes
@@ -1191,6 +1435,9 @@ class DebugTools {
             }
             if (e.altKey && (e.key === 'n' || e.key === 'N')) {
                 await this.nextRound();
+            }
+            if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+                await this.runFullPrelim();
             }
         });
     }

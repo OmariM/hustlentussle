@@ -172,6 +172,7 @@ let leadNamesInput: HTMLInputElement, followNamesInput: HTMLInputElement, judgeN
 let pointsToWinInput: HTMLInputElement, pointsToWinModeSelect: HTMLSelectElement, customPointsContainer: HTMLElement, pointsToWinHelper: HTMLElement;
 let numContestantJudgesInput: HTMLInputElement, contestantJudgesWarning: HTMLElement;
 let contestantJudgingToggle: HTMLInputElement, simpleContestantJudgesInput: HTMLInputElement, randomizeOrderToggle: HTMLInputElement;
+let prelimsToggle: HTMLInputElement | null, prelimsOptions: HTMLElement | null, prelimsLeadSpotsInput: HTMLInputElement | null, prelimsFollowSpotsInput: HTMLInputElement | null, prelimsGroupSizeInput: HTMLInputElement | null;
 let roundNumber: HTMLElement, lead1Name: HTMLElement, lead2Name: HTMLElement, follow1Name: HTMLElement, follow2Name: HTMLElement, contestantJudgesList: HTMLElement, guestJudgesList: HTMLElement;
 let currentLeadScores: HTMLElement, currentFollowScores: HTMLElement;
 let liveLeadGraphic: HTMLElement, liveFollowGraphic: HTMLElement;
@@ -237,6 +238,17 @@ document.addEventListener('DOMContentLoaded', () => {
     simpleContestantJudgesInput = document.getElementById('simple-contestant-judges') as HTMLInputElement;
     contestantJudgingToggle = document.getElementById('contestant-judging-toggle') as HTMLInputElement;
     randomizeOrderToggle = document.getElementById('randomize-order-toggle') as HTMLInputElement;
+    prelimsToggle = document.getElementById('prelims-toggle') as HTMLInputElement | null;
+    prelimsOptions = document.getElementById('prelims-options');
+    prelimsLeadSpotsInput = document.getElementById('prelims-lead-spots') as HTMLInputElement | null;
+    prelimsFollowSpotsInput = document.getElementById('prelims-follow-spots') as HTMLInputElement | null;
+    prelimsGroupSizeInput = document.getElementById('prelims-group-size') as HTMLInputElement | null;
+
+    if (prelimsToggle && prelimsOptions) {
+        prelimsToggle.addEventListener('change', () => {
+            prelimsOptions!.style.display = prelimsToggle!.checked ? '' : 'none';
+        });
+    }
 
     if (contestantJudgingToggle && simpleContestantJudgesInput) {
         const syncContestantJudgingControls = () => {
@@ -1321,6 +1333,52 @@ async function startCompetition(useSimpleContestantJudges: boolean, allowContest
 
     if (!leads || !follows || !judges) {
         showToast('Please enter names for leads, follows, and judges.', 'error');
+        return;
+    }
+
+    // Preliminary round: create the prelim and route to the prelims screen. The main
+    // battle is built later, from the advancers, on commit (see prelims.ts).
+    if (prelimsToggle && prelimsToggle.checked) {
+        const parseSpots = (el: HTMLInputElement | null) => {
+            const raw = el ? el.value.trim() : '';
+            return raw === '' ? null : parseInt(raw, 10);
+        };
+        const groupSizeRaw = prelimsGroupSizeInput ? prelimsGroupSizeInput.value.trim() : '';
+        const group_size = groupSizeRaw === '' ? 8 : parseInt(groupSizeRaw, 10);
+        setButtonLoading(startCompetitionBtn, true);
+        try {
+            const response = await fetch('/api/prelims/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    leads,
+                    follows,
+                    judges,
+                    points_to_win,
+                    points_to_win_mode,
+                    num_contestant_judges,
+                    playlist_url: playlistUrlRaw,
+                    simple_contestant_judges: simpleModeRequested,
+                    contestant_judging_enabled: contestantJudgingRequested,
+                    randomize_order: randomizeOrder,
+                    lead_spots: parseSpots(prelimsLeadSpotsInput),
+                    follow_spots: parseSpots(prelimsFollowSpotsInput),
+                    group_size,
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to start prelims');
+            }
+            const data = await response.json();
+            navigate('/prelims/' + encodeURIComponent(data.session_id));
+            demoActionCompleted('wait-for-start');
+        } catch (error) {
+            console.error('Error starting prelims:', error);
+            showToast('Failed to start prelims: ' + ((error instanceof Error && error.message) || 'Unknown error'), 'error');
+        } finally {
+            setButtonLoading(startCompetitionBtn, false);
+        }
         return;
     }
 

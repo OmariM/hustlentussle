@@ -260,6 +260,46 @@ export interface ResultsResponse {
     tiebreak_winners?: { lead: string | null; follow: string | null };
 }
 
+// ---- Prelims (/api/prelims/*, web/routes/game.py) ----
+
+/** One rotation is a list of [leadName, followName] pairs. */
+export type PrelimRotation = [string, string][];
+
+export interface PrelimHeat {
+    leads: string[];
+    follows: string[];
+    rotations: PrelimRotation[];
+}
+
+export interface PrelimStateResponse {
+    session_id: string;
+    config: {
+        group_size: number;
+        num_rotations: number;
+        rotation_seconds: number;
+        lead_spots: number;
+        follow_spots: number;
+        lead_needs_cut: boolean;
+        follow_needs_cut: boolean;
+        num_leads: number;
+        num_follows: number;
+        playlist_url: string;
+    };
+    num_heats: number;
+    current_heat_index: number;
+    current_rotation_index: number;
+    running: boolean;
+    paused: boolean;
+    confirmed: boolean;
+    rotation_remaining: number;
+    heats_complete: boolean;
+    heats: PrelimHeat[];
+    numbers: { leads: Record<string, string>; follows: Record<string, string> };
+    eligible: { leads: string[]; follows: string[] };
+    selection: { leads: string[]; follows: string[] };
+    complete: boolean;
+}
+
 // ---- Tie-break flow (/api/end_game + /api/tiebreak/*, web/routes/game.py) ----
 
 /** /api/end_game response when a tie-break is required. */

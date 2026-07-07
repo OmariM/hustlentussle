@@ -3238,3 +3238,337 @@ a {
 .consistency-warning li {
     margin: 2px 0;
 }
+
+/* ============================================================
+   Prelims (preliminary elimination round)
+   ============================================================ */
+.prelims-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+}
+.prelims-inputs label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+.prelims-inputs input {
+    width: 120px;
+}
+
+.prelims-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+}
+.prelims-progress {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+#prelims-stage-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    margin: var(--space-lg) auto;
+    aspect-ratio: 1 / 1;
+}
+#prelims-circle {
+    position: absolute;
+    inset: 0;
+}
+#prelims-timer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-mono);
+    font-size: 3.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    z-index: 2;
+    pointer-events: none;
+}
+#prelims-timer.paused {
+    color: var(--text-muted);
+}
+
+.prelims-seat {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 92px;
+    text-align: center;
+    transition: left 0.6s ease, top 0.6s ease;
+}
+.prelims-seat .seat-follow {
+    display: block;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.prelims-seat .seat-lead {
+    display: inline-block;
+    margin-top: var(--space-xs);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.78rem;
+    transition: background 0.3s ease;
+    max-width: 92px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.prelims-controls {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: var(--space-lg);
+}
+
+.prelims-selection {
+    margin-top: var(--space-lg);
+}
+.prelims-selection-cols {
+    display: flex;
+    gap: var(--space-xl);
+    flex-wrap: wrap;
+    margin: var(--space-md) 0 var(--space-lg);
+}
+.prelims-select-col {
+    flex: 1;
+    min-width: 220px;
+}
+.prelims-choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+.prelims-choice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-card);
+}
+.prelims-choice.selected {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+.prelims-choice.locked {
+    opacity: 0.75;
+    cursor: default;
+}
+.prelims-choice input {
+    pointer-events: none;
+}
+
+/* Prelims — operator (pairing table + Start) & display split */
+.prelims-op-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    margin: var(--space-md) 0;
+}
+#prelims-op-timer {
+    font-family: var(--font-mono);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 2.5ch;
+    text-align: center;
+}
+.prelims-op-message {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+.prelims-pairing-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-md) 0 var(--space-lg);
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.prelims-pairing-table th,
+.prelims-pairing-table td {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.prelims-pairing-table th {
+    background: var(--bg-card-hover);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.prelims-pairing-table th:first-child,
+.prelims-pairing-table td:first-child {
+    width: 3ch;
+    color: var(--text-muted);
+}
+.prelims-pairing-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Display view (spectators) */
+#prelims-display-view {
+    text-align: center;
+}
+.prelims-display-status {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: var(--space-md);
+}
+/* In audience display mode, give the circle the whole stage. */
+body.display-mode #prelims-stage-wrap {
+    max-width: min(78vh, 640px);
+}
+body.display-mode #prelims-timer {
+    font-size: 4rem;
+}
+
+/* Prelims — "selecting competitors" display screen */
+.prelims-selecting {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-lg);
+    min-height: 40vh;
+}
+.prelims-selecting-text {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.prelims-spinner {
+    width: 56px;
+    height: 56px;
+    border: 6px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: prelims-spin 0.9s linear infinite;
+}
+@keyframes prelims-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Prelims — competitor bib numbers */
+.prelims-bib {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 1px 6px;
+    margin-right: var(--space-sm);
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    font-weight: 700;
+    text-align: center;
+}
+.seat-bib {
+    display: inline-block;
+    min-width: 1.5em;
+    padding: 0 5px;
+    margin-right: 4px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    font-weight: 700;
+}
+
+/* Prelims — number editor */
+.prelims-numbers-editor {
+    margin: var(--space-md) 0 var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+.prelims-numbers-cols {
+    display: flex;
+    gap: var(--space-xl);
+    flex-wrap: wrap;
+    margin: var(--space-md) 0;
+}
+.prelims-numbers-col {
+    flex: 1;
+    min-width: 220px;
+}
+.prelims-numbers-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+.prelims-number-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+/* input.<class> beats the global `input[type="text"] { width: 100% }`, and the
+   fixed flex-basis keeps it narrow inside the flex row (so names aren't squished). */
+input.prelims-number-input {
+    flex: 0 0 60px;
+    width: 60px;
+    text-align: center;
+}
+input.prelims-number-input.dup {
+    border-color: var(--danger-color);
+    background: var(--danger-bg);
+    color: var(--danger-color);
+}
+
+/* Prelims — confirmation roster editor */
+.prelims-roster-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-sm);
+}
+.prelims-roster-name {
+    flex: 1;
+}
+.prelims-remove-btn {
+    border: none;
+    background: transparent;
+    color: var(--danger-color);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+}
+.prelims-remove-btn:hover {
+    background: var(--danger-bg);
+}
+.prelims-add-row {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-xs);
+}
+.prelims-add-row input {
+    flex: 1;
+}

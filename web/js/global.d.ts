@@ -20,6 +20,7 @@ declare global {
         // app.js (top-level function declarations become window properties)
         showScreen?: (el: HTMLElement) => void;
         hydrateBattleRoute?: (sessionId: string) => void;
+        hydratePrelimRoute?: (sessionId: string) => void;
         hydrateResultsRoute?: (sessionId: string | null) => void;
         updateSessionIdDisplay?: () => void;
         renderFromState?: (state: GameStateResponse) => void;

@@ -13,5 +13,6 @@
 import './components/DebugTools';
 import './app';
 import './explainers';
+import './prelims';
 import './ytd';
 import './router';

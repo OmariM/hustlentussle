@@ -171,6 +171,27 @@
                 <textarea id="judge-names" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
             </div>
             <div class="form-group">
+                <label for="prelims-toggle">
+                    <input type="checkbox" id="prelims-toggle" />
+                    Hold a preliminary round
+                </label>
+                <p class="form-helper-text">Run rotating prelim heats to cut an oversized field down before the battle.</p>
+            </div>
+            <div class="form-group" id="prelims-options" style="display:none;">
+                <div class="prelims-inputs">
+                    <label for="prelims-lead-spots">Lead spots (advance):
+                        <input type="number" id="prelims-lead-spots" min="1" placeholder="all" />
+                    </label>
+                    <label for="prelims-follow-spots">Follow spots (advance):
+                        <input type="number" id="prelims-follow-spots" min="1" placeholder="all" />
+                    </label>
+                    <label for="prelims-group-size">Group size (per role, per heat):
+                        <input type="number" id="prelims-group-size" min="2" value="8" />
+                    </label>
+                </div>
+                <p class="form-helper-text">Leave a role's spots blank to advance everyone in that role (they still dance as partners). Each heat runs 6 &times; 45s rotations.</p>
+            </div>
+            <div class="form-group">
                 <label for="randomize-order-toggle">
                     <input type="checkbox" id="randomize-order-toggle" checked />
                     Randomize starting order
@@ -229,6 +250,118 @@
             <div class="setup-actions">
                 <button id="start-competition" class="btn primary">Start Competition</button>
                 <button id="setup-back-to-home" class="btn secondary">Back</button>
+            </div>
+        </div>
+
+        <div id="prelims-screen" class="screen">
+            <div class="prelims-header">
+                <h2>Preliminaries</h2>
+                <div class="prelims-progress">
+                    <span class="round-badge">Heat <span id="prelims-heat-num">1</span> / <span id="prelims-heat-total">1</span></span>
+                    <span class="round-badge">Rotation <span id="prelims-rotation-num">1</span> / <span id="prelims-rotation-total">6</span></span>
+                </div>
+            </div>
+
+            <!-- Confirmation view: review the roster, edit bib numbers, add/remove -->
+            <div id="prelims-confirm-view" style="display:none;">
+                <p id="prelims-confirm-summary" class="form-helper-text"></p>
+                <div class="prelims-numbers-cols">
+                    <div class="prelims-numbers-col">
+                        <h4>Leads (<span id="prelims-confirm-lead-count">0</span>)</h4>
+                        <div id="prelims-confirm-leads" class="prelims-roster-list"></div>
+                        <div class="prelims-add-row">
+                            <input id="prelims-add-lead-name" type="text" placeholder="Add a lead…" />
+                            <button id="prelims-add-lead" class="btn secondary">Add lead</button>
+                        </div>
+                    </div>
+                    <div class="prelims-numbers-col">
+                        <h4>Follows (<span id="prelims-confirm-follow-count">0</span>)</h4>
+                        <div id="prelims-confirm-follows" class="prelims-roster-list"></div>
+                        <div class="prelims-add-row">
+                            <input id="prelims-add-follow-name" type="text" placeholder="Add a follow…" />
+                            <button id="prelims-add-follow" class="btn secondary">Add follow</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="setup-actions">
+                    <button id="prelims-confirm-start" class="btn primary">Confirm &amp; start prelims</button>
+                    <button id="prelims-confirm-back" class="btn secondary">Back to setup</button>
+                </div>
+            </div>
+
+            <!-- Operator view: pairing table + per-heat Start button -->
+            <div id="prelims-operator-view">
+                <div class="prelims-op-status">
+                    <div id="prelims-op-timer">45</div>
+                    <div id="prelims-op-message" class="prelims-op-message"></div>
+                </div>
+
+                <table id="prelims-pairing-table" class="prelims-pairing-table">
+                    <thead>
+                        <tr><th>#</th><th>Lead</th><th>Follow</th></tr>
+                    </thead>
+                    <tbody id="prelims-pairing-body"></tbody>
+                </table>
+
+                <div class="prelims-controls">
+                    <button id="prelims-start-heat" class="btn primary">Start heat</button>
+                    <button id="prelims-pause" class="btn secondary" style="display:none;">Pause</button>
+                    <button id="prelims-skip-rotation" class="btn secondary" style="display:none;">Skip rotation</button>
+                    <button id="prelims-edit-numbers" class="btn secondary">Edit numbers</button>
+                    <button id="prelims-open-display" class="btn secondary">Open spectator view</button>
+                    <button id="prelims-goto-selection" class="btn secondary">Skip to selection</button>
+                </div>
+
+                <div id="prelims-numbers-editor" class="prelims-numbers-editor" style="display:none;">
+                    <h3>Competitor numbers</h3>
+                    <p class="form-helper-text">The bib number each dancer wears so judges can identify them. Edit any that need changing, then save.</p>
+                    <div class="prelims-numbers-cols">
+                        <div class="prelims-numbers-col">
+                            <h4>Leads</h4>
+                            <div id="prelims-numbers-leads" class="prelims-numbers-list"></div>
+                        </div>
+                        <div class="prelims-numbers-col">
+                            <h4>Follows</h4>
+                            <div id="prelims-numbers-follows" class="prelims-numbers-list"></div>
+                        </div>
+                    </div>
+                    <div class="setup-actions">
+                        <button id="prelims-numbers-save" class="btn primary">Save numbers</button>
+                        <button id="prelims-numbers-cancel" class="btn secondary">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Display view: rotating-circle visualization for contestants/spectators -->
+            <div id="prelims-display-view" style="display:none;">
+                <div id="prelims-stage-wrap">
+                    <div id="prelims-timer">45</div>
+                    <div id="prelims-circle"></div>
+                </div>
+                <div id="prelims-display-status" class="prelims-display-status"></div>
+                <div id="prelims-display-selecting" class="prelims-selecting" style="display:none;">
+                    <div class="prelims-spinner"></div>
+                    <div id="prelims-selecting-text" class="prelims-selecting-text">Selecting competitors…</div>
+                </div>
+            </div>
+
+            <div id="prelims-selection" class="prelims-selection" style="display:none;">
+                <h3>Select who advances to the battle</h3>
+                <p class="form-helper-text">Only each dancer's first (evaluated) appearance is listed. Roles that don't need a cut advance automatically.</p>
+                <div class="prelims-selection-cols">
+                    <div class="prelims-select-col">
+                        <h4>Leads <span id="prelims-lead-counter" class="round-badge"></span></h4>
+                        <div id="prelims-lead-choices" class="prelims-choices"></div>
+                    </div>
+                    <div class="prelims-select-col">
+                        <h4>Follows <span id="prelims-follow-counter" class="round-badge"></span></h4>
+                        <div id="prelims-follow-choices" class="prelims-choices"></div>
+                    </div>
+                </div>
+                <div class="setup-actions">
+                    <button id="prelims-confirm-selection" class="btn primary">Advance to battle</button>
+                    <button id="prelims-back-home" class="btn secondary">Cancel</button>
+                </div>
             </div>
         </div>
 
