@@ -24,6 +24,31 @@ interface StartGameDebugResponse {
     initial_follows: string[];
 }
 
+// Banks of real first names used (with a random last-initial) to populate prelim
+// rosters from the debug menu — e.g. "Sarah M." — so demos read like real events.
+// Gendered to match the original setup pre-fill: male leads, female follows,
+// neutral judges (see generateRandomNames / fillSetupForm).
+const DEBUG_MALE_NAMES = [
+    'Liam', 'Noah', 'Oliver', 'Elijah', 'Lucas', 'Mason', 'Ethan', 'Logan', 'James', 'Aiden',
+    'Jackson', 'Sebastian', 'Mateo', 'Jack', 'Owen', 'Daniel', 'Henry', 'Wyatt', 'Leo', 'Julian',
+    'Gabriel', 'Isaac', 'Levi', 'Adrian', 'Miles', 'Diego', 'Andre', 'Marcus', 'Theo', 'Nathan',
+];
+const DEBUG_FEMALE_NAMES = [
+    'Ava', 'Olivia', 'Emma', 'Sophia', 'Isabella', 'Mia', 'Amelia', 'Harper', 'Evelyn', 'Abigail',
+    'Ella', 'Scarlett', 'Grace', 'Chloe', 'Zoe', 'Lily', 'Nora', 'Hazel', 'Aria', 'Nova',
+    'Layla', 'Ellie', 'Stella', 'Naomi', 'Maya', 'Ruby', 'Priya', 'Elena', 'Sofia', 'Willa',
+];
+const DEBUG_NEUTRAL_NAMES = [
+    'Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Rowan', 'Sage',
+    'Reese', 'Skyler', 'Emerson', 'Parker', 'Hayden',
+];
+
+const DEBUG_NAME_BANKS = {
+    male: DEBUG_MALE_NAMES,
+    female: DEBUG_FEMALE_NAMES,
+    neutral: DEBUG_NEUTRAL_NAMES,
+};
+
 class DebugTools {
     isVisible: boolean;
     networkLogs: NetworkLogEntry[];
@@ -681,10 +706,21 @@ class DebugTools {
         return wrap;
     }
 
-    // Debug-friendly numbered names (e.g. "Lead 1") — unbounded, unlike the
-    // curated random-name pools, so oversized prelim fields are easy to build.
-    numberedNames(prefix: string, n: number): string[] {
-        return Array.from({ length: Math.max(0, n) }, (_, i) => `${prefix} ${i + 1}`);
+    // Draw `count` unique "First I." names from the gendered bank (real first name +
+    // random last-initial). `used` threads across calls so leads/follows/judges never
+    // collide. Sampling every first-name × initial combo keeps oversized fields easy.
+    generateBankNames(count: number, gender: 'male' | 'female' | 'neutral', used: Set<string>): string[] {
+        const initials = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const combos: string[] = [];
+        for (const first of DEBUG_NAME_BANKS[gender]) {
+            for (const initial of initials) {
+                const name = `${first} ${initial}.`;
+                if (!used.has(name)) combos.push(name);
+            }
+        }
+        const chosen = this.shuffleArray(combos).slice(0, Math.max(0, count));
+        chosen.forEach((n) => used.add(n));
+        return chosen;
     }
 
     // Fill the setup form for a prelim: oversized rosters + toggle + spots/group size.
@@ -698,9 +734,10 @@ class DebugTools {
             return;
         }
 
-        leadsInput.value = this.numberedNames('Lead', this.prelimLeads).join(', ');
-        followsInput.value = this.numberedNames('Follow', this.prelimFollows).join(', ');
-        judgesInput.value = this.numberedNames('Judge', 2).join(', ');
+        const used = new Set<string>();
+        leadsInput.value = this.generateBankNames(this.prelimLeads, 'male', used).join(', ');
+        followsInput.value = this.generateBankNames(this.prelimFollows, 'female', used).join(', ');
+        judgesInput.value = this.generateBankNames(2, 'neutral', used).join(', ');
 
         // Enable the prelims toggle and reveal its options (app.ts listens on 'change').
         const toggle = document.getElementById('prelims-toggle') as HTMLInputElement | null;
@@ -727,9 +764,10 @@ class DebugTools {
 
     // Create a prelim directly and route to the prelims screen.
     async startPrelimsRandom(): Promise<{ session_id: string } | null> {
-        const leads = this.numberedNames('Lead', this.prelimLeads);
-        const follows = this.numberedNames('Follow', this.prelimFollows);
-        const judges = this.numberedNames('Judge', 2);
+        const used = new Set<string>();
+        const leads = this.generateBankNames(this.prelimLeads, 'male', used);
+        const follows = this.generateBankNames(this.prelimFollows, 'female', used);
+        const judges = this.generateBankNames(2, 'neutral', used);
 
         // Reflect it in the form too, for visibility if the user navigates back.
         const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
