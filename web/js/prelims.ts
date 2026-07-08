@@ -298,8 +298,19 @@ async function advanceRotationOp(): Promise<void> {
 
 // ---- display view (spectators) --------------------------------------------
 
+let displayResizeWired = false;
+
 function enterDisplay(): void {
     showView('display');
+    if (!displayResizeWired) {
+        // The oval is sized to the viewport, so rebuild it on resize.
+        window.addEventListener('resize', () => {
+            if (!displayMode || !state) return;
+            circleHeatKey = -1; // force a rebuild at the new size
+            renderDisplay(state);
+        });
+        displayResizeWired = true;
+    }
     if (state) renderDisplay(state);
     pollTimer = window.setInterval(async () => {
         if (!prelimId) return;
@@ -314,15 +325,24 @@ function enterDisplay(): void {
     }, 1000);
 }
 
-function seatPositions(k: number, stage: number): Array<{ x: number; y: number }> {
-    const center = stage / 2;
-    const radius = stage * 0.38;
+// Ellipse of seat positions filling a width×height stage (a horizontal oval when the
+// stage is wider than tall). Padding leaves room for the (untruncated) name labels.
+function seatPositions(k: number, width: number, height: number): Array<{ x: number; y: number }> {
+    const cx = width / 2;
+    const cy = height / 2;
+    const rx = Math.max(40, cx - Math.min(170, width * 0.14));
+    const ry = Math.max(40, cy - Math.min(90, height * 0.16));
     const positions: Array<{ x: number; y: number }> = [];
     for (let j = 0; j < k; j++) {
         const theta = -Math.PI / 2 + (j * 2 * Math.PI) / k;
-        positions.push({ x: center + radius * Math.cos(theta), y: center + radius * Math.sin(theta) });
+        positions.push({ x: cx + rx * Math.cos(theta), y: cy + ry * Math.sin(theta) });
     }
     return positions;
+}
+
+function stageSize(): { width: number; height: number } {
+    const wrap = $('prelims-stage-wrap');
+    return { width: wrap?.clientWidth || 800, height: wrap?.clientHeight || 400 };
 }
 
 function buildCircle(): void {
@@ -335,9 +355,10 @@ function buildCircle(): void {
     const heat = state.heats[heatIndex];
     if (!heat) return;
     const k = heat.leads.length;
-    const stage = wrap.clientWidth || 500;
-    const seats = seatPositions(k, stage);
-    const center = stage / 2;
+    const { width, height } = stageSize();
+    const seats = seatPositions(k, width, height);
+    const cx = width / 2;
+    const cy = height / 2;
 
     for (let j = 0; j < k; j++) {
         const seat = document.createElement('div');
@@ -353,8 +374,8 @@ function buildCircle(): void {
         chip.className = 'prelims-seat prelims-lead-chip';
         chip.dataset.leadIndex = String(i);
         chip.innerHTML = `<span class="seat-lead" title="${escapeAttr(heat.leads[i])}">${bibNameHtml('lead', heat.leads[i])}</span>`;
-        chip.style.left = `${center}px`;
-        chip.style.top = `${center}px`;
+        chip.style.left = `${cx}px`;
+        chip.style.top = `${cy}px`;
         circle.appendChild(chip);
     }
     circleHeatKey = heatIndex;
@@ -362,22 +383,22 @@ function buildCircle(): void {
 
 function positionChips(): void {
     if (!state) return;
-    const wrap = $('prelims-stage-wrap');
-    if (!wrap) return;
     const heat = state.heats[heatIndex];
     if (!heat) return;
     const k = heat.leads.length;
-    const stage = wrap.clientWidth || 500;
-    const seats = seatPositions(k, stage);
-    const center = stage / 2;
+    const { width, height } = stageSize();
+    const seats = seatPositions(k, width, height);
 
-    // Lead i dances with follow (i + rotationIndex) % k — it glides to that seat,
-    // pulled 82% in from center so it doesn't cover the follow's label.
+    // Lead i dances with follow (i + rotationIndex) % k. Park the lead pill a fixed
+    // distance directly BELOW its follow (not radially inward): a vertical gap keeps
+    // the pills from overlapping at every angle — radial-inward collapses to zero
+    // vertical separation at the left/right of the ellipse, where the pills are widest.
+    const leadDrop = Math.max(42, height * 0.1);
     document.querySelectorAll<HTMLElement>('.prelims-lead-chip').forEach((chip) => {
         const i = Number(chip.dataset.leadIndex);
         const seat = seats[(i + rotationIndex) % k];
-        chip.style.left = `${center + (seat.x - center) * 0.82}px`;
-        chip.style.top = `${center + (seat.y - center) * 0.82}px`;
+        chip.style.left = `${seat.x}px`;
+        chip.style.top = `${seat.y + leadDrop}px`;
     });
 }
 

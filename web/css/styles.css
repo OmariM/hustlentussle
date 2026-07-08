@@ -3438,12 +3438,48 @@ a {
     color: var(--text-secondary);
     margin-top: var(--space-md);
 }
-/* In audience display mode, give the circle the whole stage. */
+/* In audience display mode, spread the circle into a wide horizontal oval that
+   fills the stage, and scale text up so nothing is small or truncated. */
 body.display-mode #prelims-stage-wrap {
-    max-width: min(78vh, 640px);
+    max-width: none;
+    width: 100%;
+    height: 62vh;
+    aspect-ratio: auto;
+    margin: 1.5vh auto;
 }
 body.display-mode #prelims-timer {
-    font-size: 4rem;
+    font-size: clamp(3rem, 11vh, 7.5rem);
+}
+body.display-mode .prelims-display-status {
+    font-size: clamp(1.3rem, 3.4vh, 2.4rem);
+    margin-top: 1.4vh;
+}
+body.display-mode .prelims-progress .round-badge {
+    font-size: 1.1rem;
+    padding: 6px 14px;
+}
+/* Let seats size to their (untruncated) content and grow the names. */
+body.display-mode .prelims-seat {
+    width: max-content;
+    max-width: 22vw;
+}
+body.display-mode .seat-follow {
+    font-size: clamp(1rem, 2.2vh, 1.7rem);
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+body.display-mode .seat-lead {
+    font-size: clamp(0.85rem, 1.8vh, 1.35rem);
+    max-width: none;
+    padding: 3px 12px;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+body.display-mode .seat-bib {
+    font-size: 0.95em;
+    padding: 0 7px;
 }
 
 /* Prelims — "selecting competitors" display screen */
@@ -3453,13 +3489,21 @@ body.display-mode #prelims-timer {
     align-items: center;
     justify-content: center;
     gap: var(--space-lg);
-    min-height: 40vh;
+    min-height: 60vh;
 }
 .prelims-selecting-text {
     font-family: var(--font-display);
     font-size: 1.6rem;
     font-weight: 700;
     color: var(--text-primary);
+}
+body.display-mode .prelims-selecting-text {
+    font-size: clamp(1.8rem, 4.5vh, 3.2rem);
+}
+body.display-mode .prelims-spinner {
+    width: 76px;
+    height: 76px;
+    border-width: 8px;
 }
 .prelims-spinner {
     width: 56px;
