@@ -64,6 +64,8 @@ def serialize_prelim(prelim: Prelim) -> dict:
         "running": prelim.running,
         "phase": prelim.phase,
         "paused": prelim.paused,
+        "show_timer": prelim.show_timer,
+        "auto_advance": prelim.auto_advance,
         "confirmed": prelim.confirmed,
         "rotation_remaining": prelim.rotation_remaining(),
         "heats_complete": prelim.heats_complete,

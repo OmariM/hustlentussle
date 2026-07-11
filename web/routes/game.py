@@ -331,6 +331,18 @@ def prelims_toggle_pause():
     return jsonify(serialize_prelim(prelim))
 
 
+@bp.route("/api/prelims/set_options", methods=["POST"])
+def prelims_set_options():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.set_options(show_timer=data.get("show_timer"), auto_advance=data.get("auto_advance"))
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
 @bp.route("/api/prelims/advance_heat", methods=["POST"])
 def prelims_advance_heat():
     data = request.get_json() or {}

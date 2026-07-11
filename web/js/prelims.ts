@@ -31,6 +31,7 @@ let heatIndex = 0;
 let rotationIndex = 0;
 let remaining = 0;
 let paused = false; // operator paused the countdown (mirrors server state)
+let autoAdvance = true; // whether a rotation auto-advances at 0 (mirrors server)
 let opTimer: number | null = null; // operator's local 1s rotation countdown
 let pollTimer: number | null = null; // display's state poll
 let circleHeatKey = -1; // which heat the circle DOM is currently built for
@@ -154,6 +155,7 @@ function syncOperatorFromState(): void {
     heatIndex = state.current_heat_index;
     rotationIndex = state.current_rotation_index;
     paused = state.paused;
+    autoAdvance = state.auto_advance;
     if (state.running && state.phase !== 'intermission') {
         remaining = state.rotation_remaining || phaseFullSeconds();
         startOpTimer();
@@ -172,6 +174,23 @@ function stopOpTimer(): void {
     if (opTimer !== null) {
         window.clearInterval(opTimer);
         opTimer = null;
+    }
+}
+
+async function setOptions(opts: { show_timer?: boolean; auto_advance?: boolean }): Promise<void> {
+    if (!prelimId) return;
+    try {
+        state = await postJson<PrelimStateResponse>('/api/prelims/set_options', { session_id: prelimId, ...opts });
+    } catch {
+        showToast('Could not update the option.', 'error');
+        return;
+    }
+    autoAdvance = state.auto_advance;
+    if ('auto_advance' in opts) {
+        // Re-sync the local timer for the new mode (advances if we were holding at 0).
+        syncOperatorFromState();
+    } else {
+        renderOperator();
     }
 }
 
@@ -225,6 +244,14 @@ function renderOperator(): void {
     setVisible('prelims-skip-rotation', dancing);
     setVisible('prelims-start-next', intermission);
 
+    // Reflect the live option toggles.
+    const autoBox = $('prelims-auto-advance') as HTMLInputElement | null;
+    if (autoBox) autoBox.checked = state.auto_advance;
+    const timerBox = $('prelims-show-timer') as HTMLInputElement | null;
+    if (timerBox) timerBox.checked = state.show_timer;
+    const skipBtn = $('prelims-skip-rotation');
+    if (skipBtn) skipBtn.textContent = state.auto_advance ? 'Skip rotation' : 'Next rotation';
+
     if (state.heats_complete) {
         if (startBtn) startBtn.style.display = 'none';
         if (timer) timer.textContent = '✓';
@@ -245,13 +272,21 @@ function renderOperator(): void {
     } else if (state.running) {
         if (startBtn) startBtn.style.display = 'none';
         if (pauseBtn) pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+        // In manual mode the rotation timer hits 0 and waits for the operator.
+        const manualHold = state.phase === 'dancing' && !state.auto_advance && remaining <= 0 && !paused;
+        if (skipBtn) {
+            skipBtn.classList.toggle('primary', manualHold);
+            skipBtn.classList.toggle('secondary', !manualHold);
+        }
         if (timer) {
-            timer.textContent = String(remaining);
+            timer.textContent = String(Math.max(0, remaining));
             timer.classList.toggle('paused', paused);
         }
         if (msg) {
             if (paused) {
                 msg.textContent = 'Paused.';
+            } else if (manualHold) {
+                msg.textContent = 'Time’s up — press “Next rotation” when ready.';
             } else if (state.phase === 'break') {
                 msg.textContent = `Switch partners — rotation ${visualRotationIndex() + 1} in ${remaining}s.`;
             } else {
@@ -277,11 +312,18 @@ function startOpTimer(): void {
     opTimer = window.setInterval(() => {
         if (paused) return; // frozen while the operator has paused
         remaining -= 1;
+        const timer = $('prelims-op-timer');
+        if (timer) timer.textContent = String(Math.max(0, remaining));
         if (remaining <= 0) {
-            void nextPhaseOp();
-        } else {
-            const timer = $('prelims-op-timer');
-            if (timer) timer.textContent = String(remaining);
+            // Breaks/intermission always advance; a rotation only auto-advances when the
+            // operator has left auto-advance on. Otherwise hold until they press Next.
+            if (autoAdvance || (state && state.phase !== 'dancing')) {
+                void nextPhaseOp();
+            } else {
+                remaining = 0;
+                stopOpTimer();
+                renderOperator();
+            }
         }
     }, 1000);
 }
@@ -463,21 +505,25 @@ function renderDisplay(next: PrelimStateResponse): void {
     positionChips();
 
     const timer = $('prelims-timer');
+    const showTimer = next.show_timer;
     if (next.running && next.phase === 'intermission') {
-        // Music change — hold for the operator.
+        // Music change — held for the operator (shown regardless of the timer toggle).
         if (timer) {
+            timer.style.display = '';
             timer.textContent = '🎵';
             timer.classList.remove('paused');
         }
         if (status) status.textContent = 'Music change — get ready to switch partners';
     } else if (next.running && next.phase === 'break') {
         if (timer) {
+            timer.style.display = showTimer ? '' : 'none';
             timer.textContent = String(next.rotation_remaining);
             timer.classList.remove('paused');
         }
         if (status) status.textContent = `Switch partners — rotation ${visualRotationIndex() + 1} of ${next.config.num_rotations}`;
     } else if (next.running) {
         if (timer) {
+            timer.style.display = showTimer ? '' : 'none';
             timer.textContent = String(next.rotation_remaining);
             timer.classList.toggle('paused', next.paused);
         }
@@ -488,6 +534,7 @@ function renderDisplay(next: PrelimStateResponse): void {
         }
     } else {
         if (timer) {
+            timer.style.display = showTimer ? '' : 'none';
             timer.textContent = String(next.config.rotation_seconds);
             timer.classList.remove('paused');
         }
@@ -718,6 +765,12 @@ function wireControlsOnce(): void {
     });
     $('prelims-start-next')?.addEventListener('click', () => {
         void nextPhaseOp();
+    });
+    $('prelims-auto-advance')?.addEventListener('change', (e) => {
+        void setOptions({ auto_advance: (e.target as HTMLInputElement).checked });
+    });
+    $('prelims-show-timer')?.addEventListener('change', (e) => {
+        void setOptions({ show_timer: (e.target as HTMLInputElement).checked });
     });
     $('prelims-edit-numbers')?.addEventListener('click', () => openNumbersEditor());
     $('prelims-numbers-save')?.addEventListener('click', () => {

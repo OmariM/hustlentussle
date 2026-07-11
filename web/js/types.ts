@@ -293,6 +293,8 @@ export interface PrelimStateResponse {
     running: boolean;
     phase: 'dancing' | 'break' | 'intermission';
     paused: boolean;
+    show_timer: boolean;
+    auto_advance: boolean;
     confirmed: boolean;
     rotation_remaining: number;
     heats_complete: boolean;

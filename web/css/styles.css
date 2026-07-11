@@ -3647,3 +3647,19 @@ input.prelims-number-input.dup {
 body.display-mode .prelims-header {
     padding-right: 64px;
 }
+
+/* Prelims operator settings toggles */
+.prelims-settings {
+    display: flex;
+    gap: var(--space-lg);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-lg);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+.prelims-settings label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    cursor: pointer;
+}

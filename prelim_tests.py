@@ -233,6 +233,26 @@ class TestPrelimRotationTimer(unittest.TestCase):
         p.pause()  # not running
         self.assertFalse(p.paused)
 
+    def test_options_default_true(self):
+        p = self._prelim()
+        self.assertTrue(p.show_timer)
+        self.assertTrue(p.auto_advance)
+
+    def test_set_options_updates_only_given(self):
+        p = self._prelim()
+        p.set_options(auto_advance=False)
+        self.assertFalse(p.auto_advance)
+        self.assertTrue(p.show_timer)  # untouched
+        p.set_options(show_timer=False)
+        self.assertFalse(p.show_timer)
+
+    def test_options_round_trip(self):
+        p = self._prelim()
+        p.set_options(show_timer=False, auto_advance=False)
+        p2 = Prelim.from_dict(p.to_dict())
+        self.assertFalse(p2.show_timer)
+        self.assertFalse(p2.auto_advance)
+
 
 class TestPrelimNumbers(unittest.TestCase):
     def test_default_numbers_unique_across_roles(self):
@@ -448,6 +468,11 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         self.assertTrue(paused["paused"])
         resumed = c.post("/api/prelims/toggle_pause", json={"session_id": sid}).get_json()
         self.assertFalse(resumed["paused"])
+
+        opts = c.post("/api/prelims/set_options",
+                      json={"session_id": sid, "auto_advance": False, "show_timer": False}).get_json()
+        self.assertFalse(opts["auto_advance"])
+        self.assertFalse(opts["show_timer"])
 
     def test_start_with_confirm_and_numbers(self):
         c = self.client

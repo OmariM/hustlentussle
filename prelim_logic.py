@@ -123,6 +123,9 @@ class Prelim:
         self.rotation_started_at: Optional[float] = None  # server epoch seconds
         self.paused = False  # operator paused the countdown
         self.paused_remaining = 0  # seconds captured at pause (frozen while paused)
+        # Operator options (toggled live).
+        self.show_timer = True  # show the countdown on the spectator display
+        self.auto_advance = True  # auto-advance a rotation when its timer runs out
         self.confirmed = False  # operator confirmed the roster; locks add/remove
         self.heats_complete = False  # True once the last heat's rotations have finished
         self.selected_leads: List[str] = []
@@ -391,6 +394,13 @@ class Prelim:
         else:
             self.pause()
 
+    def set_options(self, show_timer=None, auto_advance=None) -> None:
+        """Update operator display/behavior options (only those provided)."""
+        if show_timer is not None:
+            self.show_timer = bool(show_timer)
+        if auto_advance is not None:
+            self.auto_advance = bool(auto_advance)
+
     def advance_heat(self) -> int:
         """Manually skip to the next heat (bounded by the last), stopping the timer.
         Returns the new index."""
@@ -470,6 +480,8 @@ class Prelim:
             "rotation_started_at": self.rotation_started_at,
             "paused": self.paused,
             "paused_remaining": self.paused_remaining,
+            "show_timer": self.show_timer,
+            "auto_advance": self.auto_advance,
             "confirmed": self.confirmed,
             "heats_complete": self.heats_complete,
             "selected_leads": self.selected_leads,
@@ -507,6 +519,8 @@ class Prelim:
         prelim.rotation_started_at = data.get("rotation_started_at")
         prelim.paused = data.get("paused", False)
         prelim.paused_remaining = data.get("paused_remaining", 0)
+        prelim.show_timer = data.get("show_timer", True)
+        prelim.auto_advance = data.get("auto_advance", True)
         prelim.confirmed = data.get("confirmed", False)
         prelim.heats_complete = data.get("heats_complete", False)
         prelim.selected_leads = data.get("selected_leads", [])
