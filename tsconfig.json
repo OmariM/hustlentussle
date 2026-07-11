@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    // tsc is the type checker only; esbuild does all emitting.
+    "noEmit": true,
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2020", "dom", "dom.iterable"],
+    // The frontend is fully TypeScript; everything is checked strict.
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["web/js/**/*"],
+  "exclude": ["web/js/dist"]
+}

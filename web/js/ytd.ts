@@ -3,44 +3,56 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
+import type {
+    AdminLoginResponse,
+    AdminMeResponse,
+    ApiErrorResponse,
+    BattleDetail,
+    BattlesResponse,
+    DancersResponse,
+    IngestPreviewResponse,
+    NameResolutions,
+    YtdStandingRow,
+    YtdStandingsResponse,
+    YtdYearsResponse,
+} from './types';
+
 (function () {
     'use strict';
 
-    const $ = (id) => document.getElementById(id);
+    const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
     let isAdmin = false;
-    let preview = null; // { source, session_id, results, names, dancers, raw_payload }
+    let preview: IngestPreviewResponse | null = null;
 
     // ---- screen helpers ----
 
-    function showScreenById(screenId) {
-        document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
-        const el = $(screenId);
-        if (el) el.classList.add('active');
-        const nav = $('nav-bar');
-        if (nav) nav.style.display = screenId === 'home-screen' ? 'none' : '';
-        window.scrollTo(0, 0);
+    function openModal(id: string): void {
+        $(id).classList.remove('hidden');
     }
-
-    function openModal(id) { $(id).classList.remove('hidden'); }
-    function closeModal(id) { $(id).classList.add('hidden'); }
+    function closeModal(id: string): void {
+        $(id).classList.add('hidden');
+    }
 
     // ---- admin state ----
 
-    async function refreshAdmin() {
+    async function refreshAdmin(): Promise<void> {
         try {
             const res = await fetch('/api/admin/me');
-            const data = await res.json();
+            const data = (await res.json()) as AdminMeResponse;
             isAdmin = !!data.authenticated;
-            applyAdminUI(data.email);
-        } catch (e) {
+            applyAdminUI(data.email ?? null);
+        } catch {
             isAdmin = false;
             applyAdminUI(null);
         }
     }
 
-    function applyAdminUI(email) {
-        const set = (id, show) => { const el = $(id); if (el) el.style.display = show ? '' : 'none'; };
+    function applyAdminUI(email: string | null): void {
+        const set = (id: string, show: boolean) => {
+            const el = $(id);
+            if (el) el.style.display = show ? '' : 'none';
+        };
         set('ytd-admin-login-btn', !isAdmin);
         set('ytd-admin-logout-btn', isAdmin);
         set('ytd-admin-tools', isAdmin);
@@ -51,29 +63,34 @@
 
     // ---- standings ----
 
-    async function loadYears() {
-        const sel = $('ytd-year-select');
-        let years = [];
+    async function loadYears(): Promise<void> {
+        const sel = $<HTMLSelectElement>('ytd-year-select');
+        let years: number[] = [];
         try {
             const res = await fetch('/api/stats/years');
-            years = (await res.json()).years || [];
-        } catch (e) { years = []; }
+            years = ((await res.json()) as YtdYearsResponse).years || [];
+        } catch {
+            years = [];
+        }
         if (years.length === 0) years = [new Date().getFullYear()];
         sel.innerHTML = '';
         years.forEach((y) => {
             const opt = document.createElement('option');
-            opt.value = y; opt.textContent = y;
+            opt.value = String(y);
+            opt.textContent = String(y);
             sel.appendChild(opt);
         });
     }
 
-    async function loadStandings() {
-        const year = $('ytd-year-select').value;
-        let data = { leads: [], follows: [] };
+    async function loadStandings(): Promise<void> {
+        const year = $<HTMLSelectElement>('ytd-year-select').value;
+        let data: Pick<YtdStandingsResponse, 'leads' | 'follows'> = { leads: [], follows: [] };
         try {
             const res = await fetch(`/api/stats/year-to-date?year=${encodeURIComponent(year)}`);
-            if (res.ok) data = await res.json();
-        } catch (e) { /* keep empty */ }
+            if (res.ok) data = (await res.json()) as YtdStandingsResponse;
+        } catch {
+            /* keep empty */
+        }
 
         renderStandings('ytd-lead-body', data.leads || []);
         renderStandings('ytd-follow-body', data.follows || []);
@@ -81,12 +98,13 @@
         $('ytd-empty').style.display = empty ? '' : 'none';
     }
 
-    function renderStandings(bodyId, rows) {
+    function renderStandings(bodyId: string, rows: YtdStandingRow[]): void {
         const body = $(bodyId);
         body.innerHTML = '';
         rows.forEach((row, idx) => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${idx + 1}</td>` +
+            tr.innerHTML =
+                `<td>${idx + 1}</td>` +
                 `<td>${escapeHtml(row.display_name)}</td>` +
                 `<td>${row.total_points}</td>` +
                 `<td>${row.crowns || 0}</td>` +
@@ -97,19 +115,22 @@
 
     // ---- admin: contributed battles ----
 
-    async function loadBattles() {
+    async function loadBattles(): Promise<void> {
         if (!isAdmin) return;
-        const year = $('ytd-year-select').value;
-        let battles = [];
+        const year = $<HTMLSelectElement>('ytd-year-select').value;
+        let battles: BattlesResponse['battles'] = [];
         try {
             const res = await fetch(`/api/stats/battles?year=${encodeURIComponent(year)}`);
-            battles = (await res.json()).battles || [];
-        } catch (e) { battles = []; }
+            battles = ((await res.json()) as BattlesResponse).battles || [];
+        } catch {
+            battles = [];
+        }
         const body = $('ytd-battles-body');
         body.innerHTML = '';
         battles.forEach((b) => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${escapeHtml(b.battle_date || '')}</td>` +
+            tr.innerHTML =
+                `<td>${escapeHtml(b.battle_date || '')}</td>` +
                 `<td>${escapeHtml(b.name)}</td>` +
                 `<td>${escapeHtml(b.source)}</td>` +
                 `<td>${b.result_count}</td>`;
@@ -129,7 +150,7 @@
         });
     }
 
-    async function deleteBattle(id, name) {
+    async function deleteBattle(id: string, name: string): Promise<void> {
         if (!confirm(`Delete "${name}"? This removes its results from the stats.`)) return;
         const res = await fetch(`/api/stats/battles/${id}`, { method: 'DELETE' });
         if (res.ok) {
@@ -140,22 +161,27 @@
         }
     }
 
-    async function editBattle(id) {
-        let battle;
+    async function editBattle(id: string): Promise<void> {
+        let battle: BattleDetail;
         try {
             const res = await fetch(`/api/stats/battles/${id}`);
             if (!res.ok) throw new Error();
-            battle = await res.json();
-        } catch (e) {
+            battle = (await res.json()) as BattleDetail;
+        } catch {
             alert('Failed to load battle.');
             return;
         }
 
+        if (!window.openBattlePayloadEditor) {
+            alert('Battle editor is unavailable.');
+            return;
+        }
         window.openBattlePayloadEditor(battle.raw_data, {
             title: 'Edit Published Battle',
             showMetaFields: true,
             initialMeta: { name: battle.name, battle_date: battle.battle_date },
             onSave: async (editedPayload, meta) => {
+                if (!meta) throw new Error('Battle name/date missing.'); // showMetaFields is true, so meta is always set
                 const res = await fetch(`/api/stats/battles/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -165,8 +191,12 @@
                         raw_payload: editedPayload,
                     }),
                 });
-                let data;
-                try { data = await res.json(); } catch (e) { data = {}; }
+                let data: Partial<ApiErrorResponse>;
+                try {
+                    data = (await res.json()) as Partial<ApiErrorResponse>;
+                } catch {
+                    data = {};
+                }
                 if (!res.ok) throw new Error(data.error || 'Failed to update battle.');
                 await loadYears();
                 await loadStandings();
@@ -180,13 +210,15 @@
 
     let mergeNameDirty = false; // true once the admin has typed into #ytd-merge-name themselves
 
-    async function loadDancers() {
+    async function loadDancers(): Promise<void> {
         if (!isAdmin) return;
-        let dancers = [];
+        let dancers: DancersResponse['dancers'] = [];
         try {
             const res = await fetch('/api/stats/dancers');
-            dancers = (await res.json()).dancers || [];
-        } catch (e) { dancers = []; }
+            dancers = ((await res.json()) as DancersResponse).dancers || [];
+        } catch {
+            dancers = [];
+        }
         const body = $('ytd-dancers-body');
         body.innerHTML = '';
         dancers.forEach((d) => {
@@ -208,7 +240,7 @@
             tr.appendChild(aliasCell);
 
             const battlesCell = document.createElement('td');
-            battlesCell.textContent = d.battles_entered;
+            battlesCell.textContent = String(d.battles_entered);
             if (d.battles_entered === 0) {
                 const hint = document.createElement('span');
                 hint.style.color = 'var(--text-muted, #888)';
@@ -222,13 +254,15 @@
         updateMergeButtonState();
     }
 
-    function updateMergeButtonState() {
+    function updateMergeButtonState(): void {
         const checked = $('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked');
-        $('ytd-merge-selected-btn').disabled = checked.length < 2;
+        $<HTMLButtonElement>('ytd-merge-selected-btn').disabled = checked.length < 2;
     }
 
-    function openMergeModal() {
-        const checked = Array.from($('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked'));
+    function openMergeModal(): void {
+        const checked = Array.from(
+            $('ytd-dancers-body').querySelectorAll<HTMLInputElement>('input[type=checkbox]:checked'),
+        );
         if (checked.length < 2) return;
 
         mergeNameDirty = false;
@@ -241,36 +275,44 @@
             const radio = document.createElement('input');
             radio.type = 'radio';
             radio.name = 'ytd-merge-target';
-            radio.value = cb.dataset.id;
+            radio.value = cb.dataset.id || '';
             radio.dataset.name = cb.dataset.name;
             if (i === 0) radio.checked = true;
             radio.addEventListener('change', () => {
-                if (!mergeNameDirty) $('ytd-merge-name').value = radio.dataset.name;
+                if (!mergeNameDirty) $<HTMLInputElement>('ytd-merge-name').value = radio.dataset.name || '';
             });
             label.appendChild(radio);
-            label.appendChild(document.createTextNode(cb.dataset.name));
+            label.appendChild(document.createTextNode(cb.dataset.name || ''));
             choices.appendChild(label);
         });
 
-        $('ytd-merge-name').value = checked[0].dataset.name;
+        $<HTMLInputElement>('ytd-merge-name').value = checked[0].dataset.name || '';
         openModal('ytd-merge-modal');
     }
 
-    async function confirmMerge() {
+    async function confirmMerge(): Promise<void> {
         const errEl = $('ytd-merge-error');
         errEl.textContent = '';
 
-        const targetRadio = $('ytd-merge-choices').querySelector('input[type=radio]:checked');
-        if (!targetRadio) { errEl.textContent = 'Choose a dancer to keep.'; return; }
+        const targetRadio = $('ytd-merge-choices').querySelector<HTMLInputElement>('input[type=radio]:checked');
+        if (!targetRadio) {
+            errEl.textContent = 'Choose a dancer to keep.';
+            return;
+        }
         const targetId = targetRadio.value;
         const targetName = targetRadio.dataset.name;
 
-        const sourceIds = Array.from($('ytd-dancers-body').querySelectorAll('input[type=checkbox]:checked'))
-            .map((cb) => cb.dataset.id)
+        const sourceIds = Array.from(
+            $('ytd-dancers-body').querySelectorAll<HTMLInputElement>('input[type=checkbox]:checked'),
+        )
+            .map((cb) => cb.dataset.id || '')
             .filter((id) => id !== targetId);
 
-        const typedName = $('ytd-merge-name').value.trim();
-        const payload = { target_id: targetId, source_ids: sourceIds };
+        const typedName = $<HTMLInputElement>('ytd-merge-name').value.trim();
+        const payload: { target_id: string; source_ids: string[]; new_display_name?: string } = {
+            target_id: targetId,
+            source_ids: sourceIds,
+        };
         if (typedName && typedName !== targetName) payload.new_display_name = typedName;
 
         const res = await fetch('/api/stats/dancers/merge', {
@@ -278,8 +320,16 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        let data; try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { errEl.textContent = data.error || 'Failed to merge dancers.'; return; }
+        let data: Partial<ApiErrorResponse>;
+        try {
+            data = (await res.json()) as Partial<ApiErrorResponse>;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Failed to merge dancers.';
+            return;
+        }
 
         closeModal('ytd-merge-modal');
         await loadDancers();
@@ -288,19 +338,25 @@
 
     // ---- ingest (preview -> resolve -> commit) ----
 
-    async function previewFromFile() {
-        const input = $('ytd-file-input');
-        const file = input.files[0];
-        if (!file) { alert('Choose a .json battle file first.'); return; }
+    async function previewFromFile(): Promise<void> {
+        const input = $<HTMLInputElement>('ytd-file-input');
+        const file = input.files && input.files[0];
+        if (!file) {
+            alert('Choose a .json battle file first.');
+            return;
+        }
         const fd = new FormData();
         fd.append('battle_file', file);
         const res = await fetch('/api/stats/ingest/preview', { method: 'POST', body: fd });
         await handlePreviewResponse(res);
     }
 
-    async function previewFromLiveBattle() {
+    async function previewFromLiveBattle(): Promise<void> {
         const sid = localStorage.getItem('sessionId');
-        if (!sid) { alert('No active battle found to publish.'); return; }
+        if (!sid) {
+            alert('No active battle found to publish.');
+            return;
+        }
         const res = await fetch('/api/stats/ingest/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -309,18 +365,26 @@
         await handlePreviewResponse(res);
     }
 
-    async function handlePreviewResponse(res) {
-        let data;
-        try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { alert(data.error || 'Failed to load battle for review.'); return; }
-        preview = data;
+    async function handlePreviewResponse(res: Response): Promise<void> {
+        let data: IngestPreviewResponse | Record<string, never>;
+        try {
+            data = (await res.json()) as IngestPreviewResponse;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            alert(('error' in data && data.error) || 'Failed to load battle for review.');
+            return;
+        }
+        preview = data as IngestPreviewResponse;
         openIngestModal();
     }
 
-    function openIngestModal() {
+    function openIngestModal(): void {
+        if (!preview) return;
         $('ytd-ingest-error').textContent = '';
-        $('ytd-battle-name').value = '';
-        $('ytd-battle-date').value = new Date().toISOString().slice(0, 10);
+        $<HTMLInputElement>('ytd-battle-name').value = '';
+        $<HTMLInputElement>('ytd-battle-date').value = new Date().toISOString().slice(0, 10);
         const body = $('ytd-resolve-body');
         body.innerHTML = '';
 
@@ -340,7 +404,7 @@
             newOpt.textContent = '➕ Create new dancer';
             select.appendChild(newOpt);
 
-            preview.dancers.forEach((d) => {
+            preview!.dancers.forEach((d) => {
                 const opt = document.createElement('option');
                 opt.value = d.id;
                 opt.textContent = d.display_name;
@@ -369,23 +433,29 @@
         openModal('ytd-ingest-modal');
     }
 
-    async function commitIngest() {
-        const name = $('ytd-battle-name').value.trim();
-        const date = $('ytd-battle-date').value;
+    async function commitIngest(): Promise<void> {
+        if (!preview) return;
+        const name = $<HTMLInputElement>('ytd-battle-name').value.trim();
+        const date = $<HTMLInputElement>('ytd-battle-date').value;
         const errEl = $('ytd-ingest-error');
         errEl.textContent = '';
-        if (!name || !date) { errEl.textContent = 'Battle name and date are required.'; return; }
+        if (!name || !date) {
+            errEl.textContent = 'Battle name and date are required.';
+            return;
+        }
 
-        const resolutions = {};
-        $('ytd-resolve-body').querySelectorAll('select').forEach((sel) => {
-            const seen = sel.dataset.name;
-            if (sel.value) {
-                resolutions[seen] = { dancer_id: sel.value };
-            } else {
-                const input = sel.parentElement.querySelector('input[type=text]');
-                resolutions[seen] = { new_name: (input && input.value.trim()) || seen };
-            }
-        });
+        const resolutions: NameResolutions = {};
+        $('ytd-resolve-body')
+            .querySelectorAll('select')
+            .forEach((sel) => {
+                const seen = sel.dataset.name || '';
+                if (sel.value) {
+                    resolutions[seen] = { dancer_id: sel.value };
+                } else {
+                    const input = sel.parentElement && sel.parentElement.querySelector<HTMLInputElement>('input[type=text]');
+                    resolutions[seen] = { new_name: (input && input.value.trim()) || seen };
+                }
+            });
 
         const payload = {
             battle_name: name,
@@ -402,11 +472,19 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        let data; try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { errEl.textContent = data.error || 'Failed to publish battle.'; return; }
+        let data: Partial<ApiErrorResponse>;
+        try {
+            data = (await res.json()) as Partial<ApiErrorResponse>;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Failed to publish battle.';
+            return;
+        }
 
         closeModal('ytd-ingest-modal');
-        $('ytd-file-input').value = '';
+        $<HTMLInputElement>('ytd-file-input').value = '';
         $('ytd-file-name').textContent = '';
         await loadYears();
         await loadStandings();
@@ -416,9 +494,9 @@
 
     // ---- admin login ----
 
-    async function submitLogin() {
-        const email = $('ytd-login-email').value.trim();
-        const password = $('ytd-login-password').value;
+    async function submitLogin(): Promise<void> {
+        const email = $<HTMLInputElement>('ytd-login-email').value.trim();
+        const password = $<HTMLInputElement>('ytd-login-password').value;
         const errEl = $('ytd-login-error');
         errEl.textContent = '';
         const res = await fetch('/api/admin/login', {
@@ -426,17 +504,25 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
         });
-        let data; try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { errEl.textContent = data.error || 'Login failed.'; return; }
+        let data: AdminLoginResponse;
+        try {
+            data = (await res.json()) as AdminLoginResponse;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Login failed.';
+            return;
+        }
         isAdmin = true;
-        applyAdminUI(data.email);
+        applyAdminUI(data.email ?? null);
         closeModal('ytd-login-modal');
-        $('ytd-login-password').value = '';
+        $<HTMLInputElement>('ytd-login-password').value = '';
         await loadBattles();
         await loadDancers();
     }
 
-    async function logout() {
+    async function logout(): Promise<void> {
         await fetch('/api/admin/logout', { method: 'POST' });
         isAdmin = false;
         applyAdminUI(null);
@@ -444,8 +530,8 @@
 
     // ---- entry ----
 
-    // Called by the router (js/router.js) after it activates the stats screen.
-    async function enterStats() {
+    // Called by the router (js/router.ts) after it activates the stats screen.
+    async function enterStats(): Promise<void> {
         await refreshAdmin();
         await loadYears();
         await loadStandings();
@@ -454,21 +540,33 @@
     }
     window.ytdOnEnterStats = enterStats;
 
-    function escapeHtml(s) {
+    function escapeHtml(s: unknown): string {
         return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        const on = (id, evt, fn) => { const el = $(id); if (el) el.addEventListener(evt, fn); };
+        const on = (id: string, evt: string, fn: (e: Event) => void) => {
+            const el = $(id);
+            if (el) el.addEventListener(evt, fn);
+        };
 
-        on('go-to-ytd', 'click', () => window.navigate('/stats'));
-        on('ytd-back-home', 'click', () => window.navigate('/'));
-        on('ytd-year-select', 'change', async () => { await loadStandings(); await loadBattles(); });
+        on('go-to-ytd', 'click', () => window.navigate!('/stats'));
+        on('ytd-back-home', 'click', () => window.navigate!('/'));
+        on('ytd-year-select', 'change', async () => {
+            await loadStandings();
+            await loadBattles();
+        });
 
         // admin login modal
-        on('ytd-admin-login-btn', 'click', () => { $('ytd-login-error').textContent = ''; openModal('ytd-login-modal'); });
+        on('ytd-admin-login-btn', 'click', () => {
+            $('ytd-login-error').textContent = '';
+            openModal('ytd-login-modal');
+        });
         on('ytd-login-cancel', 'click', () => closeModal('ytd-login-modal'));
         on('ytd-login-submit', 'click', submitLogin);
         on('ytd-admin-logout-btn', 'click', logout);
@@ -485,12 +583,14 @@
         on('ytd-merge-selected-btn', 'click', openMergeModal);
         on('ytd-merge-cancel', 'click', () => closeModal('ytd-merge-modal'));
         on('ytd-merge-confirm', 'click', confirmMerge);
-        on('ytd-merge-name', 'input', () => { mergeNameDirty = true; });
+        on('ytd-merge-name', 'input', () => {
+            mergeNameDirty = true;
+        });
 
         // file name display
         on('ytd-file-input', 'change', () => {
-            const f = $('ytd-file-input').files[0];
-            $('ytd-file-name').textContent = f ? f.name : '';
+            const files = $<HTMLInputElement>('ytd-file-input').files;
+            $('ytd-file-name').textContent = files && files[0] ? files[0].name : '';
         });
 
         // reflect admin state on the results screen's publish button on first load

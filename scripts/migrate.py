@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 Apply SQL migrations in migrations/ (sorted by filename) to the database in
-$DATABASE_URL. Migrations are written to be idempotent (CREATE ... IF NOT
-EXISTS), so re-running is safe.
+$DATABASE_URL.
+
+Applied migrations are recorded in a schema_migrations ledger table and are
+never re-run, so migrations do not need to be idempotent. Each migration file
+is applied and recorded in a single transaction.
 
 Usage:
     DATABASE_URL=postgresql://... python scripts/migrate.py
@@ -18,6 +21,13 @@ import psycopg2
 
 MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")
 
+LEDGER_DDL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
 
 def main() -> int:
     database_url = os.environ.get("DATABASE_URL")
@@ -32,15 +42,31 @@ def main() -> int:
 
     conn = psycopg2.connect(database_url)
     try:
-        for path in files:
+        with conn.cursor() as cur:
+            cur.execute(LEDGER_DDL)
+        conn.commit()
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT filename FROM schema_migrations")
+            applied = {row[0] for row in cur.fetchall()}
+
+        pending = [p for p in files if os.path.basename(p) not in applied]
+        if not pending:
+            print(f"Up to date. {len(applied)} migration(s) already applied, nothing to do.")
+            return 0
+
+        for path in pending:
             name = os.path.basename(path)
             with open(path, "r", encoding="utf-8") as fh:
                 sql = fh.read()
             print(f"Applying {name} ...")
+            # The migration and its ledger row commit together: a failed
+            # migration leaves no record and the transaction rolls back.
             with conn.cursor() as cur:
                 cur.execute(sql)
+                cur.execute("INSERT INTO schema_migrations (filename) VALUES (%s)", (name,))
             conn.commit()
-        print(f"Done. Applied {len(files)} migration file(s).")
+        print(f"Done. Applied {len(pending)} migration file(s).")
     except Exception as exc:  # noqa: BLE001 - surface the failure clearly
         conn.rollback()
         print(f"ERROR applying migrations: {exc}", file=sys.stderr)

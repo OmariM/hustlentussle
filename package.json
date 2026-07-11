@@ -1,0 +1,18 @@
+{
+  "name": "hustlentussle-frontend",
+  "private": true,
+  "description": "Build tooling for the Hustle n' Tussle frontend (esbuild transform + tsc typecheck)",
+  "scripts": {
+    "build": "esbuild web/js/main.ts --bundle --format=iife --outdir=web/js/dist --sourcemap --target=es2020 --minify",
+    "watch": "esbuild web/js/main.ts --bundle --format=iife --outdir=web/js/dist --sourcemap --target=es2020 --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint web/js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "eslint": "^9.15.0",
+    "typescript-eslint": "^8.15.0",
+    "@eslint/js": "^9.15.0"
+  }
+}

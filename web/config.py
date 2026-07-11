@@ -4,16 +4,37 @@ Configuration settings for the Hustle n' Tussle web application.
 
 import os
 
+# Insecure fallback used only for local development / tests.
+_DEV_SECRET_KEY = "dev-hustle-n-tussle-key"
+
+# Hosts allowed as browser origins for cookie-authenticated admin requests
+# (and used to build the CORS allowlist). Override with a comma-separated
+# ALLOWED_ORIGIN_HOSTS env var.
+ALLOWED_ORIGIN_HOSTS = [
+    h.strip()
+    for h in os.environ.get(
+        "ALLOWED_ORIGIN_HOSTS",
+        "hustlentussle.com,www.hustlentussle.com,dev.hustlentussle.com,localhost,127.0.0.1",
+    ).split(",")
+    if h.strip()
+]
+
 
 class Config:
     """Base configuration."""
 
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-hustle-n-tussle-key")
+    SECRET_KEY = os.environ.get("SECRET_KEY", _DEV_SECRET_KEY)
     SESSION_TYPE = "filesystem"
     HOST = "0.0.0.0"
     PORT = 5001
-    DEBUG = True
+    DEBUG = False
     ENABLE_DEBUG_TOOLS = False  # Master switch for debug tools
+
+    # Session cookie hardening. Secure is enabled in production only so that
+    # plain-HTTP local development keeps working.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = False
 
     # Database settings
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -49,8 +70,9 @@ class ProductionConfig(Config):
     HOST = "0.0.0.0"
     PORT = 8080
 
+    SESSION_COOKIE_SECURE = True
+
     # In production, DATABASE_URL should be set via environment
-    # Render automatically sets this when you add a PostgreSQL database
 
     # Disable fallback in production to ensure we notice DB issues
     PERSISTENCE_FALLBACK_ENABLED = os.environ.get("PERSISTENCE_FALLBACK_ENABLED", "false").lower() == "true"
@@ -60,5 +82,7 @@ class ProductionConfig(Config):
 def get_config():
     env = os.environ.get("FLASK_ENV", "development")
     if env == "production":
+        if ProductionConfig.SECRET_KEY == _DEV_SECRET_KEY:
+            raise RuntimeError("SECRET_KEY must be set (and not the dev default) when FLASK_ENV=production")
         return ProductionConfig
     return DevelopmentConfig

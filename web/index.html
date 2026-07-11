@@ -121,6 +121,7 @@
 
             <div class="home-actions">
                 <button id="go-to-battle" class="btn primary large">Start Battle</button>
+                <button id="go-to-prelims" class="btn primary large">Run Prelims</button>
                 <button id="try-demo" class="btn secondary large">Try Demo</button>
                 <button id="go-to-ytd" class="btn secondary large">Year-to-Date Stats</button>
             </div>
@@ -229,6 +230,145 @@
             <div class="setup-actions">
                 <button id="start-competition" class="btn primary">Start Competition</button>
                 <button id="setup-back-to-home" class="btn secondary">Back</button>
+            </div>
+        </div>
+
+        <div id="prelim-setup-screen" class="screen">
+            <h2>Preliminary Round Setup</h2>
+            <p class="form-helper-text">Add every dancer, set how many advance, and choose the group size. Each dancer gets a sequential bib number to wear.</p>
+
+            <div class="prelim-setup-cols">
+                <div class="prelim-setup-col">
+                    <h4>Leads (<span id="prelim-setup-lead-count">0</span>)</h4>
+                    <div id="prelim-setup-leads" class="prelims-roster-list"></div>
+                    <div class="prelims-add-row">
+                        <input id="prelim-setup-add-lead" type="text" placeholder="Add a lead…" />
+                        <input id="prelim-setup-add-lead-bib" type="number" min="1" placeholder="Bib" class="prelims-add-bib" />
+                        <button id="prelim-setup-add-lead-btn" class="btn secondary">Add</button>
+                    </div>
+                    <label class="prelim-setup-spots">Advance
+                        <input type="number" id="prelim-setup-lead-spots" min="1" placeholder="all" />
+                        leads
+                    </label>
+                </div>
+                <div class="prelim-setup-col">
+                    <h4>Follows (<span id="prelim-setup-follow-count">0</span>)</h4>
+                    <div id="prelim-setup-follows" class="prelims-roster-list"></div>
+                    <div class="prelims-add-row">
+                        <input id="prelim-setup-add-follow" type="text" placeholder="Add a follow…" />
+                        <input id="prelim-setup-add-follow-bib" type="number" min="1" placeholder="Bib" class="prelims-add-bib" />
+                        <button id="prelim-setup-add-follow-btn" class="btn secondary">Add</button>
+                    </div>
+                    <label class="prelim-setup-spots">Advance
+                        <input type="number" id="prelim-setup-follow-spots" min="1" placeholder="all" />
+                        follows
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="prelim-setup-group-size">Group size (dancers per role, per heat):</label>
+                <input type="number" id="prelim-setup-group-size" min="2" value="8" />
+            </div>
+            <div class="form-group">
+                <label for="prelim-setup-judges">Guest Judge Names (comma-separated):</label>
+                <textarea id="prelim-setup-judges" rows="2" placeholder="e.g., Alex, Jordan"></textarea>
+            </div>
+
+            <div class="setup-actions">
+                <button id="prelim-setup-start" class="btn primary">Start prelims</button>
+                <button id="prelim-setup-back" class="btn secondary">Back</button>
+            </div>
+        </div>
+
+        <div id="prelims-screen" class="screen">
+            <div class="prelims-header">
+                <h2>Preliminaries</h2>
+                <div class="prelims-progress">
+                    <span class="round-badge">Heat <span id="prelims-heat-num">1</span> / <span id="prelims-heat-total">1</span></span>
+                    <span class="round-badge">Rotation <span id="prelims-rotation-num">1</span> / <span id="prelims-rotation-total">6</span></span>
+                </div>
+            </div>
+
+            <!-- Operator view: pairing table + per-heat Start button -->
+            <div id="prelims-operator-view">
+                <div class="prelims-op-status">
+                    <div id="prelims-op-timer">45</div>
+                    <div id="prelims-op-message" class="prelims-op-message"></div>
+                </div>
+
+                <table id="prelims-pairing-table" class="prelims-pairing-table">
+                    <thead>
+                        <tr><th>#</th><th>Lead</th><th>Follow</th></tr>
+                    </thead>
+                    <tbody id="prelims-pairing-body"></tbody>
+                </table>
+
+                <div class="prelims-controls">
+                    <button id="prelims-start-heat" class="btn primary">Start heat</button>
+                    <button id="prelims-start-next" class="btn primary" style="display:none;">Start next rotations</button>
+                    <button id="prelims-pause" class="btn secondary" style="display:none;">Pause</button>
+                    <button id="prelims-skip-rotation" class="btn secondary" style="display:none;">Skip rotation</button>
+                    <button id="prelims-edit-numbers" class="btn secondary">Edit numbers</button>
+                    <button id="prelims-open-display" class="btn secondary">Open spectator view</button>
+                    <button id="prelims-goto-selection" class="btn secondary">Skip to selection</button>
+                </div>
+
+                <div class="prelims-settings">
+                    <label><input type="checkbox" id="prelims-auto-advance" checked /> Auto-advance rotations</label>
+                    <label><input type="checkbox" id="prelims-show-timer" checked /> Show timer on spectator screen</label>
+                </div>
+
+                <div id="prelims-numbers-editor" class="prelims-numbers-editor" style="display:none;">
+                    <h3>Competitor numbers</h3>
+                    <p class="form-helper-text">The bib number each dancer wears so judges can identify them. Edit any that need changing, then save.</p>
+                    <div class="prelims-numbers-cols">
+                        <div class="prelims-numbers-col">
+                            <h4>Leads</h4>
+                            <div id="prelims-numbers-leads" class="prelims-numbers-list"></div>
+                        </div>
+                        <div class="prelims-numbers-col">
+                            <h4>Follows</h4>
+                            <div id="prelims-numbers-follows" class="prelims-numbers-list"></div>
+                        </div>
+                    </div>
+                    <div class="setup-actions">
+                        <button id="prelims-numbers-save" class="btn primary">Save numbers</button>
+                        <button id="prelims-numbers-cancel" class="btn secondary">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Display view: rotating-circle visualization for contestants/spectators -->
+            <div id="prelims-display-view" style="display:none;">
+                <div id="prelims-stage-wrap">
+                    <div id="prelims-timer">45</div>
+                    <div id="prelims-circle"></div>
+                </div>
+                <div id="prelims-display-status" class="prelims-display-status"></div>
+                <div id="prelims-display-selecting" class="prelims-selecting" style="display:none;">
+                    <div class="prelims-spinner"></div>
+                    <div id="prelims-selecting-text" class="prelims-selecting-text">Selecting competitors…</div>
+                </div>
+            </div>
+
+            <div id="prelims-selection" class="prelims-selection" style="display:none;">
+                <h3>Select who advances to the battle</h3>
+                <p class="form-helper-text">Only each dancer's first (evaluated) appearance is listed. Roles that don't need a cut advance automatically.</p>
+                <div class="prelims-selection-cols">
+                    <div class="prelims-select-col">
+                        <h4>Leads <span id="prelims-lead-counter" class="round-badge"></span></h4>
+                        <div id="prelims-lead-choices" class="prelims-choices"></div>
+                    </div>
+                    <div class="prelims-select-col">
+                        <h4>Follows <span id="prelims-follow-counter" class="round-badge"></span></h4>
+                        <div id="prelims-follow-choices" class="prelims-choices"></div>
+                    </div>
+                </div>
+                <div class="setup-actions">
+                    <button id="prelims-confirm-selection" class="btn primary">Advance to battle</button>
+                    <button id="prelims-back-home" class="btn secondary">Cancel</button>
+                </div>
             </div>
         </div>
 
@@ -806,10 +946,7 @@
             });
         })();
     </script>
-    <script src="js/components/DebugTools.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/app.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/explainers.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/ytd.js?v={{ config.ASSET_VERSION }}"></script>
-    <script src="js/router.js?v={{ config.ASSET_VERSION }}"></script>
+    <!-- Single bundle built by esbuild into js/dist (npm run build / npm run watch) -->
+    <script src="js/dist/main.js?v={{ config.ASSET_VERSION }}"></script>
 </body>
 </html> 

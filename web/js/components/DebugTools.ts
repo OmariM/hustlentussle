@@ -1,4 +1,69 @@
+/**
+ * Debug panel (Alt+Shift+D to enable, Alt+D to toggle): session inspection,
+ * network logging, random-vote round simulation and auto-advance.
+ *
+ * No imports on purpose — this stays a classic script sharing global scope
+ * with app.js until app.js itself is converted.
+ */
+
+interface NetworkLogEntry {
+    url: string;
+    method: string;
+    timestamp: string;
+    requestData?: BodyInit | null;
+    duration?: number;
+    status?: number;
+    responseData?: unknown;
+    error?: string;
+}
+
+interface StartGameDebugResponse {
+    session_id: string;
+    guest_judges: string[];
+    initial_leads: string[];
+    initial_follows: string[];
+}
+
+// Banks of real first names used (with a random last-initial) to populate prelim
+// rosters from the debug menu — e.g. "Sarah M." — so demos read like real events.
+// Gendered to match the original setup pre-fill: male leads, female follows,
+// neutral judges (see generateRandomNames / fillSetupForm).
+const DEBUG_MALE_NAMES = [
+    'Liam', 'Noah', 'Oliver', 'Elijah', 'Lucas', 'Mason', 'Ethan', 'Logan', 'James', 'Aiden',
+    'Jackson', 'Sebastian', 'Mateo', 'Jack', 'Owen', 'Daniel', 'Henry', 'Wyatt', 'Leo', 'Julian',
+    'Gabriel', 'Isaac', 'Levi', 'Adrian', 'Miles', 'Diego', 'Andre', 'Marcus', 'Theo', 'Nathan',
+];
+const DEBUG_FEMALE_NAMES = [
+    'Ava', 'Olivia', 'Emma', 'Sophia', 'Isabella', 'Mia', 'Amelia', 'Harper', 'Evelyn', 'Abigail',
+    'Ella', 'Scarlett', 'Grace', 'Chloe', 'Zoe', 'Lily', 'Nora', 'Hazel', 'Aria', 'Nova',
+    'Layla', 'Ellie', 'Stella', 'Naomi', 'Maya', 'Ruby', 'Priya', 'Elena', 'Sofia', 'Willa',
+];
+const DEBUG_NEUTRAL_NAMES = [
+    'Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Rowan', 'Sage',
+    'Reese', 'Skyler', 'Emerson', 'Parker', 'Hayden',
+];
+
+const DEBUG_NAME_BANKS = {
+    male: DEBUG_MALE_NAMES,
+    female: DEBUG_FEMALE_NAMES,
+    neutral: DEBUG_NEUTRAL_NAMES,
+};
+
 class DebugTools {
+    isVisible: boolean;
+    networkLogs: NetworkLogEntry[];
+    autoAdvance: boolean;
+    autoAdvanceInterval: number | null;
+    autoAdvanceDelay: number;
+    playlistId: string;
+    prelimLeads: number;
+    prelimFollows: number;
+    prelimLeadSpots: number;
+    prelimFollowSpots: number;
+    prelimGroupSize: number;
+    panel!: HTMLDivElement;
+    toggleButton!: HTMLButtonElement;
+
     constructor() {
         this.isVisible = false;
         this.networkLogs = [];
@@ -6,13 +71,19 @@ class DebugTools {
         this.autoAdvanceInterval = null;
         this.autoAdvanceDelay = parseInt(localStorage.getItem('debug.autoAdvanceDelay') || '3000', 10);
         this.playlistId = localStorage.getItem('debug.playlistId') || '3S34wIELHX7T82ChgdU9NS';
+        // Prelims debug config (defaults: oversized field that cuts both roles).
+        this.prelimLeads = parseInt(localStorage.getItem('debug.prelim.leads') || '16', 10);
+        this.prelimFollows = parseInt(localStorage.getItem('debug.prelim.follows') || '10', 10);
+        this.prelimLeadSpots = parseInt(localStorage.getItem('debug.prelim.leadSpots') || '8', 10);
+        this.prelimFollowSpots = parseInt(localStorage.getItem('debug.prelim.followSpots') || '8', 10);
+        this.prelimGroupSize = parseInt(localStorage.getItem('debug.prelim.groupSize') || '8', 10);
         this.init();
         this.setupNetworkMonitoring();
         this.setupKeyboardShortcuts();
         this.restorePersistedToggles();
     }
 
-    init() {
+    init(): void {
         // Create debug panel
         this.panel = document.createElement('div');
         this.panel.id = 'debug-panel';
@@ -92,30 +163,30 @@ class DebugTools {
         document.body.appendChild(this.toggleButton);
     }
 
-    setupNetworkMonitoring() {
+    setupNetworkMonitoring(): void {
         // Store original fetch
         const originalFetch = window.fetch;
-        
+
         // Override fetch
-        window.fetch = async (...args) => {
+        window.fetch = async (...args: Parameters<typeof fetch>): Promise<Response> => {
             // Only monitor our API calls
             const url = args[0];
             if (typeof url === 'string' && url.startsWith('/api/')) {
                 const startTime = Date.now();
-                const request = {
+                const request: NetworkLogEntry = {
                     url: url,
                     method: args[1]?.method || 'GET',
                     timestamp: new Date().toISOString(),
-                    requestData: args[1]?.body
+                    requestData: args[1]?.body,
                 };
 
                 try {
                     const response = await originalFetch(...args);
                     const endTime = Date.now();
-                    
+
                     // Clone response to read body
                     const clone = response.clone();
-                    let responseData;
+                    let responseData: unknown;
                     try {
                         responseData = await clone.json();
                     } catch {
@@ -126,34 +197,34 @@ class DebugTools {
                         }
                     }
 
-                    const logEntry = {
+                    const logEntry: NetworkLogEntry = {
                         ...request,
                         duration: endTime - startTime,
                         status: response.status,
-                        responseData
+                        responseData,
                     };
 
                     this.networkLogs.push(logEntry);
                     console.log('Network Request:', logEntry);
-                    
+
                     return response;
                 } catch (error) {
-                    const logEntry = {
+                    const logEntry: NetworkLogEntry = {
                         ...request,
-                        error: error.message
+                        error: (error as Error).message,
                     };
                     this.networkLogs.push(logEntry);
                     console.error('Network Request Failed:', logEntry);
                     throw error;
                 }
             }
-            
+
             // For non-API calls, just pass through
             return originalFetch(...args);
         };
     }
 
-    addDebugTools() {
+    addDebugTools(): void {
         // Session Info
         this.addSection('Session Info');
         this.addButton('Show Current Session', () => {
@@ -171,7 +242,7 @@ class DebugTools {
                 console.log('Canonical State:', json);
                 alert('Canonical state logged to console');
             } catch (e) {
-                alert(`Failed: ${e.message}`);
+                alert(`Failed: ${(e as Error).message}`);
             }
         });
 
@@ -198,7 +269,7 @@ class DebugTools {
             try {
                 await navigator.clipboard.writeText(JSON.stringify(this.networkLogs, null, 2));
                 alert('Copied network logs to clipboard');
-            } catch (e) {
+            } catch {
                 alert('Clipboard copy failed');
             }
         });
@@ -219,7 +290,53 @@ class DebugTools {
         this.addSection('Setup Helpers');
         this.addButton('Fill Setup Form', () => this.fillSetupForm());
         this.addButton('Start with Random Names', () => this.startWithRandomNames());
-        
+
+        // Prelims Helpers
+        this.addSection('Prelims Helpers');
+        const prelimConfig = document.createElement('div');
+        prelimConfig.style.cssText = `
+            padding: 5px;
+            background: #333;
+            border: 1px solid var(--primary-color);
+            border-radius: 3px;
+            margin-bottom: 6px;
+        `;
+        prelimConfig.appendChild(
+            this.prelimField('Leads', this.prelimLeads, 1, (v) => {
+                this.prelimLeads = v;
+                localStorage.setItem('debug.prelim.leads', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Follows', this.prelimFollows, 1, (v) => {
+                this.prelimFollows = v;
+                localStorage.setItem('debug.prelim.follows', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Lead spots', this.prelimLeadSpots, 1, (v) => {
+                this.prelimLeadSpots = v;
+                localStorage.setItem('debug.prelim.leadSpots', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Follow spots', this.prelimFollowSpots, 1, (v) => {
+                this.prelimFollowSpots = v;
+                localStorage.setItem('debug.prelim.followSpots', String(v));
+            }),
+        );
+        prelimConfig.appendChild(
+            this.prelimField('Group size', this.prelimGroupSize, 2, (v) => {
+                this.prelimGroupSize = v;
+                localStorage.setItem('debug.prelim.groupSize', String(v));
+            }),
+        );
+        this.panel.appendChild(prelimConfig);
+        this.addButton('Start Prelims (Random)', () => this.startPrelimsRandom());
+        this.addButton('Jump to Selection', () => this.jumpToPrelimSelection());
+        this.addButton('Auto-Select & Advance', () => this.autoSelectPrelims());
+        this.addButton('Run Full Prelim (auto)', () => this.runFullPrelim());
+
         // Voting Helpers
         this.addSection('Voting Helpers');
         this.addButton('Random Lead Votes', () => this.randomVotes(true));
@@ -292,7 +409,7 @@ class DebugTools {
         simulateContainer.appendChild(endAfterContainer);
         simulateContainer.appendChild(simulateBtn);
         this.panel.appendChild(simulateContainer);
-        
+
         // Add Auto-Advance Toggle and Interval Setting
         const autoAdvanceContainer = document.createElement('div');
         autoAdvanceContainer.style.cssText = `
@@ -305,21 +422,21 @@ class DebugTools {
             border: 1px solid var(--primary-color);
             border-radius: 3px;
         `;
-        
+
         // Toggle Switch
         const toggleContainer = document.createElement('div');
         toggleContainer.style.cssText = `
             display: flex;
             align-items: center;
         `;
-        
+
         const toggleLabel = document.createElement('span');
         toggleLabel.textContent = 'Auto-Advance: ';
         toggleLabel.style.cssText = `
             color: white;
             margin-right: 10px;
         `;
-        
+
         const toggleSwitch = document.createElement('input');
         toggleSwitch.type = 'checkbox';
         toggleSwitch.style.cssText = `
@@ -328,7 +445,7 @@ class DebugTools {
             margin: 0;
         `;
         toggleSwitch.checked = this.autoAdvance;
-        
+
         toggleSwitch.onchange = () => {
             this.autoAdvance = toggleSwitch.checked;
             localStorage.setItem('debug.autoAdvance', this.autoAdvance ? 'true' : 'false');
@@ -338,10 +455,10 @@ class DebugTools {
                 this.stopAutoAdvance();
             }
         };
-        
+
         toggleContainer.appendChild(toggleLabel);
         toggleContainer.appendChild(toggleSwitch);
-        
+
         // Interval Setting
         const intervalContainer = document.createElement('div');
         intervalContainer.style.cssText = `
@@ -349,18 +466,18 @@ class DebugTools {
             align-items: center;
             gap: 10px;
         `;
-        
+
         const intervalLabel = document.createElement('span');
         intervalLabel.textContent = 'Interval (seconds): ';
         intervalLabel.style.cssText = `
             color: white;
         `;
-        
+
         const intervalInput = document.createElement('input');
         intervalInput.type = 'number';
         intervalInput.min = '1';
         intervalInput.max = '60';
-        intervalInput.value = this.autoAdvanceDelay / 1000;
+        intervalInput.value = String(this.autoAdvanceDelay / 1000);
         intervalInput.style.cssText = `
             width: 60px;
             padding: 2px;
@@ -369,22 +486,22 @@ class DebugTools {
             border: 1px solid #666;
             border-radius: 3px;
         `;
-        
+
         intervalInput.onchange = () => {
             const newValue = Math.max(1, Math.min(60, parseInt(intervalInput.value) || 3));
             this.autoAdvanceDelay = newValue * 1000;
-            intervalInput.value = newValue;
+            intervalInput.value = String(newValue);
             localStorage.setItem('debug.autoAdvanceDelay', String(this.autoAdvanceDelay));
-            
+
             // Restart auto-advance with new interval if it's running
             if (this.autoAdvance) {
                 this.startAutoAdvance();
             }
         };
-        
+
         intervalContainer.appendChild(intervalLabel);
         intervalContainer.appendChild(intervalInput);
-        
+
         // Playlist input
         const playlistContainer = document.createElement('div');
         playlistContainer.style.cssText = `
@@ -436,18 +553,18 @@ class DebugTools {
     }
 
     // Generate random names, ensuring uniqueness against a shared used set
-    generateRandomNames(count, useGender, usedNamesGlobal) {
+    generateRandomNames(count: number, useGender: 'male' | 'female' | 'neutral', usedNamesGlobal: Set<string>): string[] {
         const maleFirstNames = ['James', 'Michael', 'David', 'John', 'Robert', 'William', 'Thomas', 'Daniel', 'Paul', 'Mark'];
         const femaleFirstNames = ['Sarah', 'Emily', 'Jessica', 'Jennifer', 'Elizabeth', 'Lauren', 'Michelle', 'Nicole', 'Amanda', 'Rachel'];
         const genderNeutralNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey'];
 
-        const used = usedNamesGlobal instanceof Set ? usedNamesGlobal : new Set();
-        const sourceList = useGender === 'male' ? maleFirstNames : (useGender === 'female' ? femaleFirstNames : genderNeutralNames);
-        const available = sourceList.filter(n => !used.has(n));
+        const used = usedNamesGlobal instanceof Set ? usedNamesGlobal : new Set<string>();
+        const sourceList = useGender === 'male' ? maleFirstNames : useGender === 'female' ? femaleFirstNames : genderNeutralNames;
+        const available = sourceList.filter((n) => !used.has(n));
         if (available.length < count) {
             throw new Error('Not enough unique names available to satisfy request');
         }
-        const selected = [];
+        const selected: string[] = [];
         const pool = [...available];
         for (let i = 0; i < count; i++) {
             const idx = Math.floor(Math.random() * pool.length);
@@ -459,36 +576,36 @@ class DebugTools {
     }
 
     // Fill the setup form with random names
-    fillSetupForm() {
-        const leadsInput = document.getElementById('lead-names');
-        const followsInput = document.getElementById('follow-names');
-        const judgesInput = document.getElementById('judge-names');
-        
+    fillSetupForm(): void {
+        const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
+        const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
+        const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
+
         if (!leadsInput || !followsInput || !judgesInput) {
             alert('Setup form not found. Make sure you are on the home screen.');
             return;
         }
-        
+
         // Generate unique names across all groups
-        const used = new Set();
+        const used = new Set<string>();
         const selectedLeads = this.generateRandomNames(8, 'male', used);
         const selectedFollows = this.generateRandomNames(8, 'female', used);
         const selectedJudges = this.generateRandomNames(2, 'neutral', used);
-        
+
         // Fill inputs
         leadsInput.value = selectedLeads.join(', ');
         followsInput.value = selectedFollows.join(', ');
         judgesInput.value = selectedJudges.join(', ');
-        
-        console.log('Filled setup form with:', { 
-            leads: selectedLeads, 
-            follows: selectedFollows, 
-            judges: selectedJudges 
+
+        console.log('Filled setup form with:', {
+            leads: selectedLeads,
+            follows: selectedFollows,
+            judges: selectedJudges,
         });
     }
 
     // Helper method to shuffle an array
-    shuffleArray(array) {
+    shuffleArray<T>(array: T[]): T[] {
         const newArray = [...array];
         for (let i = newArray.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -496,33 +613,33 @@ class DebugTools {
         }
         return newArray;
     }
-    
+
     // Start a battle with random names
-    async startWithRandomNames() {
+    async startWithRandomNames(): Promise<void> {
         // Generate random names
-        const used = new Set();
+        const used = new Set<string>();
         const leads = this.generateRandomNames(8, 'male', used);
         const follows = this.generateRandomNames(8, 'female', used);
         const judges = this.generateRandomNames(2, 'neutral', used);
-        
+
         console.log('Generated names:', { leads, follows, judges });
-        
+
         try {
             // Fill the setup form first
-            const leadsInput = document.getElementById('lead-names');
-            const followsInput = document.getElementById('follow-names');
-            const judgesInput = document.getElementById('judge-names');
-            
+            const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
+            const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
+            const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
+
             if (!leadsInput || !followsInput || !judgesInput) {
                 alert('Setup form not found. Make sure you are on the setup screen.');
                 return;
             }
-            
+
             // Fill the inputs
             leadsInput.value = leads.join(', ');
             followsInput.value = follows.join(', ');
             judgesInput.value = judges.join(', ');
-            
+
             // Start the game by making the API call directly
             const response = await fetch('/api/start_game', {
                 method: 'POST',
@@ -530,174 +647,192 @@ class DebugTools {
                 body: JSON.stringify({
                     leads: leads.join(', '),
                     follows: follows.join(', '),
-                    judges: judges.join(', ')
-                })
+                    judges: judges.join(', '),
+                }),
             });
-            
+
             if (!response.ok) {
                 throw new Error('Failed to start game');
             }
-            
-            const data = await response.json();
+
+            const data = (await response.json()) as StartGameDebugResponse;
             console.log('Game started:', data);
-            
+
             // Store the session ID
             localStorage.setItem('sessionId', data.session_id);
-            // Set both the non-window global (used by app.js) and window fallback
-            try { sessionId = data.session_id; } catch (_) {}
             window.sessionId = data.session_id;
-            if (typeof updateSessionIdDisplay === 'function') {
-                updateSessionIdDisplay();
-            }
-            
+
             // Store other game data
             window.guestJudges = data.guest_judges;
             window.initialLeads = data.initial_leads;
             window.initialFollows = data.initial_follows;
-            
-            // Show battle screen and render canonical state reliably
-            if (typeof showScreen === 'function') {
-                const battleEl = document.getElementById('battle-screen');
-                if (battleEl) showScreen(battleEl);
-            } else {
-                const setupEl = document.getElementById('setup-screen');
-                const battleEl = document.getElementById('battle-screen');
-                if (setupEl) setupEl.classList.remove('active');
-                if (battleEl) battleEl.classList.add('active');
+
+            // Enter the battle through the router: hydrateBattleRoute sets
+            // app.js's internal session state and renders canonical state.
+            // (app.js is a bundled module — its state is only reachable
+            // through these public entry points.)
+            if (typeof window.navigate === 'function') {
+                window.navigate('/battle/' + encodeURIComponent(data.session_id));
             }
 
-            // Prefer direct state fetch to avoid relying on external globals
-            try {
-                const stateResp = await fetch(`/api/state?session_id=${data.session_id}`);
-                if (stateResp.ok) {
-                    const stateJson = await stateResp.json();
-                    if (typeof renderFromState === 'function') {
-                        renderFromState(stateJson);
-                    }
-                } else if (typeof refreshCanonicalState === 'function') {
-                    await refreshCanonicalState();
-                }
-            } catch (_) {
-                if (typeof refreshCanonicalState === 'function') {
-                    await refreshCanonicalState();
-                }
-            }
-            
             console.log('Battle started with random names');
         } catch (error) {
             console.error('Error starting battle:', error);
-            alert(`Failed to start battle: ${error.message}`);
+            alert(`Failed to start battle: ${(error as Error).message}`);
         }
     }
-    
-    // Helper method to setup voting UI
-    setupVotingUI() {
-        // Clear previous voting UI
-        const leadJudgesContainer = document.getElementById('lead-judges-container');
-        const followJudgesContainer = document.getElementById('follow-judges-container');
-        
-        if (leadJudgesContainer) leadJudgesContainer.innerHTML = '';
-        if (followJudgesContainer) followJudgesContainer.innerHTML = '';
-        
-        const allJudges = [...window.guestJudges];
-        
-        // Get contestant judges from the text content and split by comma
-        const contestantJudges = document.getElementById('contestant-judges-list').textContent.split(', ');
-        allJudges.push(...contestantJudges);
-        
-        // Create lead voting UI
-        allJudges.forEach(judge => {
-            const isGuest = window.guestJudges.includes(judge);
-            const judgeCard = this.createJudgeVotingCard(judge, isGuest, 'lead');
-            if (leadJudgesContainer) leadJudgesContainer.appendChild(judgeCard);
-        });
-        
-        // Create follow voting UI
-        allJudges.forEach(judge => {
-            const isGuest = window.guestJudges.includes(judge);
-            const judgeCard = this.createJudgeVotingCard(judge, isGuest, 'follow');
-            if (followJudgesContainer) followJudgesContainer.appendChild(judgeCard);
-        });
+
+    // ---- Prelims debug helpers ------------------------------------------------
+
+    // A compact labeled number input row for the prelims config block.
+    prelimField(label: string, value: number, min: number, onInput: (v: number) => void): HTMLElement {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; color:white; font-size:12px; margin:3px 0;';
+        const span = document.createElement('span');
+        span.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = String(min);
+        input.value = String(value);
+        input.style.cssText = 'width:64px; padding:2px 4px; background:#444; color:white; border:1px solid #666; border-radius:3px;';
+        input.onchange = () => {
+            const v = Math.max(min, parseInt(input.value) || min);
+            input.value = String(v);
+            onInput(v);
+        };
+        wrap.appendChild(span);
+        wrap.appendChild(input);
+        return wrap;
     }
-    
-    // Helper method to create judge voting card
-    createJudgeVotingCard(judgeName, isGuest, voteType) {
-        const row = document.createElement('div');
-        row.className = 'judge-row';
-        row.id = `${voteType}-judge-${judgeName.replace(/\s+/g, '-').toLowerCase()}`;
 
-        const avatar = document.createElement('div');
-        avatar.className = 'avatar';
-        const initials = judgeName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
-        avatar.textContent = initials;
-
-        const judgeNameEl = document.createElement('span');
-        judgeNameEl.className = 'judge-name';
-        judgeNameEl.textContent = judgeName + (isGuest ? ' (Guest)' : '');
-
-        const voteChips = document.createElement('div');
-        voteChips.className = 'vote-chips';
-
-        const option1Name = voteType === 'lead' ?
-            document.getElementById('lead1-name').textContent :
-            document.getElementById('follow1-name').textContent;
-        const option2Name = voteType === 'lead' ?
-            document.getElementById('lead2-name').textContent :
-            document.getElementById('follow2-name').textContent;
-
-        const self = this;
-        function onChipClick(chip, voteValue) {
-            if (window.votingLocked && window.votingLocked[voteType]) return;
-            voteChips.querySelectorAll('.vote-chip').forEach(c => c.classList.remove('selected'));
-            chip.classList.add('selected');
-            row.classList.add('voted');
-            avatar.classList.add('voted');
-            self.recordVote(judgeName, voteValue, voteType);
+    // Draw `count` unique "First I." names from the gendered bank (real first name +
+    // random last-initial). `used` threads across calls so leads/follows/judges never
+    // collide. Sampling every first-name × initial combo keeps oversized fields easy.
+    generateBankNames(count: number, gender: 'male' | 'female' | 'neutral', used: Set<string>): string[] {
+        const initials = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const combos: string[] = [];
+        for (const first of DEBUG_NAME_BANKS[gender]) {
+            for (const initial of initials) {
+                const name = `${first} ${initial}.`;
+                if (!used.has(name)) combos.push(name);
+            }
         }
-
-        // Option 1 chip
-        const option1Chip = document.createElement('button');
-        option1Chip.className = 'vote-chip';
-        option1Chip.textContent = option1Name;
-        option1Chip.addEventListener('click', () => onChipClick(option1Chip, 1));
-
-        // Option 2 chip
-        const option2Chip = document.createElement('button');
-        option2Chip.className = 'vote-chip';
-        option2Chip.textContent = option2Name;
-        option2Chip.addEventListener('click', () => onChipClick(option2Chip, 2));
-
-        voteChips.appendChild(option1Chip);
-        voteChips.appendChild(option2Chip);
-
-        // Add guest judge options if applicable
-        if (isGuest) {
-            const tieChip = document.createElement('button');
-            tieChip.className = 'vote-chip tie-chip';
-            tieChip.textContent = 'Tie';
-            tieChip.addEventListener('click', () => onChipClick(tieChip, 3));
-
-            const ncChip = document.createElement('button');
-            ncChip.className = 'vote-chip nc-chip';
-            ncChip.textContent = 'NC';
-            ncChip.addEventListener('click', () => onChipClick(ncChip, 4));
-
-            voteChips.appendChild(tieChip);
-            voteChips.appendChild(ncChip);
-        }
-
-        row.appendChild(avatar);
-        row.appendChild(judgeNameEl);
-        row.appendChild(voteChips);
-
-        return row;
+        const chosen = this.shuffleArray(combos).slice(0, Math.max(0, count));
+        chosen.forEach((n) => used.add(n));
+        return chosen;
     }
-    
+
+    // Create a confirmed prelim directly (skipping the setup screen) and route into it.
+    async startPrelimsRandom(): Promise<{ session_id: string } | null> {
+        const used = new Set<string>();
+        const leads = this.generateBankNames(this.prelimLeads, 'male', used);
+        const follows = this.generateBankNames(this.prelimFollows, 'female', used);
+        const judges = this.generateBankNames(2, 'neutral', used);
+
+        try {
+            const response = await fetch('/api/prelims/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    leads,
+                    follows,
+                    judges: judges.join(','),
+                    lead_spots: this.prelimLeadSpots,
+                    follow_spots: this.prelimFollowSpots,
+                    group_size: this.prelimGroupSize,
+                    confirm: true,
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to start prelims');
+            }
+            const data = (await response.json()) as { session_id: string };
+            console.log('Prelim started:', data);
+            if (typeof window.navigate === 'function') {
+                window.navigate('/prelims/' + encodeURIComponent(data.session_id));
+            }
+            return data;
+        } catch (error) {
+            console.error('Error starting prelims:', error);
+            alert(`Failed to start prelims: ${(error as Error).message}`);
+            return null;
+        }
+    }
+
+    // Skip the rotations and reveal the selection panel (clicks the built-in button).
+    jumpToPrelimSelection(): void {
+        const btn = document.getElementById('prelims-goto-selection') as HTMLButtonElement | null;
+        if (!btn) {
+            alert('Not on the prelims screen.');
+            return;
+        }
+        btn.click();
+    }
+
+    // On the selection panel, pick the required number per role and confirm — the
+    // required count is parsed from each role's "x / spots" counter (roles that
+    // auto-advance show "all N advance" and are skipped).
+    async autoSelectPrelims(): Promise<void> {
+        const screen = document.getElementById('prelims-screen');
+        if (!screen || !screen.classList.contains('active')) {
+            alert('Not on the prelims screen.');
+            return;
+        }
+        const selection = document.getElementById('prelims-selection');
+        if (selection && selection.style.display === 'none') {
+            this.jumpToPrelimSelection();
+        }
+        await this.waitFor(() => {
+            const s = document.getElementById('prelims-selection');
+            return !!s && s.style.display !== 'none';
+        }, 3000);
+
+        const pickRole = (role: 'lead' | 'follow') => {
+            const counter = document.getElementById(`prelims-${role}-counter`);
+            const match = (counter?.textContent || '').match(/\/\s*(\d+)/);
+            if (!match) return; // auto-advance role — nothing to select
+            const need = parseInt(match[1], 10);
+            const inputs = Array.from(
+                document.querySelectorAll<HTMLInputElement>(`#prelims-${role}-choices input:not([disabled])`),
+            );
+            for (let i = 0; i < Math.min(need, inputs.length); i++) inputs[i].click();
+        };
+        pickRole('lead');
+        pickRole('follow');
+
+        const confirm = document.getElementById('prelims-confirm-selection') as HTMLButtonElement | null;
+        if (confirm && !confirm.disabled) {
+            confirm.click();
+        } else {
+            alert('Could not satisfy the selection counts (check spots vs. eligible dancers).');
+        }
+    }
+
+    // One-click: start a random prelim, skip to selection, auto-pick, and advance
+    // into the battle.
+    async runFullPrelim(): Promise<void> {
+        const started = await this.startPrelimsRandom();
+        if (!started) return;
+        // Prelim arrives already confirmed -> operator view. Jump to selection and pick.
+        const ready = await this.waitFor(() => {
+            const c = document.getElementById('prelims-screen');
+            const goto = document.getElementById('prelims-goto-selection');
+            return !!c && c.classList.contains('active') && !!goto && goto.offsetParent !== null;
+        }, 8000);
+        if (!ready) {
+            console.warn('Prelims screen did not render in time.');
+            return;
+        }
+        this.jumpToPrelimSelection();
+        await this.autoSelectPrelims();
+    }
+
     // Helper method to record votes
-    recordVote(judge, decision, voteType) {
+    recordVote(judge: string, decision: number, voteType: 'lead' | 'follow'): void {
         if (!window.leadVotes) window.leadVotes = {};
         if (!window.followVotes) window.followVotes = {};
-        
+
         if (voteType === 'lead') {
             window.leadVotes[judge] = decision;
         } else {
@@ -706,13 +841,13 @@ class DebugTools {
     }
 
     // Generate random votes for leads or follows
-    async randomVotes(isLead) {
+    async randomVotes(isLead: boolean): Promise<boolean | undefined> {
         const sessionId = localStorage.getItem('sessionId');
         if (!sessionId) {
             alert('No active session. Please start a battle first.');
             return;
         }
-        
+
         try {
             // Get current game state
             const effectiveSessionId = window.sessionId || sessionId || localStorage.getItem('sessionId');
@@ -720,24 +855,24 @@ class DebugTools {
             if (!response.ok) {
                 throw new Error('Failed to get game state');
             }
-            
+
             const data = await response.json();
             console.log('Game state:', data);
-            
+
             // Check if we're on the round screen
             const roundScreen = document.getElementById('battle-screen');
             if (!roundScreen || !roundScreen.classList.contains('active')) {
                 alert('Please navigate to the round screen first.');
                 return;
             }
-            
+
             // Get the voting container
             const container = document.getElementById(`${isLead ? 'lead' : 'follow'}-judges-container`);
             if (!container) {
                 alert(`${isLead ? 'Lead' : 'Follow'} judges container not found.`);
                 return;
             }
-            
+
             // Get all judge rows
             const judgeCards = Array.from(container.querySelectorAll('.judge-row'));
             if (judgeCards.length === 0) {
@@ -746,44 +881,44 @@ class DebugTools {
             }
 
             console.log(`Found ${judgeCards.length} judge rows for ${isLead ? 'leads' : 'follows'}`);
-            
+
             // Initialize vote tracking if needed
             if (!window.leadVotes) window.leadVotes = {};
             if (!window.followVotes) window.followVotes = {};
             if (!window.votingLocked) window.votingLocked = { lead: false, follow: false };
-            
+
             // Process each judge card sequentially
             for (let i = 0; i < judgeCards.length; i++) {
                 const card = judgeCards[i];
                 try {
-                    const judgeName = card.querySelector('.judge-name').textContent.replace(' (Guest)', '');
+                    const judgeName = (card.querySelector('.judge-name')?.textContent || '').replace(' (Guest)', '');
                     console.log(`Processing judge ${i + 1}/${judgeCards.length}: ${judgeName}`);
-                    
-                    const buttons = Array.from(card.querySelectorAll('.vote-chip'));
+
+                    const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('.vote-chip'));
                     console.log(`Found ${buttons.length} buttons for judge ${judgeName}`);
-                    
+
                     if (buttons.length > 0) {
                         // For guest judges, we can click any button (1-4)
                         // For contestant judges, we can only click buttons 1-2
                         // In simple contestant judges mode, the proxy "Contestant Judges" has 3 options (1, Mixed, 2)
-                        const isGuest = card.querySelector('.judge-name').textContent.includes('(Guest)');
+                        const isGuest = (card.querySelector('.judge-name')?.textContent || '').includes('(Guest)');
                         const isProxyContestantJudges = !isGuest && judgeName.trim() === 'Contestant Judges';
-                        let validButtons = isGuest ? buttons : (isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2));
+                        let validButtons = isGuest ? buttons : isProxyContestantJudges ? buttons.slice(0, 3) : buttons.slice(0, 2);
                         // Filter out disabled buttons - only pick from enabled options
-                        validButtons = validButtons.filter(btn => !btn.disabled && !btn.classList.contains('disabled'));
+                        validButtons = validButtons.filter((btn) => !btn.disabled && !btn.classList.contains('disabled'));
                         console.log(`Valid buttons for ${judgeName}: ${validButtons.length} (isGuest: ${isGuest})`);
-                        
+
                         if (validButtons.length === 0) {
                             console.warn(`No enabled buttons available for judge ${judgeName}, skipping`);
                             continue;
                         }
-                        
+
                         // Get a random button from the valid options
                         const randomButton = validButtons[Math.floor(Math.random() * validButtons.length)];
                         console.log(`Selected random button for ${judgeName}:`, randomButton.textContent);
-                        
+
                         // Get the vote value based on the button's class and text content
-                        let voteValue;
+                        let voteValue: number;
                         const classMatch = randomButton.className.match(/vote-option-(\d+)/);
                         if (classMatch) {
                             voteValue = parseInt(classMatch[1]);
@@ -791,7 +926,7 @@ class DebugTools {
                             voteValue = 5;
                         } else {
                             // Fallback: determine vote value based on button text
-                            const buttonText = randomButton.textContent.trim();
+                            const buttonText = (randomButton.textContent || '').trim();
                             if (buttonText === 'Tie') {
                                 voteValue = 3;
                             } else if (buttonText === 'No Contest') {
@@ -802,22 +937,22 @@ class DebugTools {
                                 voteValue = buttonIndex + 1;
                             }
                         }
-                        
+
                         console.log(`Determined vote value for ${judgeName}: ${voteValue}`);
-                        
+
                         // Record the vote
                         if (isLead) {
                             window.leadVotes[judgeName] = voteValue;
                         } else {
                             window.followVotes[judgeName] = voteValue;
                         }
-                        
+
                         // Update UI
                         randomButton.click();
                         console.log(`Clicked random vote for judge: ${judgeName} with value: ${voteValue}`);
-                        
+
                         // Add a small delay between clicks to ensure proper UI updates
-                        await new Promise(resolve => setTimeout(resolve, 100));
+                        await new Promise((resolve) => setTimeout(resolve, 100));
                     } else {
                         console.warn(`No buttons found for judge ${judgeName}`);
                     }
@@ -825,28 +960,30 @@ class DebugTools {
                     console.error(`Error processing judge card ${i + 1}/${judgeCards.length}:`, error);
                 }
             }
-            
+
             console.log(`Completed processing all ${judgeCards.length} judges`);
-            
+
             // Find and click the determine winner button
-            const determineButton = document.getElementById(`determine-${isLead ? 'lead' : 'follow'}-winner`);
+            const determineButton = document.getElementById(
+                `determine-${isLead ? 'lead' : 'follow'}-winner`,
+            ) as HTMLButtonElement | null;
             console.log('Looking for determine winner button:', {
                 id: `determine-${isLead ? 'lead' : 'follow'}-winner`,
                 found: !!determineButton,
                 classes: determineButton ? determineButton.className : 'not found',
                 disabled: determineButton ? determineButton.disabled : 'not found',
-                visible: determineButton && !determineButton.classList.contains('hidden')
+                visible: determineButton && !determineButton.classList.contains('hidden'),
             });
-            
+
             if (determineButton && !determineButton.classList.contains('hidden') && !determineButton.disabled) {
                 console.log(`Clicking determine ${isLead ? 'lead' : 'follow'} winner button`);
                 determineButton.click();
-                
+
                 // Wait for the voting to be processed
                 let attempts = 0;
                 const maxAttempts = 50; // 5 seconds total
                 while (attempts < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise((resolve) => setTimeout(resolve, 100));
                     if (determineButton.classList.contains('hidden') || determineButton.disabled) {
                         console.log('Determine winner button hidden or disabled, voting processed successfully');
                         return true;
@@ -861,24 +998,25 @@ class DebugTools {
             }
         } catch (error) {
             console.error(`Error randomly voting for ${isLead ? 'leads' : 'follows'}:`, error);
-            alert(`Failed to generate random votes: ${error.message}`);
+            alert(`Failed to generate random votes: ${(error as Error).message}`);
             return false;
         }
     }
-    
+
     // Navigate to next round
-    async nextRound() {
+    async nextRound(): Promise<void> {
         const sessionId = localStorage.getItem('sessionId');
         if (!sessionId) {
             alert('No active session. Please start a battle first.');
             return;
         }
-        
+
         try {
             // Get a random song from the playlist
             const songUrl = await this.getRandomSongFromPlaylist();
             if (songUrl) {
-                document.getElementById('song-input').value = songUrl;
+                const songInput = document.getElementById('song-input') as HTMLInputElement | null;
+                if (songInput) songInput.value = songUrl;
             }
 
             // First, handle lead votes
@@ -888,7 +1026,7 @@ class DebugTools {
                 console.warn('Lead votes may not have been processed completely');
                 return;
             }
-            
+
             // Then, handle follow votes
             console.log('Handling follow votes...');
             const followVotesProcessed = await this.randomVotes(false);
@@ -898,7 +1036,7 @@ class DebugTools {
             }
 
             // Confirm + submit votes via modal (new flow auto-advances)
-            const confirmBtn = document.getElementById('submit-votes');
+            const confirmBtn = document.getElementById('submit-votes') as HTMLButtonElement | null;
             if (confirmBtn && !confirmBtn.disabled) {
                 console.log('Confirming votes...');
                 const prevRound = (document.getElementById('round-number')?.textContent || '').trim();
@@ -907,7 +1045,7 @@ class DebugTools {
                 // Wait for modal to appear
                 await this.waitFor(() => {
                     const m = document.getElementById('vote-confirm-modal');
-                    return m && !m.classList.contains('hidden');
+                    return !!m && !m.classList.contains('hidden');
                 }, 5000);
 
                 const modalSubmit = document.getElementById('vote-confirm-submit');
@@ -922,21 +1060,21 @@ class DebugTools {
                 await this.waitFor(() => {
                     const rn = (document.getElementById('round-number')?.textContent || '').trim();
                     const battleActive = document.getElementById('battle-screen')?.classList.contains('active');
-                    return !battleActive || (prevRound && rn && rn !== prevRound);
+                    return !battleActive || !!(prevRound && rn && rn !== prevRound);
                 }, 12000);
             } else {
                 console.warn('Confirm button not available or disabled');
             }
         } catch (error) {
             console.error('Error in next round process:', error);
-            alert(`Failed to complete next round process: ${error.message}`);
+            alert(`Failed to complete next round process: ${(error as Error).message}`);
         }
     }
 
     // Determine if advancing to next round is possible from current UI state
-    async canAdvance() {
-        const nextRoundButton = document.getElementById('next-round');
-        const submitBtn = document.getElementById('submit-votes');
+    async canAdvance(): Promise<boolean> {
+        const nextRoundButton = document.getElementById('next-round') as HTMLButtonElement | null;
+        const submitBtn = document.getElementById('submit-votes') as HTMLButtonElement | null;
         // If neither submit nor next-round controls are present, likely finished or not on battle screen
         if (!submitBtn && !nextRoundButton) return false;
         // If next round button exists but is disabled and no submit button, we're likely finished
@@ -944,20 +1082,22 @@ class DebugTools {
         return true;
     }
 
-    async tryEndGame() {
+    async tryEndGame(): Promise<void> {
         try {
-            if (typeof endGame === 'function') {
-                endGame();
+            if (typeof window.endGame === 'function') {
+                window.endGame();
                 return;
             }
-        } catch (_) {}
+        } catch {
+            /* fall through to the API path */
+        }
         try {
             const sid = window.sessionId || localStorage.getItem('sessionId');
             if (!sid) return;
             await fetch('/api/end_game', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sid })
+                body: JSON.stringify({ session_id: sid }),
             });
         } catch (e) {
             console.warn('Failed to end game via API:', e);
@@ -965,7 +1105,7 @@ class DebugTools {
     }
 
     // Simulate at most N rounds; stop early if game ends, and end the game explicitly
-    async simulateNRounds(n) {
+    async simulateNRounds(n: number): Promise<void> {
         const sessionId = localStorage.getItem('sessionId');
         if (!sessionId) {
             alert('No active session. Please start a battle first.');
@@ -982,7 +1122,7 @@ class DebugTools {
             console.log(`Simulating round ${i + 1} of ${total}...`);
             await this.nextRound();
             // Small pause to allow UI/state to settle
-            await new Promise(r => setTimeout(r, 300));
+            await new Promise((r) => setTimeout(r, 300));
             // If after running this round we cannot advance further, end game and stop
             if (!(await this.canAdvance())) {
                 console.log('Game finished early during simulation. Ending game.');
@@ -992,10 +1132,10 @@ class DebugTools {
         }
     }
 
-    addSection(title) {
+    addSection(title: string): void {
         const section = document.createElement('div');
         section.style.marginBottom = '10px';
-        
+
         const header = document.createElement('h3');
         header.textContent = title;
         header.style.cssText = `
@@ -1003,12 +1143,12 @@ class DebugTools {
             font-size: 14px;
             color: var(--primary-color);
         `;
-        
+
         section.appendChild(header);
         this.panel.appendChild(section);
     }
 
-    addButton(text, onClick) {
+    addButton(text: string, onClick: () => void): void {
         const button = document.createElement('button');
         button.textContent = text;
         button.style.cssText = `
@@ -1026,17 +1166,17 @@ class DebugTools {
         this.panel.appendChild(button);
     }
 
-    togglePanel() {
+    togglePanel(): void {
         this.isVisible = !this.isVisible;
         this.panel.style.display = this.isVisible ? 'block' : 'none';
-        
+
         // Stop auto-advance when panel is hidden
         if (!this.isVisible) {
             this.stopAutoAdvance();
         }
     }
 
-    async testSpotifyAPI() {
+    async testSpotifyAPI(): Promise<void> {
         try {
             const response = await fetch('/api/get_spotify_token');
             const data = await response.json();
@@ -1048,7 +1188,7 @@ class DebugTools {
         }
     }
 
-    async testExport() {
+    async testExport(): Promise<void> {
         try {
             const sessionId = localStorage.getItem('sessionId');
             if (!sessionId) {
@@ -1067,25 +1207,25 @@ class DebugTools {
     }
 
     // Add auto-advance methods
-    async getRandomSongFromPlaylist() {
+    async getRandomSongFromPlaylist(): Promise<string | null> {
         try {
             // Get Spotify access token
             const tokenResponse = await fetch('/api/get_spotify_token');
-            const tokenData = await tokenResponse.json();
+            const tokenData = (await tokenResponse.json()) as { access_token?: string };
             const accessToken = tokenData.access_token;
 
             // Get playlist tracks
             const response = await fetch(`https://api.spotify.com/v1/playlists/${this.playlistId}/tracks`, {
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
+                    Authorization: `Bearer ${accessToken}`,
+                },
             });
 
             if (!response.ok) {
                 throw new Error('Failed to fetch playlist tracks');
             }
 
-            const data = await response.json();
+            const data = (await response.json()) as { items?: Array<{ track: { id: string } }> };
             const tracks = data.items;
 
             if (!tracks || tracks.length === 0) {
@@ -1101,12 +1241,12 @@ class DebugTools {
         }
     }
 
-    async startAutoAdvance() {
+    async startAutoAdvance(): Promise<void> {
         if (this.autoAdvanceInterval) {
             clearInterval(this.autoAdvanceInterval);
         }
-        
-        this.autoAdvanceInterval = setInterval(async () => {
+
+        this.autoAdvanceInterval = window.setInterval(async () => {
             const nextRoundButton = document.getElementById('next-round');
             const submitBtn = document.getElementById('submit-votes');
             // Only attempt if UI seems ready for a new iteration
@@ -1120,7 +1260,7 @@ class DebugTools {
         }, this.autoAdvanceDelay);
     }
 
-    stopAutoAdvance() {
+    stopAutoAdvance(): void {
         if (this.autoAdvanceInterval) {
             clearInterval(this.autoAdvanceInterval);
             this.autoAdvanceInterval = null;
@@ -1129,19 +1269,21 @@ class DebugTools {
     }
 
     // Utility: wait for a condition with timeout
-    async waitFor(conditionFn, timeoutMs = 5000, pollMs = 100) {
+    async waitFor(conditionFn: () => boolean, timeoutMs = 5000, pollMs = 100): Promise<boolean> {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             try {
                 if (conditionFn()) return true;
-            } catch (_) {}
-            await new Promise(r => setTimeout(r, pollMs));
+            } catch {
+                /* condition not ready yet */
+            }
+            await new Promise((r) => setTimeout(r, pollMs));
         }
         return false;
     }
 
     // Persisted settings on load
-    restorePersistedToggles() {
+    restorePersistedToggles(): void {
         const savedAuto = localStorage.getItem('debug.autoAdvance');
         if (savedAuto === 'true') {
             this.autoAdvance = true;
@@ -1150,10 +1292,13 @@ class DebugTools {
     }
 
     // Simple draggable behavior
-    makeDraggable(element, handle) {
+    makeDraggable(element: HTMLElement, handle: HTMLElement): void {
         let isDragging = false;
-        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-        const onMouseDown = (e) => {
+        let startX = 0,
+            startY = 0,
+            startLeft = 0,
+            startTop = 0;
+        const onMouseDown = (e: MouseEvent) => {
             isDragging = true;
             startX = e.clientX;
             startY = e.clientY;
@@ -1163,7 +1308,7 @@ class DebugTools {
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         };
-        const onMouseMove = (e) => {
+        const onMouseMove = (e: MouseEvent) => {
             if (!isDragging) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
@@ -1182,15 +1327,20 @@ class DebugTools {
                 const rect = element.getBoundingClientRect();
                 localStorage.setItem('debug.panel.left', String(rect.left));
                 localStorage.setItem('debug.panel.top', String(rect.top));
-            } catch (_) {}
+            } catch {
+                /* private mode */
+            }
         };
         handle.addEventListener('mousedown', onMouseDown);
     }
 
-    makeResizable(element, handle) {
+    makeResizable(element: HTMLElement, handle: HTMLElement): void {
         let isResizing = false;
-        let startX = 0, startY = 0, startWidth = 0, startHeight = 0;
-        const onMouseDown = (e) => {
+        let startX = 0,
+            startY = 0,
+            startWidth = 0,
+            startHeight = 0;
+        const onMouseDown = (e: MouseEvent) => {
             isResizing = true;
             startX = e.clientX;
             startY = e.clientY;
@@ -1201,7 +1351,7 @@ class DebugTools {
             document.addEventListener('mouseup', onMouseUp);
             e.preventDefault();
         };
-        const onMouseMove = (e) => {
+        const onMouseMove = (e: MouseEvent) => {
             if (!isResizing) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
@@ -1221,17 +1371,19 @@ class DebugTools {
                 const rect = element.getBoundingClientRect();
                 localStorage.setItem('debug.panel.width', String(rect.width));
                 localStorage.setItem('debug.panel.height', String(rect.height));
-            } catch (_) {}
+            } catch {
+                /* private mode */
+            }
         };
         handle.addEventListener('mousedown', onMouseDown);
     }
 
-    restorePanelPositionAndSize() {
+    restorePanelPositionAndSize(): void {
         try {
-            const left = parseFloat(localStorage.getItem('debug.panel.left'));
-            const top = parseFloat(localStorage.getItem('debug.panel.top'));
-            const width = parseFloat(localStorage.getItem('debug.panel.width'));
-            const height = parseFloat(localStorage.getItem('debug.panel.height'));
+            const left = parseFloat(localStorage.getItem('debug.panel.left') || '');
+            const top = parseFloat(localStorage.getItem('debug.panel.top') || '');
+            const width = parseFloat(localStorage.getItem('debug.panel.width') || '');
+            const height = parseFloat(localStorage.getItem('debug.panel.height') || '');
             if (!Number.isNaN(left) && !Number.isNaN(top)) {
                 this.panel.style.left = `${left}px`;
                 this.panel.style.top = `${top}px`;
@@ -1245,13 +1397,16 @@ class DebugTools {
             if (!Number.isNaN(height)) {
                 this.panel.style.height = `${height}px`;
             }
-        } catch (_) {}
+        } catch {
+            /* private mode */
+        }
     }
 
     // Keyboard shortcuts for convenience
-    setupKeyboardShortcuts() {
-        window.addEventListener('keydown', async (e) => {
-            const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    setupKeyboardShortcuts(): void {
+        window.addEventListener('keydown', async (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
             if (tag === 'input' || tag === 'textarea') return;
             if (e.altKey && (e.key === 'd' || e.key === 'D')) {
                 this.togglePanel();
@@ -1259,10 +1414,14 @@ class DebugTools {
             if (e.altKey && (e.key === 'a' || e.key === 'A')) {
                 this.autoAdvance = !this.autoAdvance;
                 localStorage.setItem('debug.autoAdvance', this.autoAdvance ? 'true' : 'false');
-                if (this.autoAdvance) this.startAutoAdvance(); else this.stopAutoAdvance();
+                if (this.autoAdvance) this.startAutoAdvance();
+                else this.stopAutoAdvance();
             }
             if (e.altKey && (e.key === 'n' || e.key === 'N')) {
                 await this.nextRound();
+            }
+            if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+                await this.runFullPrelim();
             }
         });
     }
@@ -1271,7 +1430,7 @@ class DebugTools {
 // Only initialize debug tools if enabled
 if (window.ENABLE_DEBUG_TOOLS) {
     window.debugTools = new DebugTools();
-} 
+}
 
 // Expose class on window for runtime enabling
 window.DebugTools = window.DebugTools || DebugTools;

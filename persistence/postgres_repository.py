@@ -16,8 +16,25 @@ import os
 # Add parent directory to path to import game_logic
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game
+from prelim_logic import Prelim
 from persistence.interfaces import GameRepositoryInterface, PersistenceError
 from persistence.serializers import GameSerializer
+
+
+def _to_state_dict(obj):
+    """Serialize a Game or Prelim to its JSON-ready state dict."""
+    if isinstance(obj, Prelim):
+        return obj.to_dict()
+    return GameSerializer.to_dict(obj)
+
+
+def _from_state_dict(data):
+    """Reconstruct a Game or Prelim from its stored state dict (``kind`` discriminator;
+    missing key means a Game, so pre-existing rows are unaffected)."""
+    if isinstance(data, dict) and data.get("kind") == "prelim":
+        return Prelim.from_dict(data)
+    return GameSerializer.from_dict(data)
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -81,33 +98,22 @@ class PostgresGameRepository(GameRepositoryInterface):
         except psycopg2.Error as e:
             raise PersistenceError(f"Failed to connect to PostgreSQL: {e}")
 
-        # Initialize database schema
-        self._init_schema()
+        # Verify the schema exists (created by scripts/migrate.py, not here)
+        self._check_schema()
 
-    def _init_schema(self):
-        """Create the games table if it doesn't exist."""
-        # Execute each SQL statement separately for psycopg2 compatibility
-        statements = [
-            """
-            CREATE TABLE IF NOT EXISTS games (
-                session_id VARCHAR(64) PRIMARY KEY,
-                game_state JSONB NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                expires_at TIMESTAMP WITH TIME ZONE NOT NULL
-            )
-            """,
-            # Index for expiration queries
-            "CREATE INDEX IF NOT EXISTS idx_games_expires_at ON games(expires_at)",
-            # Index for JSONB queries (if needed later)
-            "CREATE INDEX IF NOT EXISTS idx_games_state ON games USING GIN(game_state)",
-        ]
+    def _check_schema(self):
+        """Fail loudly if the games table is missing.
 
+        Schema is owned by migrations/ (applied via scripts/migrate.py);
+        creating it lazily here would hide schema drift.
+        """
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                for statement in statements:
-                    cur.execute(statement)
-            conn.commit()
+                cur.execute("SELECT to_regclass('games')")
+                if cur.fetchone()[0] is None:
+                    raise PersistenceError(
+                        "The 'games' table does not exist. Run migrations first: python scripts/migrate.py"
+                    )
 
     @contextmanager
     def _get_connection(self):
@@ -149,7 +155,7 @@ class PostgresGameRepository(GameRepositoryInterface):
         if getattr(game, "current_round", None):
             game.current_round.session_id = session_id
 
-        game_data = GameSerializer.to_dict(game)
+        game_data = _to_state_dict(game)
         expires_at_seconds = time.time() + self.expiration_seconds
 
         insert_sql = """
@@ -198,8 +204,7 @@ class PostgresGameRepository(GameRepositoryInterface):
             return None
 
         try:
-            game = GameSerializer.from_dict(row["game_state"])
-            return game
+            return _from_state_dict(row["game_state"])
         except Exception as e:
             logger.error(f"Failed to deserialize game {session_id}: {e}")
             return None
@@ -218,7 +223,7 @@ class PostgresGameRepository(GameRepositoryInterface):
         Raises:
             PersistenceError: If database operation fails
         """
-        game_data = GameSerializer.to_dict(game)
+        game_data = _to_state_dict(game)
         expires_at_seconds = time.time() + self.expiration_seconds
 
         update_sql = """
