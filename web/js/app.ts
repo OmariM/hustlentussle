@@ -382,6 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Home screen navigation
     goToBattleBtn.addEventListener('click', () => navigate('/setup'));
+    document.getElementById('go-to-prelims')?.addEventListener('click', () => navigate('/prelim-setup'));
     if (goToUploadBtn) goToUploadBtn.addEventListener('click', () => navigate('/upload'));
     
     // Upload screen

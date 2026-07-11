@@ -23,12 +23,26 @@
     const routes: Route[] = [
         { re: /^\/$/, enter: () => activate('home-screen') },
         { re: /^\/setup\/?$/, enter: () => activate('setup-screen') },
+        {
+            re: /^\/prelim-setup\/?$/,
+            enter: () => {
+                activate('prelim-setup-screen');
+                if (typeof window.initPrelimSetup === 'function') window.initPrelimSetup();
+            },
+        },
         { re: /^\/upload\/?$/, enter: () => activate('upload-screen') },
         {
             re: /^\/stats\/?$/,
             enter: () => {
                 activate('stats-screen');
                 if (typeof window.ytdOnEnterStats === 'function') window.ytdOnEnterStats();
+            },
+        },
+        {
+            re: /^\/prelims\/([^/]+)\/?$/,
+            enter: (m) => {
+                activate('prelims-screen');
+                if (typeof window.hydratePrelimRoute === 'function') window.hydratePrelimRoute(decodeURIComponent(m[1]));
             },
         },
         {

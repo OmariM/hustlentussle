@@ -16,8 +16,25 @@ import os
 # Add parent directory to path to import game_logic
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from game_logic import Game
+from prelim_logic import Prelim
 from persistence.interfaces import GameRepositoryInterface, PersistenceError
 from persistence.serializers import GameSerializer
+
+
+def _to_state_dict(obj):
+    """Serialize a Game or Prelim to its JSON-ready state dict."""
+    if isinstance(obj, Prelim):
+        return obj.to_dict()
+    return GameSerializer.to_dict(obj)
+
+
+def _from_state_dict(data):
+    """Reconstruct a Game or Prelim from its stored state dict (``kind`` discriminator;
+    missing key means a Game, so pre-existing rows are unaffected)."""
+    if isinstance(data, dict) and data.get("kind") == "prelim":
+        return Prelim.from_dict(data)
+    return GameSerializer.from_dict(data)
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -138,7 +155,7 @@ class PostgresGameRepository(GameRepositoryInterface):
         if getattr(game, "current_round", None):
             game.current_round.session_id = session_id
 
-        game_data = GameSerializer.to_dict(game)
+        game_data = _to_state_dict(game)
         expires_at_seconds = time.time() + self.expiration_seconds
 
         insert_sql = """
@@ -187,8 +204,7 @@ class PostgresGameRepository(GameRepositoryInterface):
             return None
 
         try:
-            game = GameSerializer.from_dict(row["game_state"])
-            return game
+            return _from_state_dict(row["game_state"])
         except Exception as e:
             logger.error(f"Failed to deserialize game {session_id}: {e}")
             return None
@@ -207,7 +223,7 @@ class PostgresGameRepository(GameRepositoryInterface):
         Raises:
             PersistenceError: If database operation fails
         """
-        game_data = GameSerializer.to_dict(game)
+        game_data = _to_state_dict(game)
         expires_at_seconds = time.time() + self.expiration_seconds
 
         update_sql = """

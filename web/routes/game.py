@@ -7,12 +7,15 @@ from typing import List
 from flask import Blueprint, jsonify, request
 
 from game_logic import Game
+from prelim_logic import DEFAULT_GROUP_SIZE, Prelim
 from web.extensions import repo
 from web.helpers import (
     build_battle_export,
     format_end_game_results,
     get_game_or_404,
+    get_prelim_or_404,
     parse_battle_json,
+    serialize_prelim,
     serialize_state,
 )
 
@@ -27,103 +30,114 @@ def get_state():
     return jsonify(serialize_state(game))
 
 
-@bp.route("/api/start_game", methods=["POST"])
-def start_game():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No JSON data provided"}), 400
+def _split_names(raw) -> List[str]:
+    """Split a comma-separated string (or pass a list through) into trimmed names."""
+    if isinstance(raw, list):
+        return [str(name).strip() for name in raw if str(name).strip()]
+    return [name.strip() for name in (raw or "").split(",") if name.strip()]
 
-    lead_names = data.get("leads", "").split(",")
-    follow_names = data.get("follows", "").split(",")
-    judge_names = data.get("judges", "").split(",")
-    playlist_url = data.get("playlist_url", None)
-    randomize_order = data.get("randomize_order", True)
+
+def _normalize_randomize(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _parse_battle_config(data: dict) -> dict:
+    """Extract the shared battle-config fields from a start payload.
+
+    Point/judge values are stored raw (not resolved) because "auto" points depends on
+    the final roster size, which for prelims is only known at commit time. Resolved by
+    :func:`_build_game`. Reused by /api/start_game and /api/prelims/commit_selection.
+    """
     contestant_judging_enabled = bool(data.get("contestant_judging_enabled", True))
-    simple_contestant_judges = bool(data.get("simple_contestant_judges", False)) and contestant_judging_enabled
+    return {
+        "judges": _split_names(data.get("judges", "")),
+        "playlist_url": data.get("playlist_url", None),
+        "randomize_order": _normalize_randomize(data.get("randomize_order", True)),
+        "contestant_judging_enabled": contestant_judging_enabled,
+        "simple_contestant_judges": bool(data.get("simple_contestant_judges", False)) and contestant_judging_enabled,
+        "points_to_win_mode": data.get("points_to_win_mode", "default"),
+        "points_to_win": data.get("points_to_win", None),  # legacy direct value
+        "num_contestant_judges": data.get("num_contestant_judges", None),
+    }
 
-    # Filter out any empty names
-    lead_names = [name.strip() for name in lead_names if name.strip()]
-    follow_names = [name.strip() for name in follow_names if name.strip()]
-    judge_names = [name.strip() for name in judge_names if name.strip()]
 
-    # Parse points_to_win_mode: "default" (7), "auto" (formula), or numeric value
-    points_to_win_mode = data.get("points_to_win_mode", "default")
-    points_to_win = data.get("points_to_win", None)  # Legacy support
+def _resolve_points_to_win(config: dict, n_lead: int, n_follow: int) -> int:
+    """Resolve points_to_win from a battle config given the final roster sizes."""
+    points_to_win = config.get("points_to_win", None)
+    mode = config.get("points_to_win_mode", "default")
 
     if points_to_win is not None:
-        # Legacy: direct points_to_win value takes precedence
+        # Legacy: direct value takes precedence
         try:
             parsed = int(points_to_win)
-            if parsed >= 1:
-                points_to_win = parsed
-            else:
-                points_to_win = 7
+            return parsed if parsed >= 1 else 7
         except (ValueError, TypeError):
-            points_to_win = 7
-    elif points_to_win_mode == "auto":
-        # Auto-calculate based on number of contestants
-        points_to_win = max(len(lead_names), len(follow_names)) - 1
-        if points_to_win < 1:
-            points_to_win = 1
-    elif points_to_win_mode == "default":
-        points_to_win = 7
-    else:
-        # Treat as custom numeric value
-        try:
-            points_to_win = int(points_to_win_mode)
-            if points_to_win < 1:
-                points_to_win = 7
-        except (ValueError, TypeError):
-            points_to_win = 7
+            return 7
+    if mode == "auto":
+        val = max(n_lead, n_follow) - 1
+        return val if val >= 1 else 1
+    if mode == "default":
+        return 7
+    try:
+        val = int(mode)
+        return val if val >= 1 else 7
+    except (ValueError, TypeError):
+        return 7
 
-    # Parse num_contestant_judges
-    num_contestant_judges_raw = data.get("num_contestant_judges", None)
-    num_contestant_judges = None
-    contestant_judges_warning = None
-    expected_contestant_judges = len(judge_names) + 1
 
-    if num_contestant_judges_raw is not None:
-        try:
-            num_contestant_judges = int(num_contestant_judges_raw)
-            if num_contestant_judges < 0:
-                num_contestant_judges = 0
-            # Check if it violates the recommended rule
-            if num_contestant_judges != expected_contestant_judges:
-                contestant_judges_warning = (
-                    f"Warning: You specified {num_contestant_judges} contestant judge(s), "
-                    f"but the recommended number is {expected_contestant_judges} "
-                    f"(1 more than the {len(judge_names)} guest judge(s)). "
-                    "This may cause undetermined behavior."
-                )
-        except (ValueError, TypeError):
-            num_contestant_judges = None
+def _resolve_num_contestant_judges(config: dict, num_guest_judges: int):
+    """Return (num_contestant_judges | None, warning | None)."""
+    raw = config.get("num_contestant_judges", None)
+    if raw is None:
+        return None, None
+    expected = num_guest_judges + 1
+    try:
+        num = int(raw)
+        if num < 0:
+            num = 0
+        warning = None
+        if num != expected:
+            warning = (
+                f"Warning: You specified {num} contestant judge(s), "
+                f"but the recommended number is {expected} "
+                f"(1 more than the {num_guest_judges} guest judge(s)). "
+                "This may cause undetermined behavior."
+            )
+        return num, warning
+    except (ValueError, TypeError):
+        return None, None
 
-    # Determine whether to randomize order
-    if isinstance(randomize_order, str):
-        randomize_order = randomize_order.strip().lower() in {"1", "true", "yes", "on"}
-    randomize_order = bool(randomize_order)
 
-    # Randomize the order of leads and follows if requested
-    if randomize_order:
+def _build_game(lead_names: List[str], follow_names: List[str], config: dict):
+    """Build a Game from resolved rosters + a battle config. Applies randomize_order to
+    the rosters. Returns (game, warning). Shared by start_game and prelim commit."""
+    lead_names = list(lead_names)
+    follow_names = list(follow_names)
+    if config.get("randomize_order", True):
         random.shuffle(lead_names)
         random.shuffle(follow_names)
 
-    # Create a new game with the configuration
+    judge_names = config.get("judges", [])
+    points_to_win = _resolve_points_to_win(config, len(lead_names), len(follow_names))
+    num_contestant_judges, warning = _resolve_num_contestant_judges(config, len(judge_names))
+
     game = Game(
         lead_names,
         follow_names,
         judge_names,
-        contestant_judging_enabled=contestant_judging_enabled,
-        simple_contestant_judges=simple_contestant_judges,
+        contestant_judging_enabled=config.get("contestant_judging_enabled", True),
+        simple_contestant_judges=config.get("simple_contestant_judges", False),
         num_contestant_judges=num_contestant_judges,
         points_to_win=points_to_win,
     )
+    return game, warning
 
-    session_id = repo.create(game)
 
-    # Get initial game state
+def _start_game_response(game: Game, session_id: str, config: dict, warning) -> dict:
+    """Build the /api/start_game response body for a freshly created game."""
     state = game.get_game_state()
-
     response = {
         "session_id": session_id,
         "round": state["round"],
@@ -133,20 +147,238 @@ def start_game():
         "guest_judges": game.guest_judges,
         "initial_leads": [c.name for c in game.initial_leads],
         "initial_follows": [c.name for c in game.initial_follows],
-        "playlist_url": playlist_url or "",
-        "simple_contestant_judges": simple_contestant_judges,
-        "contestant_judging_enabled": contestant_judging_enabled,
-        "randomize_order": randomize_order,
+        "playlist_url": config.get("playlist_url") or "",
+        "simple_contestant_judges": config.get("simple_contestant_judges", False),
+        "contestant_judging_enabled": config.get("contestant_judging_enabled", True),
+        "randomize_order": config.get("randomize_order", True),
         "points_to_win": game.win_threshold,
         "auto_win_threshold": game.auto_win_threshold,
         "num_contestant_judges": game.num_contestant_judges,
         "expected_contestant_judges": game.expected_contestant_judges,
     }
+    if warning:
+        response["contestant_judges_warning"] = warning
+    return response
 
-    # Add warning if contestant judges rule is violated
-    if contestant_judges_warning:
-        response["contestant_judges_warning"] = contestant_judges_warning
 
+@bp.route("/api/start_game", methods=["POST"])
+def start_game():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    lead_names = _split_names(data.get("leads", ""))
+    follow_names = _split_names(data.get("follows", ""))
+    config = _parse_battle_config(data)
+
+    game, warning = _build_game(lead_names, follow_names, config)
+    session_id = repo.create(game)
+
+    return jsonify(_start_game_response(game, session_id, config, warning))
+
+
+# ---- Prelims (preliminary elimination round) --------------------------------
+
+
+@bp.route("/api/prelims/start", methods=["POST"])
+def prelims_start():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    lead_names = _split_names(data.get("leads", ""))
+    follow_names = _split_names(data.get("follows", ""))
+    if len(lead_names) < 1 or len(follow_names) < 1:
+        return jsonify({"error": "Prelims need at least one lead and one follow."}), 400
+
+    config = _parse_battle_config(data)
+
+    def _int_or_none(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    group_size = _int_or_none(data.get("group_size")) or DEFAULT_GROUP_SIZE
+    prelim = Prelim.create(
+        lead_names,
+        follow_names,
+        lead_spots=_int_or_none(data.get("lead_spots")),
+        follow_spots=_int_or_none(data.get("follow_spots")),
+        group_size=group_size,
+        battle_config=config,
+    )
+    # Optional operator-edited bib numbers from the setup screen.
+    if data.get("lead_numbers") or data.get("follow_numbers"):
+        prelim.set_numbers(data.get("lead_numbers"), data.get("follow_numbers"))
+    # The dedicated setup screen finalizes the roster, so it confirms in one call.
+    if data.get("confirm"):
+        prelim.confirm()
+    session_id = repo.create(prelim)
+
+    response = serialize_prelim(prelim)
+    response["session_id"] = session_id
+    return jsonify(response)
+
+
+@bp.route("/api/prelims/state", methods=["GET"])
+def prelims_state():
+    prelim, error = get_prelim_or_404(request.args.get("session_id"))
+    if error:
+        return error
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/start_heat", methods=["POST"])
+def prelims_start_heat():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.start_heat()
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/next_phase", methods=["POST"])
+def prelims_next_phase():
+    """Advance the heat's phase machine one step: rotation -> break -> rotation, hold at
+    the music-change intermission, or end the heat. Used by the auto-timer boundary, the
+    operator's skip-rotation, and the intermission continue."""
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.next_phase()
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/add_participant", methods=["POST"])
+def prelims_add_participant():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    role = data.get("role")
+    if role not in ("lead", "follow"):
+        return jsonify({"error": "role must be 'lead' or 'follow'"}), 400
+    try:
+        prelim.add_participant(role, data.get("name", ""), data.get("number"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/remove_participant", methods=["POST"])
+def prelims_remove_participant():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    role = data.get("role")
+    if role not in ("lead", "follow"):
+        return jsonify({"error": "role must be 'lead' or 'follow'"}), 400
+    try:
+        prelim.remove_participant(role, data.get("name", ""))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/confirm", methods=["POST"])
+def prelims_confirm():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.confirm()
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/set_numbers", methods=["POST"])
+def prelims_set_numbers():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    try:
+        prelim.set_numbers(data.get("lead_numbers"), data.get("follow_numbers"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/toggle_pause", methods=["POST"])
+def prelims_toggle_pause():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.toggle_pause()
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/set_options", methods=["POST"])
+def prelims_set_options():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.set_options(show_timer=data.get("show_timer"), auto_advance=data.get("auto_advance"))
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/advance_heat", methods=["POST"])
+def prelims_advance_heat():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+    prelim.advance_heat()
+    repo.save(session_id, prelim)
+    return jsonify(serialize_prelim(prelim))
+
+
+@bp.route("/api/prelims/commit_selection", methods=["POST"])
+def prelims_commit_selection():
+    data = request.get_json() or {}
+    session_id = data.get("session_id")
+    prelim, error = get_prelim_or_404(session_id)
+    if error:
+        return error
+
+    try:
+        selected_leads, selected_follows = prelim.commit_selection(
+            data.get("lead_selections", []),
+            data.get("follow_selections", []),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    repo.save(session_id, prelim)
+
+    # Build the main battle from the advancers (fresh at 0), reusing the stored config.
+    game, warning = _build_game(selected_leads, selected_follows, prelim.battle_config)
+    new_session_id = repo.create(game)
+
+    response = _start_game_response(game, new_session_id, prelim.battle_config, warning)
+    response["prelim_session_id"] = session_id
     return jsonify(response)
 
 

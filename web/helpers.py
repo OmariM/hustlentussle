@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from flask import jsonify
 
 from game_logic import Game, Contestant
+from prelim_logic import Prelim
 from web.extensions import repo
 
 
@@ -24,9 +25,56 @@ def get_game_or_404(session_id: Optional[str]) -> Tuple[Optional[Game], Optional
     if not session_id:
         return None, (jsonify({"error": "Missing session_id"}), 400)
     game = repo.get(session_id)
-    if not game:
+    if not game or isinstance(game, Prelim):
         return None, (jsonify({"error": "Game not found"}), 404)
     return game, None
+
+
+def get_prelim_or_404(session_id: Optional[str]) -> Tuple[Optional[Prelim], Optional[tuple]]:
+    """Load a prelim by session id (mirror of get_game_or_404 for the prelim phase)."""
+    if not session_id:
+        return None, (jsonify({"error": "Missing session_id"}), 400)
+    prelim = repo.get(session_id)
+    if not isinstance(prelim, Prelim):
+        return None, (jsonify({"error": "Prelim not found"}), 404)
+    return prelim, None
+
+
+def serialize_prelim(prelim: Prelim) -> dict:
+    """Build a canonical renderable prelim state snapshot for the UI."""
+    return {
+        "session_id": prelim.session_id,
+        "config": {
+            "group_size": prelim.group_size,
+            "num_rotations": prelim.num_rotations,
+            "rotation_seconds": prelim.rotation_seconds,
+            "lead_spots": prelim.lead_spots,
+            "follow_spots": prelim.follow_spots,
+            "lead_needs_cut": prelim.lead_needs_cut,
+            "follow_needs_cut": prelim.follow_needs_cut,
+            "num_leads": len(prelim.lead_entries),
+            "num_follows": len(prelim.follow_entries),
+            "break_seconds": prelim.break_seconds,
+            "intermission_after": prelim.intermission_after,
+            "playlist_url": prelim.battle_config.get("playlist_url") or "",
+        },
+        "num_heats": len(prelim.heats),
+        "current_heat_index": prelim.current_heat_index,
+        "current_rotation_index": prelim.current_rotation_index,
+        "running": prelim.running,
+        "phase": prelim.phase,
+        "paused": prelim.paused,
+        "show_timer": prelim.show_timer,
+        "auto_advance": prelim.auto_advance,
+        "confirmed": prelim.confirmed,
+        "rotation_remaining": prelim.rotation_remaining(),
+        "heats_complete": prelim.heats_complete,
+        "heats": prelim.heats,
+        "numbers": {"leads": prelim.lead_numbers, "follows": prelim.follow_numbers},
+        "eligible": {"leads": prelim.eligible_leads, "follows": prelim.eligible_follows},
+        "selection": {"leads": prelim.selected_leads, "follows": prelim.selected_follows},
+        "complete": prelim.complete,
+    }
 
 
 def _champion_for_role(winner_obj, has_threshold_winner, tiebreak_winner, pool):
