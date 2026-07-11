@@ -469,8 +469,9 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         resumed = c.post("/api/prelims/toggle_pause", json={"session_id": sid}).get_json()
         self.assertFalse(resumed["paused"])
 
-        opts = c.post("/api/prelims/set_options",
-                      json={"session_id": sid, "auto_advance": False, "show_timer": False}).get_json()
+        opts = c.post(
+            "/api/prelims/set_options", json={"session_id": sid, "auto_advance": False, "show_timer": False}
+        ).get_json()
         self.assertFalse(opts["auto_advance"])
         self.assertFalse(opts["show_timer"])
 
@@ -571,7 +572,11 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         d = start.get_json()
         commit = c.post(
             "/api/prelims/commit_selection",
-            json={"session_id": d["session_id"], "lead_selections": d["eligible"]["leads"][:5], "follow_selections": []},
+            json={
+                "session_id": d["session_id"],
+                "lead_selections": d["eligible"]["leads"][:5],
+                "follow_selections": [],
+            },
         )
         self.assertEqual(commit.status_code, 400)
 

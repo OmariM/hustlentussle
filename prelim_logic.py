@@ -104,7 +104,9 @@ class Prelim:
         # Short auto-break between rotations, and the 1-based rotation after which the
         # heat holds for the music change (an operator-gated intermission).
         self.break_seconds = max(0, int(break_seconds))
-        self.intermission_after = max(0, int(intermission_after)) if intermission_after is not None else self.num_rotations // 2
+        self.intermission_after = (
+            max(0, int(intermission_after)) if intermission_after is not None else self.num_rotations // 2
+        )
 
         # Config passed straight through to Game on commit_selection.
         self.battle_config: dict = dict(battle_config or {})

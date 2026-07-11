@@ -35,6 +35,7 @@ def _from_state_dict(data):
         return Prelim.from_dict(data)
     return GameSerializer.from_dict(data)
 
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
