@@ -208,6 +208,12 @@ def prelims_start():
         group_size=group_size,
         battle_config=config,
     )
+    # Optional operator-edited bib numbers from the setup screen.
+    if data.get("lead_numbers") or data.get("follow_numbers"):
+        prelim.set_numbers(data.get("lead_numbers"), data.get("follow_numbers"))
+    # The dedicated setup screen finalizes the roster, so it confirms in one call.
+    if data.get("confirm"):
+        prelim.confirm()
     session_id = repo.create(prelim)
 
     response = serialize_prelim(prelim)
@@ -235,14 +241,17 @@ def prelims_start_heat():
     return jsonify(serialize_prelim(prelim))
 
 
-@bp.route("/api/prelims/advance_rotation", methods=["POST"])
-def prelims_advance_rotation():
+@bp.route("/api/prelims/next_phase", methods=["POST"])
+def prelims_next_phase():
+    """Advance the heat's phase machine one step: rotation -> break -> rotation, hold at
+    the music-change intermission, or end the heat. Used by the auto-timer boundary, the
+    operator's skip-rotation, and the intermission continue."""
     data = request.get_json() or {}
     session_id = data.get("session_id")
     prelim, error = get_prelim_or_404(session_id)
     if error:
         return error
-    prelim.advance_rotation()
+    prelim.next_phase()
     repo.save(session_id, prelim)
     return jsonify(serialize_prelim(prelim))
 

@@ -21,13 +21,13 @@ Grouping/eligibility rules (see :meth:`Prelim._build_heats`):
 """
 
 import math
-import random
 import time
 from typing import Dict, List, Optional
 
 DEFAULT_NUM_ROTATIONS = 6
 DEFAULT_ROTATION_SECONDS = 45
 DEFAULT_GROUP_SIZE = 8
+DEFAULT_BREAK_SECONDS = 3
 
 
 def _chunk_evenly(items: List[str], n: int) -> List[List[str]]:
@@ -83,6 +83,8 @@ class Prelim:
         group_size: int = DEFAULT_GROUP_SIZE,
         num_rotations: int = DEFAULT_NUM_ROTATIONS,
         rotation_seconds: int = DEFAULT_ROTATION_SECONDS,
+        break_seconds: int = DEFAULT_BREAK_SECONDS,
+        intermission_after: Optional[int] = None,
         battle_config: Optional[dict] = None,
         _build: bool = True,
     ) -> None:
@@ -99,6 +101,10 @@ class Prelim:
         self.group_size = max(1, int(group_size))
         self.num_rotations = max(1, int(num_rotations))
         self.rotation_seconds = max(1, int(rotation_seconds))
+        # Short auto-break between rotations, and the 1-based rotation after which the
+        # heat holds for the music change (an operator-gated intermission).
+        self.break_seconds = max(0, int(break_seconds))
+        self.intermission_after = max(0, int(intermission_after)) if intermission_after is not None else self.num_rotations // 2
 
         # Config passed straight through to Game on commit_selection.
         self.battle_config: dict = dict(battle_config or {})
@@ -108,7 +114,12 @@ class Prelim:
         # Rotation/timer state. The operator drives the timer; these are persisted so
         # the spectator display (/prelims/<id>?mode=display) can mirror it by polling.
         self.current_rotation_index = 0
-        self.running = False  # True while the current heat's timer is counting down
+        self.running = False  # True while the current heat is in progress
+        # Phase machine within a heat: "dancing" (a 45s rotation), "break" (a short gap
+        # to switch partners), or "intermission" (an operator-gated hold after the
+        # music-change rotation). rotation_started_at marks the current phase's start.
+        self.phase = "dancing"
+        self.phase_seconds = self.rotation_seconds  # duration of the current auto-countdown
         self.rotation_started_at: Optional[float] = None  # server epoch seconds
         self.paused = False  # operator paused the countdown
         self.paused_remaining = 0  # seconds captured at pause (frozen while paused)
@@ -148,10 +159,11 @@ class Prelim:
 
     def _build_heats(self) -> None:
         """Compute the heats, rotation schedules, and per-role eligibility."""
+        # Built in entry order (no shuffle) so bib numbers stay sequential within each
+        # heat — judges asked for contiguous numbers, and partners already rotate, so
+        # randomizing the grouping isn't needed.
         leads = self.lead_entries[:]
         follows = self.follow_entries[:]
-        random.shuffle(leads)
-        random.shuffle(follows)
 
         n_lead = len(leads)
         n_follow = len(follows)
@@ -308,44 +320,69 @@ class Prelim:
 
     # ---- selection / lifecycle -----------------------------------------------
 
+    def _start_dancing(self) -> None:
+        """Enter the dancing phase for the current rotation."""
+        self.phase = "dancing"
+        self.phase_seconds = self.rotation_seconds
+        self.rotation_started_at = time.time()
+        self.paused = False
+
+    def _end_heat(self) -> None:
+        """Stop the timer at the end of a heat; queue the next heat or finish."""
+        self.running = False
+        self.phase = "dancing"
+        self.rotation_started_at = None
+        self.current_rotation_index = 0
+        if self.current_heat_index < len(self.heats) - 1:
+            self.current_heat_index += 1
+        else:
+            self.heats_complete = True
+
     def start_heat(self) -> None:
-        """Start (or restart) the timer for the current heat's first rotation. The
-        operator presses this once everyone is in place."""
+        """Start (or restart) the current heat at its first rotation. The operator
+        presses this once everyone is in place."""
         self.current_rotation_index = 0
         self.running = True
-        self.paused = False
-        self.rotation_started_at = time.time()
+        self._start_dancing()
 
-    def advance_rotation(self) -> None:
-        """Advance to the next rotation (also used by the operator's "skip rotation").
-        When the last rotation of a heat finishes, the heat stops (waiting for the next
-        Start); if more heats remain, the next heat is queued ready, otherwise the whole
-        prelim is marked complete."""
+    def next_phase(self) -> None:
+        """Advance the heat's phase machine by one step. Called at each auto-countdown
+        boundary, by the operator's "skip rotation" (ends the current rotation early),
+        and by the intermission "start next rotations" continue.
+
+        dancing -> (last rotation) end heat
+                -> (music-change rotation) intermission (holds for the operator)
+                -> break
+        break / intermission -> next dancing rotation
+        """
         if not self.running:
             return
         self.paused = False
-        if self.current_rotation_index < self.num_rotations - 1:
-            self.current_rotation_index += 1
-            self.rotation_started_at = time.time()
-        else:
-            self.running = False
-            self.rotation_started_at = None
-            self.current_rotation_index = 0
-            if self.current_heat_index < len(self.heats) - 1:
-                self.current_heat_index += 1
+        if self.phase == "dancing":
+            if self.current_rotation_index >= self.num_rotations - 1:
+                self._end_heat()
+            elif self.current_rotation_index == self.intermission_after - 1:
+                # Hold for the music change; the operator resumes with next_phase().
+                self.phase = "intermission"
+                self.rotation_started_at = None
             else:
-                self.heats_complete = True
+                self.phase = "break"
+                self.phase_seconds = self.break_seconds
+                self.rotation_started_at = time.time()
+        else:  # "break" or "intermission" -> the next rotation
+            self.current_rotation_index += 1
+            self._start_dancing()
 
     def pause(self) -> None:
         """Freeze the countdown at its current remaining seconds."""
-        if self.running and not self.paused:
+        if self.running and not self.paused and self.rotation_started_at is not None:
             self.paused_remaining = self.rotation_remaining()
             self.paused = True
 
     def resume(self) -> None:
         """Resume from the frozen remaining seconds."""
         if self.running and self.paused:
-            self.rotation_started_at = time.time() - (self.rotation_seconds - self.paused_remaining)
+            self.rotation_started_at = time.time() - (self.phase_seconds - self.paused_remaining)
             self.paused = False
 
     def toggle_pause(self) -> None:
@@ -357,24 +394,18 @@ class Prelim:
     def advance_heat(self) -> int:
         """Manually skip to the next heat (bounded by the last), stopping the timer.
         Returns the new index."""
-        self.running = False
-        self.rotation_started_at = None
-        self.current_rotation_index = 0
-        if self.current_heat_index < len(self.heats) - 1:
-            self.current_heat_index += 1
-        else:
-            self.heats_complete = True
+        self._end_heat()
         return self.current_heat_index
 
     def rotation_remaining(self) -> int:
-        """Whole seconds left in the current rotation (0 when not running; frozen while
-        paused)."""
+        """Whole seconds left in the current phase's countdown (0 when not running, in
+        an intermission, or otherwise idle; frozen while paused)."""
         if not self.running or self.rotation_started_at is None:
             return 0
         if self.paused:
             return self.paused_remaining
         elapsed = time.time() - self.rotation_started_at
-        return max(0, int(round(self.rotation_seconds - elapsed)))
+        return max(0, int(round(self.phase_seconds - elapsed)))
 
     def resolve_selection(self, lead_selections: List[str], follow_selections: List[str]):
         """Validate and resolve the operator's picks into the final advancer rosters.
@@ -428,10 +459,14 @@ class Prelim:
             "group_size": self.group_size,
             "num_rotations": self.num_rotations,
             "rotation_seconds": self.rotation_seconds,
+            "break_seconds": self.break_seconds,
+            "intermission_after": self.intermission_after,
             "battle_config": self.battle_config,
             "current_heat_index": self.current_heat_index,
             "current_rotation_index": self.current_rotation_index,
             "running": self.running,
+            "phase": self.phase,
+            "phase_seconds": self.phase_seconds,
             "rotation_started_at": self.rotation_started_at,
             "paused": self.paused,
             "paused_remaining": self.paused_remaining,
@@ -458,6 +493,8 @@ class Prelim:
             group_size=data.get("group_size", DEFAULT_GROUP_SIZE),
             num_rotations=data.get("num_rotations", DEFAULT_NUM_ROTATIONS),
             rotation_seconds=data.get("rotation_seconds", DEFAULT_ROTATION_SECONDS),
+            break_seconds=data.get("break_seconds", DEFAULT_BREAK_SECONDS),
+            intermission_after=data.get("intermission_after"),
             battle_config=data.get("battle_config"),
             _build=False,
         )
@@ -465,6 +502,8 @@ class Prelim:
         prelim.current_heat_index = data.get("current_heat_index", 0)
         prelim.current_rotation_index = data.get("current_rotation_index", 0)
         prelim.running = data.get("running", False)
+        prelim.phase = data.get("phase", "dancing")
+        prelim.phase_seconds = data.get("phase_seconds", prelim.rotation_seconds)
         prelim.rotation_started_at = data.get("rotation_started_at")
         prelim.paused = data.get("paused", False)
         prelim.paused_remaining = data.get("paused_remaining", 0)

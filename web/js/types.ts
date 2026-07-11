@@ -283,12 +283,15 @@ export interface PrelimStateResponse {
         follow_needs_cut: boolean;
         num_leads: number;
         num_follows: number;
+        break_seconds: number;
+        intermission_after: number;
         playlist_url: string;
     };
     num_heats: number;
     current_heat_index: number;
     current_rotation_index: number;
     running: boolean;
+    phase: 'dancing' | 'break' | 'intermission';
     paused: boolean;
     confirmed: boolean;
     rotation_remaining: number;

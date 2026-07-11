@@ -104,18 +104,26 @@ async function hydratePrelimRoute(id: string): Promise<void> {
         showView('operator');
         const msg = $('prelims-op-message');
         if (msg) msg.textContent = 'This prelim has already finished.';
-    } else if (!state.confirmed) {
-        renderConfirm();
     } else {
+        // The roster is built on the dedicated setup screen, so we land on the operator
+        // view (the prelim arrives already confirmed).
         enterOperator();
     }
 }
 
-function showView(which: 'confirm' | 'operator' | 'display' | 'selection'): void {
-    setVisible('prelims-confirm-view', which === 'confirm');
+function showView(which: 'operator' | 'display' | 'selection'): void {
     setVisible('prelims-operator-view', which === 'operator');
     setVisible('prelims-display-view', which === 'display');
     setVisible('prelims-selection', which === 'selection');
+}
+
+// During a break/intermission the dancers are moving to their NEXT partner, so the
+// pairing table and circle show the upcoming rotation.
+function visualRotationIndex(): number {
+    if (state && (state.phase === 'break' || state.phase === 'intermission')) {
+        return Math.min(rotationIndex + 1, state.config.num_rotations - 1);
+    }
+    return rotationIndex;
 }
 
 function updateCounters(): void {
@@ -126,7 +134,7 @@ function updateCounters(): void {
     };
     set('prelims-heat-num', heatIndex + 1);
     set('prelims-heat-total', state.num_heats);
-    set('prelims-rotation-num', rotationIndex + 1);
+    set('prelims-rotation-num', visualRotationIndex() + 1);
     set('prelims-rotation-total', state.config.num_rotations);
 }
 
@@ -135,15 +143,36 @@ function updateCounters(): void {
 function enterOperator(): void {
     if (!state) return;
     showView('operator');
+    syncOperatorFromState();
+}
+
+// Mirror module state from the server snapshot and (re)start or stop the local
+// countdown depending on the phase. A break/dancing phase runs the countdown; an
+// intermission or an idle/finished heat holds it.
+function syncOperatorFromState(): void {
+    if (!state) return;
     heatIndex = state.current_heat_index;
     rotationIndex = state.current_rotation_index;
     paused = state.paused;
-    if (state.running) {
-        // Resume driving the timer after a reload mid-heat.
-        remaining = state.rotation_remaining || state.config.rotation_seconds;
+    if (state.running && state.phase !== 'intermission') {
+        remaining = state.rotation_remaining || phaseFullSeconds();
         startOpTimer();
+    } else {
+        stopOpTimer();
     }
     renderOperator();
+}
+
+function phaseFullSeconds(): number {
+    if (!state) return 0;
+    return state.phase === 'break' ? state.config.break_seconds : state.config.rotation_seconds;
+}
+
+function stopOpTimer(): void {
+    if (opTimer !== null) {
+        window.clearInterval(opTimer);
+        opTimer = null;
+    }
 }
 
 function nameCell(role: 'lead' | 'follow', name: string): HTMLElement {
@@ -166,7 +195,7 @@ function buildPairingTable(): void {
     if (!body || !state) return;
     body.innerHTML = '';
     const heat = state.heats[heatIndex];
-    const pairs = (heat && heat.rotations[rotationIndex]) || [];
+    const pairs = (heat && heat.rotations[visualRotationIndex()]) || [];
     pairs.forEach((pair, i) => {
         const tr = document.createElement('tr');
         const idx = document.createElement('td');
@@ -189,9 +218,12 @@ function renderOperator(): void {
     const pauseBtn = $('prelims-pause');
     const gotoBtn = $('prelims-goto-selection');
 
-    // Pause/skip only make sense mid-heat.
-    setVisible('prelims-pause', !!state.running);
-    setVisible('prelims-skip-rotation', !!state.running);
+    const dancing = !!state.running && state.phase === 'dancing';
+    const intermission = !!state.running && state.phase === 'intermission';
+    // Pause/skip apply to a live rotation; "Start next rotations" resumes the intermission.
+    setVisible('prelims-pause', dancing);
+    setVisible('prelims-skip-rotation', dancing);
+    setVisible('prelims-start-next', intermission);
 
     if (state.heats_complete) {
         if (startBtn) startBtn.style.display = 'none';
@@ -203,6 +235,13 @@ function renderOperator(): void {
             gotoBtn.classList.remove('secondary');
             gotoBtn.textContent = 'Go to selection';
         }
+    } else if (intermission) {
+        if (startBtn) startBtn.style.display = 'none';
+        if (timer) {
+            timer.textContent = '🎵';
+            timer.classList.remove('paused');
+        }
+        if (msg) msg.textContent = 'Music change — press “Start next rotations” when the new song is ready.';
     } else if (state.running) {
         if (startBtn) startBtn.style.display = 'none';
         if (pauseBtn) pauseBtn.textContent = paused ? 'Resume' : 'Pause';
@@ -211,9 +250,13 @@ function renderOperator(): void {
             timer.classList.toggle('paused', paused);
         }
         if (msg) {
-            msg.textContent = paused
-                ? 'Paused.'
-                : `Heat ${heatIndex + 1} in progress — rotation ${rotationIndex + 1} of ${state.config.num_rotations}.`;
+            if (paused) {
+                msg.textContent = 'Paused.';
+            } else if (state.phase === 'break') {
+                msg.textContent = `Switch partners — rotation ${visualRotationIndex() + 1} in ${remaining}s.`;
+            } else {
+                msg.textContent = `Heat ${heatIndex + 1} in progress — rotation ${rotationIndex + 1} of ${state.config.num_rotations}.`;
+            }
         }
     } else {
         if (startBtn) {
@@ -235,7 +278,7 @@ function startOpTimer(): void {
         if (paused) return; // frozen while the operator has paused
         remaining -= 1;
         if (remaining <= 0) {
-            void advanceRotationOp();
+            void nextPhaseOp();
         } else {
             const timer = $('prelims-op-timer');
             if (timer) timer.textContent = String(remaining);
@@ -251,12 +294,7 @@ async function startHeat(): Promise<void> {
         showToast('Could not start the heat.', 'error');
         return;
     }
-    heatIndex = state.current_heat_index;
-    rotationIndex = state.current_rotation_index;
-    paused = false;
-    remaining = state.config.rotation_seconds;
-    startOpTimer();
-    renderOperator();
+    syncOperatorFromState();
 }
 
 async function togglePauseOp(): Promise<void> {
@@ -272,28 +310,17 @@ async function togglePauseOp(): Promise<void> {
     renderOperator();
 }
 
-async function advanceRotationOp(): Promise<void> {
+// Advance the phase machine: rotation end -> break/intermission/next rotation, or the
+// operator's skip-rotation / "start next rotations" (all hit the same endpoint).
+async function nextPhaseOp(): Promise<void> {
     if (!prelimId) return;
     try {
-        state = await postJson<PrelimStateResponse>('/api/prelims/advance_rotation', { session_id: prelimId });
+        state = await postJson<PrelimStateResponse>('/api/prelims/next_phase', { session_id: prelimId });
     } catch {
         showToast('Could not advance the rotation.', 'error');
         return;
     }
-    heatIndex = state.current_heat_index;
-    rotationIndex = state.current_rotation_index;
-    paused = state.paused;
-    if (state.running) {
-        remaining = state.config.rotation_seconds;
-        renderOperator();
-    } else {
-        // Heat finished — stop the local timer; the next heat waits for Start.
-        if (opTimer !== null) {
-            window.clearInterval(opTimer);
-            opTimer = null;
-        }
-        renderOperator();
-    }
+    syncOperatorFromState();
 }
 
 // ---- display view (spectators) --------------------------------------------
@@ -394,9 +421,10 @@ function positionChips(): void {
     // the pills from overlapping at every angle — radial-inward collapses to zero
     // vertical separation at the left/right of the ellipse, where the pills are widest.
     const leadDrop = Math.max(42, height * 0.1);
+    const vis = visualRotationIndex();
     document.querySelectorAll<HTMLElement>('.prelims-lead-chip').forEach((chip) => {
         const i = Number(chip.dataset.leadIndex);
-        const seat = seats[(i + rotationIndex) % k];
+        const seat = seats[(i + vis) % k];
         chip.style.left = `${seat.x}px`;
         chip.style.top = `${seat.y + leadDrop}px`;
     });
@@ -435,7 +463,20 @@ function renderDisplay(next: PrelimStateResponse): void {
     positionChips();
 
     const timer = $('prelims-timer');
-    if (next.running) {
+    if (next.running && next.phase === 'intermission') {
+        // Music change — hold for the operator.
+        if (timer) {
+            timer.textContent = '🎵';
+            timer.classList.remove('paused');
+        }
+        if (status) status.textContent = 'Music change — get ready to switch partners';
+    } else if (next.running && next.phase === 'break') {
+        if (timer) {
+            timer.textContent = String(next.rotation_remaining);
+            timer.classList.remove('paused');
+        }
+        if (status) status.textContent = `Switch partners — rotation ${visualRotationIndex() + 1} of ${next.config.num_rotations}`;
+    } else if (next.running) {
         if (timer) {
             timer.textContent = String(next.rotation_remaining);
             timer.classList.toggle('paused', next.paused);
@@ -658,133 +699,6 @@ async function saveNumbers(): Promise<void> {
     showToast('Numbers saved.', 'success');
 }
 
-// ---- confirmation view (roster review before the prelim starts) -----------
-
-function renderConfirm(): void {
-    if (!state) return;
-    showView('confirm');
-    const cfg = state.config;
-    const summary = $('prelims-confirm-summary');
-    if (summary) {
-        const leadAdv = cfg.lead_needs_cut ? `${cfg.lead_spots}` : 'all';
-        const followAdv = cfg.follow_needs_cut ? `${cfg.follow_spots}` : 'all';
-        summary.textContent =
-            `${state.num_heats} heat(s) of up to ${cfg.group_size} per role — ` +
-            `advancing ${leadAdv} of ${cfg.num_leads} leads and ${followAdv} of ${cfg.num_follows} follows.`;
-    }
-    const lc = $('prelims-confirm-lead-count');
-    if (lc) lc.textContent = String(cfg.num_leads);
-    const fc = $('prelims-confirm-follow-count');
-    if (fc) fc.textContent = String(cfg.num_follows);
-    buildRosterRows('lead', 'prelims-confirm-leads');
-    buildRosterRows('follow', 'prelims-confirm-follows');
-    validateConfirm();
-}
-
-function validateConfirm(): boolean {
-    return validateNumbers('prelims-confirm-leads', 'prelims-confirm-follows', 'prelims-confirm-start');
-}
-
-function buildRosterRows(role: 'lead' | 'follow', containerId: string): void {
-    const container = $(containerId);
-    if (!container || !state) return;
-    container.innerHTML = '';
-    const map = role === 'lead' ? state.numbers.leads : state.numbers.follows;
-    for (const name of Object.keys(map)) {
-        const row = document.createElement('div');
-        row.className = 'prelims-number-row';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.inputMode = 'numeric';
-        input.className = 'prelims-number-input';
-        input.value = map[name];
-        input.dataset.name = name;
-        input.addEventListener('input', validateConfirm);
-        const label = document.createElement('span');
-        label.className = 'prelims-roster-name';
-        label.textContent = name;
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'prelims-remove-btn';
-        remove.textContent = '✕';
-        remove.title = `Remove ${name}`;
-        remove.addEventListener('click', () => {
-            void removeParticipant(role, name);
-        });
-        row.appendChild(input);
-        row.appendChild(label);
-        row.appendChild(remove);
-        container.appendChild(row);
-    }
-}
-
-// Persist any pending bib edits from the confirm view before mutating the roster.
-async function persistConfirmNumbers(): Promise<void> {
-    if (!prelimId) return;
-    if (!validateConfirm()) return; // don't persist a set with duplicate numbers
-    try {
-        state = await postJson<PrelimStateResponse>('/api/prelims/set_numbers', {
-            session_id: prelimId,
-            lead_numbers: collectNumbers('prelims-confirm-leads'),
-            follow_numbers: collectNumbers('prelims-confirm-follows'),
-        });
-    } catch {
-        /* non-fatal — the mutation below still proceeds */
-    }
-}
-
-async function addParticipant(role: 'lead' | 'follow'): Promise<void> {
-    if (!prelimId) return;
-    const input = $(`prelims-add-${role}-name`) as HTMLInputElement | null;
-    const name = input?.value.trim();
-    if (!name) return;
-    await persistConfirmNumbers();
-    try {
-        state = await postJson<PrelimStateResponse>('/api/prelims/add_participant', {
-            session_id: prelimId,
-            role,
-            name,
-        });
-    } catch (err) {
-        showToast(err instanceof Error ? err.message : 'Could not add participant.', 'error');
-        return;
-    }
-    if (input) input.value = '';
-    renderConfirm();
-}
-
-async function removeParticipant(role: 'lead' | 'follow', name: string): Promise<void> {
-    if (!prelimId) return;
-    await persistConfirmNumbers();
-    try {
-        state = await postJson<PrelimStateResponse>('/api/prelims/remove_participant', {
-            session_id: prelimId,
-            role,
-            name,
-        });
-    } catch (err) {
-        showToast(err instanceof Error ? err.message : 'Could not remove participant.', 'error');
-        return;
-    }
-    renderConfirm();
-}
-
-async function confirmStart(): Promise<void> {
-    if (!prelimId) return;
-    if (!validateConfirm()) {
-        showToast('Each dancer needs a unique bib number.', 'error');
-        return;
-    }
-    await persistConfirmNumbers();
-    try {
-        state = await postJson<PrelimStateResponse>('/api/prelims/confirm', { session_id: prelimId });
-    } catch {
-        showToast('Could not start the prelims.', 'error');
-        return;
-    }
-    enterOperator();
-}
-
 // ---- controls -------------------------------------------------------------
 
 let controlsWired = false;
@@ -800,26 +714,10 @@ function wireControlsOnce(): void {
         void togglePauseOp();
     });
     $('prelims-skip-rotation')?.addEventListener('click', () => {
-        void advanceRotationOp();
+        void nextPhaseOp();
     });
-    $('prelims-add-lead')?.addEventListener('click', () => {
-        void addParticipant('lead');
-    });
-    $('prelims-add-follow')?.addEventListener('click', () => {
-        void addParticipant('follow');
-    });
-    const addOnEnter = (inputId: string, role: 'lead' | 'follow') =>
-        $(inputId)?.addEventListener('keydown', (e) => {
-            if ((e as KeyboardEvent).key === 'Enter') void addParticipant(role);
-        });
-    addOnEnter('prelims-add-lead-name', 'lead');
-    addOnEnter('prelims-add-follow-name', 'follow');
-    $('prelims-confirm-start')?.addEventListener('click', () => {
-        void confirmStart();
-    });
-    $('prelims-confirm-back')?.addEventListener('click', () => {
-        stopTimers();
-        window.navigate?.('/setup');
+    $('prelims-start-next')?.addEventListener('click', () => {
+        void nextPhaseOp();
     });
     $('prelims-edit-numbers')?.addEventListener('click', () => openNumbersEditor());
     $('prelims-numbers-save')?.addEventListener('click', () => {

@@ -123,19 +123,36 @@ class TestPrelimRotationTimer(unittest.TestCase):
         self.assertFalse(p.running)
         p.start_heat()
         self.assertTrue(p.running)
+        self.assertEqual(p.phase, "dancing")
         self.assertEqual(p.current_rotation_index, 0)
         self.assertIsNotNone(p.rotation_started_at)
         self.assertGreater(p.rotation_remaining(), 0)
 
-    def test_advance_rotation_walks_then_ends_heat(self):
+    def test_phase_machine_walks_break_intermission_then_ends_heat(self):
         p = self._prelim(heats=2)
         p.start_heat()
-        for r in range(1, p.num_rotations):
-            p.advance_rotation()
-            self.assertEqual(p.current_rotation_index, r)
-            self.assertTrue(p.running)
-        # Final advance ends heat 0 and queues heat 1 (not running, awaiting Start).
-        p.advance_rotation()
+        self.assertEqual(p.intermission_after, 3)  # 6 rotations -> hold after the 3rd
+        # Rotation 0 dancing -> break -> rotation 1 dancing.
+        p.next_phase()
+        self.assertEqual(p.phase, "break")
+        p.next_phase()
+        self.assertEqual((p.phase, p.current_rotation_index), ("dancing", 1))
+        # Walk to the 3rd rotation (index 2), whose end triggers the intermission.
+        p.next_phase()  # break
+        p.next_phase()  # dancing rotation 2
+        self.assertEqual(p.current_rotation_index, 2)
+        p.next_phase()  # end of rotation 3 -> intermission (holds)
+        self.assertEqual(p.phase, "intermission")
+        self.assertTrue(p.running)
+        self.assertEqual(p.rotation_remaining(), 0)
+        # Operator continues into the second half.
+        p.next_phase()
+        self.assertEqual((p.phase, p.current_rotation_index), ("dancing", 3))
+        # Finish rotations 4, 5 then end heat 0, queuing heat 1 (not running).
+        for _ in range(4):  # break, r4, break, r5
+            p.next_phase()
+        self.assertEqual((p.phase, p.current_rotation_index), ("dancing", 5))
+        p.next_phase()  # end of last rotation -> end heat
         self.assertFalse(p.running)
         self.assertEqual(p.current_heat_index, 1)
         self.assertEqual(p.current_rotation_index, 0)
@@ -144,28 +161,43 @@ class TestPrelimRotationTimer(unittest.TestCase):
     def test_last_heat_completion_sets_flag(self):
         p = self._prelim(heats=1)
         p.start_heat()
-        for _ in range(p.num_rotations):
-            p.advance_rotation()
+        # Drive the phase machine until the heat completes.
+        for _ in range(100):
+            if not p.running:
+                break
+            if p.phase == "intermission":
+                p.next_phase()  # operator continue
+                continue
+            p.next_phase()
         self.assertFalse(p.running)
         self.assertTrue(p.heats_complete)
 
-    def test_advance_rotation_noop_when_not_running(self):
+    def test_next_phase_noop_when_not_running(self):
         p = self._prelim()
-        p.advance_rotation()  # never started
+        p.next_phase()  # never started
         self.assertEqual(p.current_rotation_index, 0)
         self.assertFalse(p.running)
 
-    def test_rotation_remaining_zero_when_idle(self):
+    def test_rotation_remaining_zero_when_idle_or_intermission(self):
         p = self._prelim()
+        self.assertEqual(p.rotation_remaining(), 0)
+        p.start_heat()
+        for _ in range(5):  # advance to the intermission
+            if p.phase == "intermission":
+                break
+            p.next_phase()
+        self.assertEqual(p.phase, "intermission")
         self.assertEqual(p.rotation_remaining(), 0)
 
     def test_timer_state_round_trips(self):
         p = self._prelim()
         p.start_heat()
-        p.advance_rotation()
+        p.next_phase()  # into a break
         d = p.to_dict()
         p2 = Prelim.from_dict(d)
         self.assertEqual(p2.running, p.running)
+        self.assertEqual(p2.phase, p.phase)
+        self.assertEqual(p2.phase_seconds, p.phase_seconds)
         self.assertEqual(p2.current_rotation_index, p.current_rotation_index)
         self.assertEqual(p2.rotation_started_at, p.rotation_started_at)
 
@@ -193,7 +225,7 @@ class TestPrelimRotationTimer(unittest.TestCase):
         p = self._prelim()
         p.start_heat()
         p.pause()
-        p.advance_rotation()
+        p.next_phase()
         self.assertFalse(p.paused)
 
     def test_pause_noop_when_idle(self):
@@ -390,7 +422,7 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         ]
         self.assertTrue(all(p == 0 for p in pts))
 
-    def test_start_and_advance_rotation_endpoints(self):
+    def test_start_heat_and_next_phase_endpoints(self):
         c = self.client
         start = c.post(
             "/api/prelims/start",
@@ -400,17 +432,37 @@ class TestPrelimFlaskFlow(unittest.TestCase):
 
         heat = c.post("/api/prelims/start_heat", json={"session_id": sid}).get_json()
         self.assertTrue(heat["running"])
+        self.assertEqual(heat["phase"], "dancing")
         self.assertEqual(heat["current_rotation_index"], 0)
         self.assertGreater(heat["rotation_remaining"], 0)
 
-        rot = c.post("/api/prelims/advance_rotation", json={"session_id": sid}).get_json()
-        self.assertEqual(rot["current_rotation_index"], 1)
-        self.assertTrue(rot["running"])
+        # First phase boundary drops into a 3s break before rotation 2.
+        brk = c.post("/api/prelims/next_phase", json={"session_id": sid}).get_json()
+        self.assertEqual(brk["phase"], "break")
+        self.assertTrue(brk["running"])
+        nxt = c.post("/api/prelims/next_phase", json={"session_id": sid}).get_json()
+        self.assertEqual(nxt["phase"], "dancing")
+        self.assertEqual(nxt["current_rotation_index"], 1)
 
         paused = c.post("/api/prelims/toggle_pause", json={"session_id": sid}).get_json()
         self.assertTrue(paused["paused"])
         resumed = c.post("/api/prelims/toggle_pause", json={"session_id": sid}).get_json()
         self.assertFalse(resumed["paused"])
+
+    def test_start_with_confirm_and_numbers(self):
+        c = self.client
+        start = c.post(
+            "/api/prelims/start",
+            json={
+                "leads": ",".join(_names("L", 4)),
+                "follows": ",".join(_names("F", 4)),
+                "group_size": 4,
+                "confirm": True,
+                "lead_numbers": {"L0": "9"},
+            },
+        ).get_json()
+        self.assertTrue(start["confirmed"])
+        self.assertEqual(start["numbers"]["leads"]["L0"], "9")
 
     def test_set_numbers_endpoint(self):
         c = self.client

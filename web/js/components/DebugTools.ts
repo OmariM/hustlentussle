@@ -332,7 +332,6 @@ class DebugTools {
             }),
         );
         this.panel.appendChild(prelimConfig);
-        this.addButton('Fill Prelims Setup', () => this.fillPrelimsForm());
         this.addButton('Start Prelims (Random)', () => this.startPrelimsRandom());
         this.addButton('Jump to Selection', () => this.jumpToPrelimSelection());
         this.addButton('Auto-Select & Advance', () => this.autoSelectPrelims());
@@ -723,71 +722,25 @@ class DebugTools {
         return chosen;
     }
 
-    // Fill the setup form for a prelim: oversized rosters + toggle + spots/group size.
-    // Leaves the user to click "Start Competition" (mirrors "Fill Setup Form").
-    fillPrelimsForm(): void {
-        const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
-        const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
-        const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
-        if (!leadsInput || !followsInput || !judgesInput) {
-            alert('Setup form not found. Make sure you are on the setup screen.');
-            return;
-        }
-
-        const used = new Set<string>();
-        leadsInput.value = this.generateBankNames(this.prelimLeads, 'male', used).join(', ');
-        followsInput.value = this.generateBankNames(this.prelimFollows, 'female', used).join(', ');
-        judgesInput.value = this.generateBankNames(2, 'neutral', used).join(', ');
-
-        // Enable the prelims toggle and reveal its options (app.ts listens on 'change').
-        const toggle = document.getElementById('prelims-toggle') as HTMLInputElement | null;
-        if (toggle && !toggle.checked) {
-            toggle.checked = true;
-            toggle.dispatchEvent(new Event('change'));
-        }
-        const setVal = (id: string, v: number) => {
-            const el = document.getElementById(id) as HTMLInputElement | null;
-            if (el) el.value = String(v);
-        };
-        setVal('prelims-lead-spots', this.prelimLeadSpots);
-        setVal('prelims-follow-spots', this.prelimFollowSpots);
-        setVal('prelims-group-size', this.prelimGroupSize);
-
-        console.log('Filled prelims setup:', {
-            leads: this.prelimLeads,
-            follows: this.prelimFollows,
-            leadSpots: this.prelimLeadSpots,
-            followSpots: this.prelimFollowSpots,
-            groupSize: this.prelimGroupSize,
-        });
-    }
-
-    // Create a prelim directly and route to the prelims screen.
+    // Create a confirmed prelim directly (skipping the setup screen) and route into it.
     async startPrelimsRandom(): Promise<{ session_id: string } | null> {
         const used = new Set<string>();
         const leads = this.generateBankNames(this.prelimLeads, 'male', used);
         const follows = this.generateBankNames(this.prelimFollows, 'female', used);
         const judges = this.generateBankNames(2, 'neutral', used);
 
-        // Reflect it in the form too, for visibility if the user navigates back.
-        const leadsInput = document.getElementById('lead-names') as HTMLInputElement | null;
-        const followsInput = document.getElementById('follow-names') as HTMLInputElement | null;
-        const judgesInput = document.getElementById('judge-names') as HTMLInputElement | null;
-        if (leadsInput) leadsInput.value = leads.join(', ');
-        if (followsInput) followsInput.value = follows.join(', ');
-        if (judgesInput) judgesInput.value = judges.join(', ');
-
         try {
             const response = await fetch('/api/prelims/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    leads: leads.join(','),
-                    follows: follows.join(','),
+                    leads,
+                    follows,
                     judges: judges.join(','),
                     lead_spots: this.prelimLeadSpots,
                     follow_spots: this.prelimFollowSpots,
                     group_size: this.prelimGroupSize,
+                    confirm: true,
                 }),
             });
             if (!response.ok) {
@@ -861,14 +814,7 @@ class DebugTools {
     async runFullPrelim(): Promise<void> {
         const started = await this.startPrelimsRandom();
         if (!started) return;
-        // Pass the roster confirmation step.
-        await this.waitFor(() => {
-            const b = document.getElementById('prelims-confirm-start');
-            return !!b && b.offsetParent !== null;
-        }, 8000);
-        const confirmBtn = document.getElementById('prelims-confirm-start') as HTMLButtonElement | null;
-        if (confirmBtn) confirmBtn.click();
-        // Now on the operator view — jump to selection and auto-pick.
+        // Prelim arrives already confirmed -> operator view. Jump to selection and pick.
         const ready = await this.waitFor(() => {
             const c = document.getElementById('prelims-screen');
             const goto = document.getElementById('prelims-goto-selection');

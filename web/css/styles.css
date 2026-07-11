@@ -3616,3 +3616,34 @@ input.prelims-number-input.dup {
 .prelims-add-row input {
     flex: 1;
 }
+
+/* Prelim setup screen (dedicated) */
+.prelim-setup-cols {
+    display: flex;
+    gap: var(--space-xl);
+    flex-wrap: wrap;
+    margin: var(--space-md) 0 var(--space-lg);
+}
+.prelim-setup-col {
+    flex: 1;
+    min-width: 240px;
+}
+.prelim-setup-spots {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+.prelim-setup-spots input {
+    width: 72px;
+    text-align: center;
+}
+
+/* In display mode the nav is hidden and the theme toggle floats at the top-right
+   (position:fixed, z-index:999). Pad the prelims header so the heat/rotation pills
+   don't slide underneath it. */
+body.display-mode .prelims-header {
+    padding-right: 64px;
+}
