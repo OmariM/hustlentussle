@@ -3531,6 +3531,23 @@ body.display-mode .prelims-spinner {
     font-weight: 700;
     text-align: center;
 }
+.prelims-bib--editable {
+    cursor: pointer;
+}
+.prelims-bib--editable:hover {
+    filter: brightness(1.15);
+}
+input.prelims-bib-edit {
+    display: inline-block;
+    width: 3em;
+    padding: 1px 6px;
+    margin-right: var(--space-sm);
+    border-radius: var(--radius-full);
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    font-weight: 700;
+    text-align: center;
+}
 .seat-bib {
     display: inline-block;
     min-width: 1.5em;
@@ -3615,6 +3632,10 @@ input.prelims-number-input.dup {
 }
 .prelims-add-row input {
     flex: 1;
+}
+.prelims-add-row input.prelims-add-bib {
+    flex: 0 0 4.5em;
+    width: 4.5em;
 }
 
 /* Prelim setup screen (dedicated) */

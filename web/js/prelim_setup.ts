@@ -1,11 +1,12 @@
 /**
  * Dedicated prelim setup screen (/prelim-setup).
  *
- * Builds the roster client-side — one-click add/remove — with bib numbers assigned in
- * the order dancers are added, regardless of role (add L, F, L -> 1, 2, 3). Sets the
- * advancing counts, group size, and judges, then creates an already-confirmed prelim
- * (POST /api/prelims/start with confirm:true + the explicit numbers) and routes straight
- * into the heats.
+ * Builds the roster client-side — one-click add/remove. Each dancer keeps a stable bib
+ * number: it is assigned when they are added (the smallest unused positive number, or an
+ * explicit one typed into the optional bib field next to the name) and never renumbers
+ * when someone else is removed. Double-click a bib to change it to any unused number. On
+ * start it creates an already-confirmed prelim (POST /api/prelims/start with confirm:true
+ * + the explicit numbers) and routes straight into the heats.
  */
 import { showToast } from './toast';
 
@@ -16,9 +17,9 @@ interface StartResponse {
 interface Entry {
     name: string;
     role: 'lead' | 'follow';
+    bib: string;
 }
 
-// Single ordered roster so bib numbers follow the global add order across both roles.
 let roster: Entry[] = [];
 let wired = false;
 
@@ -43,22 +44,55 @@ function wireOnce(): void {
         });
     onEnter('prelim-setup-add-lead', 'lead');
     onEnter('prelim-setup-add-follow', 'follow');
+    onEnter('prelim-setup-add-lead-bib', 'lead');
+    onEnter('prelim-setup-add-follow-bib', 'follow');
     $('prelim-setup-start')?.addEventListener('click', () => {
         void start();
     });
     $('prelim-setup-back')?.addEventListener('click', () => window.navigate?.('/'));
 }
 
+// Bib numbers currently in use (optionally excluding one entry being edited).
+function usedBibs(exclude?: Entry): Set<string> {
+    const s = new Set<string>();
+    for (const e of roster) if (e !== exclude) s.add(e.bib);
+    return s;
+}
+
+// Smallest positive integer not currently assigned to anyone.
+function nextBib(): string {
+    const used = usedBibs();
+    let i = 1;
+    while (used.has(String(i))) i += 1;
+    return String(i);
+}
+
 function addFromInput(role: 'lead' | 'follow'): void {
     const input = $(role === 'lead' ? 'prelim-setup-add-lead' : 'prelim-setup-add-follow') as HTMLInputElement | null;
+    const bibInput = $(role === 'lead' ? 'prelim-setup-add-lead-bib' : 'prelim-setup-add-follow-bib') as HTMLInputElement | null;
     const name = input?.value.trim();
     if (!name) return;
     if (roster.some((e) => e.role === role && e.name.toLowerCase() === name.toLowerCase())) {
         showToast(`${name} is already a ${role}.`, 'info');
         return;
     }
-    roster.push({ name, role });
+    const bibRaw = bibInput?.value.trim() || '';
+    let bib: string;
+    if (bibRaw === '') {
+        bib = nextBib();
+    } else if (!/^\d+$/.test(bibRaw) || parseInt(bibRaw, 10) < 1) {
+        showToast('Enter a valid bib number.', 'error');
+        return;
+    } else {
+        bib = String(parseInt(bibRaw, 10));
+        if (usedBibs().has(bib)) {
+            showToast(`Bib ${bib} is already taken.`, 'error');
+            return;
+        }
+    }
+    roster.push({ name, role, bib });
     if (input) input.value = '';
+    if (bibInput) bibInput.value = '';
     render();
     input?.focus();
 }
@@ -66,7 +100,51 @@ function addFromInput(role: 'lead' | 'follow'): void {
 function remove(entry: Entry): void {
     const i = roster.indexOf(entry);
     if (i >= 0) roster.splice(i, 1);
-    render();
+    render(); // other bibs are untouched — no renumbering
+}
+
+// Validate + apply an edited bib. Must be a positive number that no one else holds.
+function applyBib(entry: Entry, raw: string): void {
+    const t = (raw || '').trim();
+    if (!/^\d+$/.test(t) || parseInt(t, 10) < 1) {
+        showToast('Enter a bib number.', 'error');
+        return;
+    }
+    const val = String(parseInt(t, 10));
+    if (val === entry.bib) return;
+    if (usedBibs(entry).has(val)) {
+        showToast(`Bib ${val} is already taken.`, 'error');
+        return;
+    }
+    entry.bib = val;
+}
+
+function startBibEdit(entry: Entry, badge: HTMLElement): void {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'prelims-bib-edit';
+    input.value = entry.bib;
+    badge.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = (save: boolean) => {
+        if (done) return;
+        done = true;
+        if (save) applyBib(entry, input.value);
+        render();
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(true);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            commit(false);
+        }
+    });
+    input.addEventListener('blur', () => commit(true));
 }
 
 function render(): void {
@@ -77,12 +155,12 @@ function render(): void {
 
     let nLeads = 0;
     let nFollows = 0;
-    roster.forEach((entry, i) => {
-        const container = entry.role === 'lead' ? leadContainer : followContainer;
+    for (const entry of roster) {
         if (entry.role === 'lead') nLeads += 1;
         else nFollows += 1;
-        container?.appendChild(rosterRow(entry, i + 1));
-    });
+        const container = entry.role === 'lead' ? leadContainer : followContainer;
+        container?.appendChild(rosterRow(entry));
+    }
 
     const lc = $('prelim-setup-lead-count');
     if (lc) lc.textContent = String(nLeads);
@@ -90,12 +168,14 @@ function render(): void {
     if (fc) fc.textContent = String(nFollows);
 }
 
-function rosterRow(entry: Entry, bib: number): HTMLElement {
+function rosterRow(entry: Entry): HTMLElement {
     const row = document.createElement('div');
     row.className = 'prelims-number-row';
     const badge = document.createElement('span');
-    badge.className = 'prelims-bib';
-    badge.textContent = String(bib);
+    badge.className = 'prelims-bib prelims-bib--editable';
+    badge.textContent = entry.bib;
+    badge.title = 'Double-click to change the bib number';
+    badge.addEventListener('dblclick', () => startBibEdit(entry, badge));
     const label = document.createElement('span');
     label.className = 'prelims-roster-name';
     label.textContent = entry.name;
@@ -117,18 +197,16 @@ function spotsValue(id: string): number | null {
 }
 
 async function start(): Promise<void> {
-    const leads = roster.filter((e) => e.role === 'lead').map((e) => e.name);
-    const follows = roster.filter((e) => e.role === 'follow').map((e) => e.name);
-    if (leads.length < 1 || follows.length < 1) {
+    const leadEntries = roster.filter((e) => e.role === 'lead');
+    const followEntries = roster.filter((e) => e.role === 'follow');
+    if (leadEntries.length < 1 || followEntries.length < 1) {
         showToast('Add at least one lead and one follow.', 'error');
         return;
     }
-    // Bib numbers follow the global add order (1-based index into the roster).
     const leadNumbers: Record<string, string> = {};
     const followNumbers: Record<string, string> = {};
-    roster.forEach((entry, i) => {
-        (entry.role === 'lead' ? leadNumbers : followNumbers)[entry.name] = String(i + 1);
-    });
+    for (const e of leadEntries) leadNumbers[e.name] = e.bib;
+    for (const e of followEntries) followNumbers[e.name] = e.bib;
 
     const groupRaw = ($('prelim-setup-group-size') as HTMLInputElement | null)?.value.trim() || '';
     const group_size = groupRaw === '' ? 8 : parseInt(groupRaw, 10);
@@ -141,8 +219,8 @@ async function start(): Promise<void> {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                leads,
-                follows,
+                leads: leadEntries.map((e) => e.name),
+                follows: followEntries.map((e) => e.name),
                 judges,
                 lead_numbers: leadNumbers,
                 follow_numbers: followNumbers,
