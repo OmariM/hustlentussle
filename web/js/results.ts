@@ -1031,24 +1031,36 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     ctx.fillStyle = C.accent;
     ctx.fillRect(0, 0, W, 12);
 
-    // --- Header ---
+    // --- Header --- (shrunk so more vertical room goes to the cards below; contentStartY
+    // is derived from whatever actually rendered here, not a flat constant, so a battle
+    // with no guest judges doesn't leave a blank gap where their line would have been)
+    const TITLE_SIZE = 44;
+    const SUBTITLE_SIZE = 32;
+    const JUDGES_SIZE = 28;
+    const HEADER_TOP = 20;
+    const HEADER_LINE_GAP = 14;
+
     ctx.textAlign = 'center';
     ctx.fillStyle = C.textPrimary;
-    ctx.font = `bold 78px ${C.fontDisplay}`;
-    ctx.fillText("Hustle n' Tussle", W / 2, 130);
+    ctx.font = `bold ${TITLE_SIZE}px ${C.fontDisplay}`;
+    const titleY = HEADER_TOP + TITLE_SIZE * 0.8;
+    ctx.fillText("Hustle n' Tussle", W / 2, titleY);
 
     ctx.fillStyle = C.textSecondary;
-    ctx.font = `400 38px ${C.fontBody}`;
-    ctx.fillText(subtitleText, W / 2, 200);
+    ctx.font = `400 ${SUBTITLE_SIZE}px ${C.fontBody}`;
+    const subtitleY = titleY + SUBTITLE_SIZE * 0.85 + HEADER_LINE_GAP;
+    ctx.fillText(subtitleText, W / 2, subtitleY);
 
+    let headerEndY = subtitleY;
     if (guestJudges.length > 0) {
         const judgeLabel = guestJudges.length === 1 ? 'Judge' : 'Judges';
         ctx.fillStyle = C.textSecondary;
-        ctx.font = `600 40px ${C.fontDisplay}`;
-        ctx.fillText(`${judgeLabel}: ${guestJudges.join(', ')}`, W / 2, 258);
+        ctx.font = `600 ${JUDGES_SIZE}px ${C.fontDisplay}`;
+        headerEndY = subtitleY + JUDGES_SIZE * 0.85 + HEADER_LINE_GAP;
+        ctx.fillText(`${judgeLabel}: ${guestJudges.join(', ')}`, W / 2, headerEndY);
     }
 
-    const contentStartY = 300;
+    const contentStartY = headerEndY + 32;
 
     // Layout: two side-by-side card columns (Leads | Follows), each sized independently
     // off its own row count so a shorter list doesn't leave dead space below its card.
@@ -1057,7 +1069,7 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     const COLUMN_GAP = 24;      // horizontal gap between the two cards
     const FOOTER_H = 40;
     const ROW_INSET = 12;       // matches the old single-card cardX = PAD - 12 inset
-    const MIN_ROW_H = 36;
+    const MIN_ROW_H = 40;
     const ABSOLUTE_MAX_ROW_H = 200; // hard ceiling regardless of the other column
     const ROW_H_CAP_RATIO = 1.6;    // a column can grow up to this many times the other column's own row height
     const availForRows = (H - FOOTER_H) - contentStartY - (CARD_HEADER_H + CARD_PAD_BOTTOM);
@@ -1079,7 +1091,7 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     const rankW = 40;
     const nameToBadgeGap = 16;
     const rowContentW = columnW - 2 * ROW_INSET;
-    const badgeAreaW = 190; // ~7 legible single-row badges before wrapping kicks in
+    const badgeAreaW = 230; // widened at the name column's expense so badges render bigger
     const nameAreaW = rowContentW - rankW - nameToBadgeGap - badgeAreaW;
     const badgeGap = 4;
     const badgeRowGap = 6;
@@ -1105,8 +1117,8 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     // would be illegibly small on one line, wrap onto a second row instead (same "shrink,
     // then wrap" approach already used for names). Decided once, using the tighter of the
     // two columns' baseline row heights as the single-row size cap.
-    const WRAP_THRESHOLD = 16; // below this a single badge row is no longer legible
-    const BADGE_FLOOR = 11;    // hard floor once wrapped to 2 rows
+    const WRAP_THRESHOLD = 18; // below this a single badge row is no longer legible
+    const BADGE_FLOOR = 13;    // hard floor once wrapped to 2 rows
     const singleRowSize = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
     const badgeRowHCap = Math.min(leadsRowHBaseline, followsRowHBaseline);
     let badgeRows: 1 | 2;
@@ -1124,8 +1136,8 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     const perLineBadgeCount = Math.floor((badgeAreaW + badgeGap) / (badgeSize + badgeGap));
 
     const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(44, rowH - 26));
-    const rankFontSizeFor = (nameFontSize: number): number => Math.max(16, nameFontSize - 4);
-    const minNameFontSizeFor = (nameFontSize: number): number => Math.max(16, Math.round(nameFontSize * 0.7));
+    const rankFontSizeFor = (nameFontSize: number): number => Math.max(18, nameFontSize - 4);
+    const minNameFontSizeFor = (nameFontSize: number): number => Math.max(18, Math.round(nameFontSize * 0.7));
 
     // A name that doesn't fit on one line even after shrinking wraps onto two lines instead
     // of being cut short (see fitNameToBox in socialImage.ts); a dancer with more round

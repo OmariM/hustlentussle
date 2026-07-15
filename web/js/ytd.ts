@@ -270,16 +270,25 @@ import type {
         ctx.fillStyle = theme.accent;
         ctx.fillRect(0, 0, W, 12);
 
+        // --- Header --- (shrunk so more vertical room goes to the cards below;
+        // contentStartY is derived from what actually rendered, not a flat constant)
+        const TITLE_SIZE = 44;
+        const SUBTITLE_SIZE = 32;
+        const HEADER_TOP = 20;
+        const HEADER_LINE_GAP = 14;
+
         ctx.textAlign = 'center';
         ctx.fillStyle = theme.textPrimary;
-        ctx.font = `bold 78px ${theme.fontDisplay}`;
-        ctx.fillText("Hustle n' Tussle", W / 2, 130);
+        ctx.font = `bold ${TITLE_SIZE}px ${theme.fontDisplay}`;
+        const titleY = HEADER_TOP + TITLE_SIZE * 0.8;
+        ctx.fillText("Hustle n' Tussle", W / 2, titleY);
 
         ctx.fillStyle = theme.textSecondary;
-        ctx.font = `400 38px ${theme.fontBody}`;
-        ctx.fillText(`Year-to-Date Stats — ${year}`, W / 2, 200);
+        ctx.font = `400 ${SUBTITLE_SIZE}px ${theme.fontBody}`;
+        const subtitleY = titleY + SUBTITLE_SIZE * 0.85 + HEADER_LINE_GAP;
+        ctx.fillText(`Year-to-Date Stats — ${year}`, W / 2, subtitleY);
 
-        const contentStartY = 260;
+        const contentStartY = subtitleY + 32;
 
         // Layout: two side-by-side card columns (Leads | Follows), each sized independently
         // off its own row count so a shorter list doesn't leave dead space below its card.
@@ -288,7 +297,7 @@ import type {
         const COLUMN_GAP = 24;
         const FOOTER_H = 40;
         const ROW_INSET = 12; // matches the old single-card cardX = PAD - 12 inset
-        const MIN_ROW_H = 40;
+        const MIN_ROW_H = 44;
         const ABSOLUTE_MAX_ROW_H = 200; // hard ceiling regardless of the other column
         const ROW_H_CAP_RATIO = 1.6;    // a column can grow up to this many times the other column's own row height
         const availForRows = (H - FOOTER_H) - contentStartY - (CARD_HEADER_H + CARD_PAD_BOTTOM);
@@ -314,8 +323,8 @@ import type {
         const WRAP_ROWS = 1.7;
 
         const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(40, rowH - 26));
-        const rankFontSizeFor = (nameFontSize: number): number => Math.max(16, nameFontSize - 4);
-        const minNameFontSizeFor = (nameFontSize: number): number => Math.max(16, Math.round(nameFontSize * 0.7));
+        const rankFontSizeFor = (nameFontSize: number): number => Math.max(18, nameFontSize - 4);
+        const minNameFontSizeFor = (nameFontSize: number): number => Math.max(18, Math.round(nameFontSize * 0.7));
 
         // Solves this column's row height independently of the other column: bigger rows for
         // a shorter list, no shared "sized off the larger list" dead space.
