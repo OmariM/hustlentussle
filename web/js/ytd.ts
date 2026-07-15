@@ -3,6 +3,8 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
+import { downloadCanvasAsPng, getSocialTheme, isDarkTheme, roundRect, SOCIAL_H, SOCIAL_W } from './socialImage';
+import { showToast } from './toast';
 import type {
     AdminLoginResponse,
     AdminMeResponse,
@@ -24,6 +26,7 @@ import type {
 
     let isAdmin = false;
     let preview: IngestPreviewResponse | null = null;
+    let currentStandings: Pick<YtdStandingsResponse, 'leads' | 'follows'> = { leads: [], follows: [] };
 
     // ---- screen helpers ----
 
@@ -92,6 +95,7 @@ import type {
             /* keep empty */
         }
 
+        currentStandings = data;
         renderStandings('ytd-lead-body', data.leads || []);
         renderStandings('ytd-follow-body', data.follows || []);
         const empty = (data.leads || []).length === 0 && (data.follows || []).length === 0;
@@ -111,6 +115,158 @@ import type {
                 `<td>${row.battles_entered || 0}</td>`;
             body.appendChild(tr);
         });
+    }
+
+    // ---- top-8 social image export (Instagram feed post, 4:5) ----
+
+    /** Draws one ranked "top 8" card (rank, name, points, crowns) — modeled on the
+     * battle-results card chrome in web/js/results.ts's drawSection(), but without
+     * round badges since YTD standings have no per-round data. */
+    function drawYtdCard(
+        ctx: CanvasRenderingContext2D,
+        theme: ReturnType<typeof getSocialTheme>,
+        rows: YtdStandingRow[],
+        label: string,
+        startY: number,
+        cardX: number,
+        cardW: number,
+        rowH: number,
+    ): number {
+        const CARD_HEADER_H = 76;
+        const CARD_PAD_BOTTOM = 16;
+        const CARD_RADIUS = 20;
+        const cardH = CARD_HEADER_H + rows.length * rowH + CARD_PAD_BOTTOM;
+
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.fillStyle = theme.bgCard;
+        ctx.fill();
+
+        ctx.save();
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.clip();
+        ctx.fillStyle = theme.accent;
+        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
+        ctx.restore();
+
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.strokeStyle = theme.border;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold 52px ${theme.fontDisplay}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
+
+        const rowsStartY = startY + CARD_HEADER_H;
+        const rowPad = cardX + 24;
+        const rankW = 44;
+        const pointsColX = cardX + cardW - 24;
+        const nameFontSize = Math.max(20, Math.min(40, rowH - 26));
+        const rankFontSize = Math.max(16, nameFontSize - 4);
+        const nameAreaW = cardW - 48 - rankW - 220;
+
+        rows.forEach((row, idx) => {
+            const rowY = rowsStartY + idx * rowH;
+            const textBaseY = rowY + rowH * 0.64;
+            const isTop = idx === 0;
+
+            if (idx % 2 === 0) {
+                ctx.fillStyle = theme.rowAlt;
+                ctx.fillRect(cardX + 12, rowY + 1, cardW - 24, rowH - 1);
+            }
+
+            ctx.fillStyle = theme.textMuted;
+            ctx.font = `400 ${rankFontSize}px ${theme.fontMono}`;
+            ctx.textAlign = 'left';
+            ctx.fillText((idx + 1) + '.', rowPad, textBaseY);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(rowPad + rankW, rowY, nameAreaW, rowH);
+            ctx.clip();
+            const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
+            const displayName = row.display_name.length > maxChars
+                ? row.display_name.slice(0, maxChars - 1) + '…'
+                : row.display_name;
+            ctx.fillStyle = isTop ? theme.textPrimary : theme.textSecondary;
+            ctx.font = isTop ? `bold ${nameFontSize}px ${theme.fontBody}` : `400 ${nameFontSize}px ${theme.fontBody}`;
+            ctx.fillText(displayName, rowPad + rankW, textBaseY);
+            if (isTop) {
+                const nameW = ctx.measureText(displayName).width;
+                ctx.font = `${nameFontSize}px serif`;
+                ctx.fillText('👑', rowPad + rankW + nameW + 5, textBaseY);
+            }
+            ctx.restore();
+
+            ctx.textAlign = 'right';
+            ctx.fillStyle = theme.textPrimary;
+            ctx.font = `bold ${nameFontSize}px ${theme.fontMono}`;
+            const crownSuffix = row.crowns ? `  👑×${row.crowns}` : '';
+            ctx.fillText(`${row.total_points} pts${crownSuffix}`, pointsColX, textBaseY);
+        });
+
+        return rowsStartY + rows.length * rowH + CARD_PAD_BOTTOM;
+    }
+
+    async function exportYtdImage(): Promise<void> {
+        const year = $<HTMLSelectElement>('ytd-year-select').value;
+        const top8Leads = (currentStandings.leads || []).slice(0, 8);
+        const top8Follows = (currentStandings.follows || []).slice(0, 8);
+        if (top8Leads.length === 0 && top8Follows.length === 0) {
+            showToast('No standings to export for this year.', 'error');
+            return;
+        }
+
+        await document.fonts.ready;
+
+        const W = SOCIAL_W;
+        const H = SOCIAL_H;
+        const PAD = 50;
+        const theme = getSocialTheme(isDarkTheme());
+
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            showToast('Failed to generate image', 'error');
+            return;
+        }
+
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = theme.accent;
+        ctx.fillRect(0, 0, W, 12);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = theme.textPrimary;
+        ctx.font = `bold 78px ${theme.fontDisplay}`;
+        ctx.fillText("Hustle n' Tussle", W / 2, 130);
+
+        ctx.fillStyle = theme.textSecondary;
+        ctx.font = `400 38px ${theme.fontBody}`;
+        ctx.fillText(`Year-to-Date Stats — ${year}`, W / 2, 200);
+
+        const contentStartY = 260;
+        const CARD_HEADER_H = 76;
+        const CARD_PAD_BOTTOM = 16;
+        const SECTION_GAP = 20;
+        const FOOTER_H = 40;
+        const maxRows = Math.max(top8Leads.length, top8Follows.length, 1);
+        const availForRows = (H - FOOTER_H) - contentStartY
+            - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
+            - SECTION_GAP;
+        const rowH = Math.max(40, Math.floor(availForRows / (2 * maxRows)));
+
+        const cardX = PAD - 12;
+        const cardW = W - 2 * (PAD - 12);
+
+        const leadsEnd = drawYtdCard(ctx, theme, top8Leads, 'Leads', contentStartY, cardX, cardW, rowH);
+        drawYtdCard(ctx, theme, top8Follows, 'Follows', leadsEnd + SECTION_GAP, cardX, cardW, rowH);
+
+        downloadCanvasAsPng(canvas, `hnt-ytd-${year}-top8.png`, () => showToast('Failed to generate image', 'error'));
     }
 
     // ---- admin: contributed battles ----
@@ -140,6 +296,11 @@ import type {
             edit.textContent = 'Edit';
             edit.addEventListener('click', () => editBattle(b.id));
             actions.appendChild(edit);
+            const image = document.createElement('button');
+            image.className = 'btn secondary small';
+            image.textContent = 'Instagram Post';
+            image.addEventListener('click', () => exportBattleImage(b.id));
+            actions.appendChild(image);
             const del = document.createElement('button');
             del.className = 'btn secondary small';
             del.textContent = 'Delete';
@@ -148,6 +309,23 @@ import type {
             tr.appendChild(actions);
             body.appendChild(tr);
         });
+    }
+
+    async function exportBattleImage(id: string): Promise<void> {
+        let battle: BattleDetail;
+        try {
+            const res = await fetch(`/api/stats/battles/${id}`);
+            if (!res.ok) throw new Error();
+            battle = (await res.json()) as BattleDetail;
+        } catch {
+            alert('Failed to load battle.');
+            return;
+        }
+        if (!window.exportBattleResultsImage) {
+            alert('Image export is unavailable.');
+            return;
+        }
+        await window.exportBattleResultsImage(battle.raw_data, { name: battle.name, battle_date: battle.battle_date || '' });
     }
 
     async function deleteBattle(id: string, name: string): Promise<void> {
@@ -206,22 +384,28 @@ import type {
         });
     }
 
-    // ---- admin: dancers (merge duplicates) ----
+    // ---- admin: dancers (rename, merge duplicates) ----
 
     let mergeNameDirty = false; // true once the admin has typed into #ytd-merge-name themselves
+    let lastDancers: DancersResponse['dancers'] = [];
+    let editingDancerId: string | null = null; // dancer row currently showing the rename input
 
     async function loadDancers(): Promise<void> {
         if (!isAdmin) return;
-        let dancers: DancersResponse['dancers'] = [];
         try {
             const res = await fetch('/api/stats/dancers');
-            dancers = ((await res.json()) as DancersResponse).dancers || [];
+            lastDancers = ((await res.json()) as DancersResponse).dancers || [];
         } catch {
-            dancers = [];
+            lastDancers = [];
         }
+        editingDancerId = null;
+        renderDancerRows();
+    }
+
+    function renderDancerRows(): void {
         const body = $('ytd-dancers-body');
         body.innerHTML = '';
-        dancers.forEach((d) => {
+        lastDancers.forEach((d) => {
             const tr = document.createElement('tr');
             const checkCell = document.createElement('td');
             const check = document.createElement('input');
@@ -232,7 +416,45 @@ import type {
             tr.appendChild(checkCell);
 
             const nameCell = document.createElement('td');
-            nameCell.textContent = d.display_name;
+            const actionsCell = document.createElement('td');
+
+            if (editingDancerId === d.id) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = d.display_name;
+                nameCell.appendChild(input);
+                const errorEl = document.createElement('div');
+                errorEl.className = 'error-message';
+                nameCell.appendChild(errorEl);
+
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'btn primary small';
+                saveBtn.textContent = 'Save';
+                saveBtn.addEventListener('click', () => void saveDancerRename(d.id, input.value.trim(), errorEl));
+                actionsCell.appendChild(saveBtn);
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'btn secondary small';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.addEventListener('click', () => {
+                    editingDancerId = null;
+                    renderDancerRows();
+                });
+                actionsCell.appendChild(cancelBtn);
+
+                input.focus();
+                input.select();
+            } else {
+                nameCell.textContent = d.display_name;
+                const renameBtn = document.createElement('button');
+                renameBtn.className = 'btn secondary small';
+                renameBtn.textContent = 'Rename';
+                renameBtn.addEventListener('click', () => {
+                    editingDancerId = d.id;
+                    renderDancerRows();
+                });
+                actionsCell.appendChild(renameBtn);
+            }
             tr.appendChild(nameCell);
 
             const aliasCell = document.createElement('td');
@@ -249,9 +471,36 @@ import type {
             }
             tr.appendChild(battlesCell);
 
+            tr.appendChild(actionsCell);
             body.appendChild(tr);
         });
         updateMergeButtonState();
+    }
+
+    async function saveDancerRename(id: string, newName: string, errorEl: HTMLElement): Promise<void> {
+        errorEl.textContent = '';
+        if (!newName) {
+            errorEl.textContent = 'Name is required.';
+            return;
+        }
+        const res = await fetch(`/api/stats/dancers/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: newName }),
+        });
+        let data: Partial<ApiErrorResponse>;
+        try {
+            data = (await res.json()) as Partial<ApiErrorResponse>;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            errorEl.textContent = data.error || 'Failed to rename dancer.';
+            return;
+        }
+        editingDancerId = null;
+        await loadDancers();
+        await loadStandings();
     }
 
     function updateMergeButtonState(): void {
@@ -561,6 +810,7 @@ import type {
             await loadStandings();
             await loadBattles();
         });
+        on('ytd-export-image-btn', 'click', () => void exportYtdImage());
 
         // admin login modal
         on('ytd-admin-login-btn', 'click', () => {

@@ -124,6 +124,39 @@ class StatsRepository:
             (alias, dancer_id, alias, alias),
         )
 
+    def rename_dancer(self, dancer_id: str, new_display_name: str) -> bool:
+        """Change a single dancer's canonical display name (no merge involved).
+
+        The old name is preserved as an alias, same as the rename-on-merge path in
+        merge_dancers, so a future upload spelled with the old name still resolves
+        to this dancer. Returns False if the dancer doesn't exist.
+        """
+        new_name = (new_display_name or "").strip()
+        if not new_name:
+            raise StatsError("Display name is required.")
+
+        with self._connection() as conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT display_name FROM dancers WHERE id = %s", (dancer_id,))
+                    row = cur.fetchone()
+                    if not row:
+                        return False
+                    old_name = row["display_name"]
+                    if new_name.lower() == old_name.strip().lower():
+                        return True
+
+                    cur.execute("UPDATE dancers SET display_name = %s WHERE id = %s", (new_name, dancer_id))
+                    self._maybe_add_alias(cur, dancer_id, old_name)
+                conn.commit()
+                return True
+            except psycopg2.errors.UniqueViolation as exc:
+                conn.rollback()
+                raise DuplicateDancerError("Another dancer already has that name.") from exc
+            except Exception as exc:  # noqa: BLE001
+                conn.rollback()
+                raise StatsError(str(exc)) from exc
+
     def merge_dancers(
         self,
         target_id: str,

@@ -11,9 +11,19 @@
 
 import { getResults } from './api';
 import { stopDisplayPolling } from './display';
+import { downloadCanvasAsPng, getSocialTheme, isDarkTheme, roundRect, slugify, SOCIAL_H, SOCIAL_W } from './socialImage';
 import { getSpotifyToken, isSpotifyEnabled } from './spotify';
 import { showToast } from './toast';
-import type { BattleExportV1, ExportRound, ResultRow, ResultsResponse, ResultsRound, ScoreboardRow } from './types';
+import type {
+    BattleExportV1,
+    ExportParticipant,
+    ExportRound,
+    ResultRow,
+    ResultsResponse,
+    ResultsRound,
+    RoundPairs,
+    ScoreboardRow,
+} from './types';
 
 export type ResultsData = ResultsResponse & { uploaded?: boolean };
 
@@ -70,6 +80,45 @@ let resultsTopLeadName: string | null = null;
 let resultsTopFollowName: string | null = null;
 let resultsGuestJudges: string[] = [];
 const resultsEventTitle: string | null = null; // custom subtitle; falls back to "Month Edition (Year)"
+
+/** Minimal round shape shared by ResultsRound and ExportRound (rounds/raw-payload interchangeably). */
+interface RoundLike {
+    round_num: number;
+    pairs: RoundPairs | null;
+    lead_winner: string | null;
+    follow_winner: string | null;
+    tiebreak?: boolean;
+    tiebreak_leads?: string[];
+    tiebreak_follows?: string[];
+}
+
+/** Builds per-dancer round win/loss badge maps from a battle's rounds — used both for the
+ * currently-displayed results screen and for a raw stored battle payload (social image export). */
+function buildRoundMaps(rounds: RoundLike[]): { leadMap: Map<string, RoundBadge[]>; followMap: Map<string, RoundBadge[]> } {
+    const leadMap = new Map<string, RoundBadge[]>();
+    const followMap = new Map<string, RoundBadge[]>();
+    rounds.forEach(r => {
+        const roundNum = r.round_num;
+        const push = (map: Map<string, RoundBadge[]>, name: string, win: boolean): void => {
+            if (!map.has(name)) map.set(name, []);
+            map.get(name)?.push({ round: roundNum, win });
+        };
+        if (r.tiebreak) {
+            (r.tiebreak_leads || []).forEach(name => push(leadMap, name, r.lead_winner === name));
+            (r.tiebreak_follows || []).forEach(name => push(followMap, name, r.follow_winner === name));
+            return;
+        }
+        const pair1Lead = r.pairs?.pair_1?.lead;
+        const pair1Follow = r.pairs?.pair_1?.follow;
+        const pair2Lead = r.pairs?.pair_2?.lead;
+        const pair2Follow = r.pairs?.pair_2?.follow;
+        if (pair1Lead) push(leadMap, pair1Lead, r.lead_winner === pair1Lead);
+        if (pair2Lead) push(leadMap, pair2Lead, r.lead_winner === pair2Lead);
+        if (pair1Follow) push(followMap, pair1Follow, r.follow_winner === pair1Follow);
+        if (pair2Follow) push(followMap, pair2Follow, r.follow_winner === pair2Follow);
+    });
+    return { leadMap, followMap };
+}
 
 export function setUploadedBattlePayload(payload: BattleExportV1 | null): void {
     uploadedBattlePayload = payload;
@@ -204,28 +253,7 @@ export async function displayResults(data: ResultsData): Promise<void> {
 
     // Build battle graphic data: map contestant to rounds and wins
     if (Array.isArray(data.rounds) && data.rounds.length > 0 && leadGraphic && followGraphic) {
-        const leadMap = new Map<string, RoundBadge[]>();
-        const followMap = new Map<string, RoundBadge[]>();
-        data.rounds.forEach(r => {
-            const roundNum = r.round_num;
-            const push = (map: Map<string, RoundBadge[]>, name: string, win: boolean): void => {
-                if (!map.has(name)) map.set(name, []);
-                map.get(name)?.push({ round: roundNum, win });
-            };
-            if (r.tiebreak) {
-                (r.tiebreak_leads || []).forEach(name => push(leadMap, name, r.lead_winner === name));
-                (r.tiebreak_follows || []).forEach(name => push(followMap, name, r.follow_winner === name));
-                return;
-            }
-            const pair1Lead = r.pairs?.pair_1?.lead;
-            const pair1Follow = r.pairs?.pair_1?.follow;
-            const pair2Lead = r.pairs?.pair_2?.lead;
-            const pair2Follow = r.pairs?.pair_2?.follow;
-            if (pair1Lead) push(leadMap, pair1Lead, r.lead_winner === pair1Lead);
-            if (pair2Lead) push(leadMap, pair2Lead, r.lead_winner === pair2Lead);
-            if (pair1Follow) push(followMap, pair1Follow, r.follow_winner === pair1Follow);
-            if (pair2Follow) push(followMap, pair2Follow, r.follow_winner === pair2Follow);
-        });
+        const { leadMap, followMap } = buildRoundMaps(data.rounds);
 
         // Helper to render a column by initial order
         const renderGraphicColumn = (initialOrder: string[], dataMap: Map<string, RoundBadge[]>, topName: string | null, container: HTMLElement): void => {
@@ -964,77 +992,35 @@ async function saveEditedResults(): Promise<void> {
     }
 }
 
-// ---- Social image export ----
+// ---- Social image export (Instagram feed post, 4:5) ----
 
-function _rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
+interface BattleImageParams {
+    leadsOrder: string[];
+    followsOrder: string[];
+    leadMap: Map<string, RoundBadge[]>;
+    followMap: Map<string, RoundBadge[]>;
+    topLeadName: string | null;
+    topFollowName: string | null;
+    guestJudges: string[];
+    subtitleText: string;
 }
 
-async function exportSocialImage(): Promise<void> {
-    const W = 1080;
-    const H = 1920;
+/** Draws the battle-results social image (header + Leads/Follows cards with round badges)
+ * onto a fresh off-DOM canvas. Shared by the live/uploaded results screen export and the
+ * admin per-battle export (driven from a stored battle's raw payload). */
+function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement | null {
+    const { leadsOrder, followsOrder, leadMap, followMap, topLeadName, topFollowName, guestJudges, subtitleText } = params;
+    const W = SOCIAL_W;
+    const H = SOCIAL_H;
     const PAD = 50;
 
-    await document.fonts.ready;
-
-    // Mirror the app's current light/dark theme
-    const isDark = document.documentElement.getAttribute('data-color') === 'dark';
-    const C = isDark ? {
-        bg:            '#0a0a12',
-        bgCard:        '#1a1a2e',
-        accent:        '#7c3aed',
-        textPrimary:   '#f1f5f9',
-        textSecondary: '#94a3b8',
-        textMuted:     '#64748b',
-        border:        'rgba(148,163,184,0.12)',
-        rowAlt:        'rgba(255,255,255,0.03)',
-        badgeWin:      '#7c3aed',
-        badgeWinBorder:'#9d5cf5',
-        badgeLose:     'rgba(255,255,255,0.07)',
-        badgeLoseBorder:'rgba(148,163,184,0.15)',
-        badgeWinText:  '#ffffff',
-        badgeLoseText: '#64748b',
-        fontDisplay:   '"Space Grotesk","Inter",sans-serif',
-        fontBody:      '"Inter","DM Sans",sans-serif',
-        fontMono:      '"DM Mono",monospace',
-    } : {
-        bg:            '#f5f5f7',
-        bgCard:        '#ffffff',
-        accent:        '#1d4ed8',
-        textPrimary:   '#0f172a',
-        textSecondary: '#475569',
-        textMuted:     '#94a3b8',
-        border:        '#e2e8f0',
-        rowAlt:        'rgba(0,0,0,0.03)',
-        badgeWin:      '#1d4ed8',
-        badgeWinBorder:'#1e40af',
-        badgeLose:     '#f0f0f5',
-        badgeLoseBorder:'#e2e8f0',
-        badgeWinText:  '#ffffff',
-        badgeLoseText: '#94a3b8',
-        fontDisplay:   '"DM Sans",sans-serif',
-        fontBody:      '"DM Sans",sans-serif',
-        fontMono:      '"DM Mono",monospace',
-    };
+    const C = getSocialTheme(isDarkTheme());
 
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        showToast('Failed to generate image', 'error');
-        return;
-    }
+    if (!ctx) return null;
 
     // Background
     ctx.fillStyle = C.bg;
@@ -1050,29 +1036,18 @@ async function exportSocialImage(): Promise<void> {
     ctx.font = `bold 78px ${C.fontDisplay}`;
     ctx.fillText("Hustle n' Tussle", W / 2, 130);
 
-    const now = new Date();
-    const subtitleText = resultsEventTitle
-        || `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
     ctx.fillStyle = C.textSecondary;
     ctx.font = `400 38px ${C.fontBody}`;
     ctx.fillText(subtitleText, W / 2, 200);
 
-    if (resultsGuestJudges.length > 0) {
-        const judgeLabel = resultsGuestJudges.length === 1 ? 'Judge' : 'Judges';
+    if (guestJudges.length > 0) {
+        const judgeLabel = guestJudges.length === 1 ? 'Judge' : 'Judges';
         ctx.fillStyle = C.textSecondary;
         ctx.font = `600 40px ${C.fontDisplay}`;
-        ctx.fillText(`${judgeLabel}: ${resultsGuestJudges.join(', ')}`, W / 2, 258);
+        ctx.fillText(`${judgeLabel}: ${guestJudges.join(', ')}`, W / 2, 258);
     }
 
-    const scoreboard = deps?.getScoreboard() || { leads: [], follows: [] };
-    const sortedLeads = [...scoreboard.leads].sort((a, b) => (b.points || 0) - (a.points || 0));
-    const sortedFollows = [...scoreboard.follows].sort((a, b) => (b.points || 0) - (a.points || 0));
-
     const contentStartY = 300;
-
-    // --- Battle Graphic ---
-    const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
-    const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
 
     // Layout: two card sections (Leads then Follows)
     const CARD_HEADER_H = 76;   // dark strip at top of each card
@@ -1094,8 +1069,8 @@ async function exportSocialImage(): Promise<void> {
     // Use the most rounds any individual dancer competed in (not total game rounds)
     // so the badge row fills the full width for the most active dancer.
     const allRoundCounts = [
-        ...[...leadsOrder].map(n => (resultsLeadMap.get(n) || []).length),
-        ...[...followsOrder].map(n => (resultsFollowMap.get(n) || []).length),
+        ...leadsOrder.map(n => (leadMap.get(n) || []).length),
+        ...followsOrder.map(n => (followMap.get(n) || []).length),
     ];
     const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
     const badgeSizeFromRounds = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
@@ -1115,20 +1090,20 @@ async function exportSocialImage(): Promise<void> {
         const cardH = CARD_HEADER_H + order.length * rowH + CARD_PAD_BOTTOM;
 
         // Card background
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
         ctx.fillStyle = C.bgCard;
         ctx.fill();
 
         // Accent header strip — clipped to card shape so top corners are rounded
         ctx.save();
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
         ctx.clip();
         ctx.fillStyle = C.accent;
         ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
         ctx.restore();
 
         // Card border
-        _rrect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
         ctx.strokeStyle = C.border;
         ctx.lineWidth = 1.5;
         ctx.stroke();
@@ -1206,21 +1181,79 @@ async function exportSocialImage(): Promise<void> {
         return rowsStartY + order.length * rowH + CARD_PAD_BOTTOM;
     };
 
-    const leadsEnd = drawSection(leadsOrder, resultsLeadMap, resultsTopLeadName, 'Leads', contentStartY);
-    drawSection(followsOrder, resultsFollowMap, resultsTopFollowName, 'Follows', leadsEnd + SECTION_GAP);
+    const leadsEnd = drawSection(leadsOrder, leadMap, topLeadName, 'Leads', contentStartY);
+    drawSection(followsOrder, followMap, topFollowName, 'Follows', leadsEnd + SECTION_GAP);
 
-    canvas.toBlob(blob => {
-        if (!blob) { showToast('Failed to generate image', 'error'); return; }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'hnt-results.png';
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-    }, 'image/png');
+    return canvas;
 }
+
+async function exportSocialImage(): Promise<void> {
+    await document.fonts.ready;
+
+    const scoreboard = deps?.getScoreboard() || { leads: [], follows: [] };
+    const sortedLeads = [...scoreboard.leads].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const sortedFollows = [...scoreboard.follows].sort((a, b) => (b.points || 0) - (a.points || 0));
+
+    const leadsOrder = resultsInitialLeads.length ? resultsInitialLeads : sortedLeads.map(l => l.name);
+    const followsOrder = resultsInitialFollows.length ? resultsInitialFollows : sortedFollows.map(f => f.name);
+
+    const now = new Date();
+    const subtitleText = resultsEventTitle
+        || `${now.toLocaleDateString('en-US', { month: 'long' })} Edition (${now.getFullYear()})`;
+
+    const canvas = renderBattleResultsCanvas({
+        leadsOrder,
+        followsOrder,
+        leadMap: resultsLeadMap,
+        followMap: resultsFollowMap,
+        topLeadName: resultsTopLeadName,
+        topFollowName: resultsTopFollowName,
+        guestJudges: resultsGuestJudges,
+        subtitleText,
+    });
+    if (!canvas) {
+        showToast('Failed to generate image', 'error');
+        return;
+    }
+    downloadCanvasAsPng(canvas, 'hnt-results.png', () => showToast('Failed to generate image', 'error'));
+}
+
+/** Order a battle's participants by their initial (pre-battle) queue order, falling back to
+ * points-desc when initial_order wasn't recorded (e.g. an older export). */
+function orderParticipants(list: ExportParticipant[]): string[] {
+    const hasOrder = list.length > 0 && list.every(p => p.initial_order !== null && p.initial_order !== undefined);
+    const sorted = hasOrder
+        ? [...list].sort((a, b) => (a.initial_order as number) - (b.initial_order as number))
+        : [...list].sort((a, b) => (b.points || 0) - (a.points || 0));
+    return sorted.map(p => p.name);
+}
+
+/** Generates the same battle-results social image for a stored battle payload (not the
+ * currently-displayed results screen) — used by the YTD admin "Instagram Post" button. */
+async function exportBattleImageFromPayload(payload: BattleExportV1, meta: { name: string; battle_date: string }): Promise<void> {
+    await document.fonts.ready;
+
+    const leadsOrder = orderParticipants(payload.participants?.leads || []);
+    const followsOrder = orderParticipants(payload.participants?.follows || []);
+    const { leadMap, followMap } = buildRoundMaps(payload.rounds || []);
+
+    const canvas = renderBattleResultsCanvas({
+        leadsOrder,
+        followsOrder,
+        leadMap,
+        followMap,
+        topLeadName: payload.champions?.lead?.name ?? null,
+        topFollowName: payload.champions?.follow?.name ?? null,
+        guestJudges: payload.judges?.guest || [],
+        subtitleText: meta.name,
+    });
+    if (!canvas) {
+        showToast('Failed to generate image', 'error');
+        return;
+    }
+    downloadCanvasAsPng(canvas, `hnt-${slugify(meta.name)}-results.png`, () => showToast('Failed to generate image', 'error'));
+}
+window.exportBattleResultsImage = exportBattleImageFromPayload;
 
 // ---- Battle JSON download ----
 

@@ -322,6 +322,28 @@ def stats_list_dancers():
     return jsonify({"dancers": dancers})
 
 
+@bp.route("/api/stats/dancers/<dancer_id>", methods=["PUT"])
+@admin_required
+def stats_rename_dancer(dancer_id):
+    """Rename a single dancer's canonical display name (no merge)."""
+    if stats_repo is None:
+        return jsonify({"error": "Stats database not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    new_name = (data.get("display_name") or "").strip()
+    if not new_name:
+        return jsonify({"error": "display_name is required"}), 400
+
+    try:
+        renamed = stats_repo.rename_dancer(dancer_id, new_name)
+    except DuplicateDancerError as e:
+        return jsonify({"error": str(e)}), 409
+    except StatsError as e:
+        return jsonify({"error": str(e)}), 400
+    if not renamed:
+        return jsonify({"error": "Dancer not found"}), 404
+    return jsonify({"success": True})
+
+
 @bp.route("/api/stats/dancers/merge", methods=["POST"])
 @admin_required
 def stats_merge_dancers():

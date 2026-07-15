@@ -49,6 +49,10 @@ declare global {
                 ) => Promise<void>;
             },
         ) => void;
+        exportBattleResultsImage?: (
+            payload: BattleExportV1,
+            meta: { name: string; battle_date: string },
+        ) => Promise<void>;
         sessionId?: string | null;
 
         // ytd.ts
