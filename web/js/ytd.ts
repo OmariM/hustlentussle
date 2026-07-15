@@ -3,6 +3,9 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
+import { downloadCanvasAsPng, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
+import type { FitNameResult } from './socialImage';
+import { showToast } from './toast';
 import type {
     AdminLoginResponse,
     AdminMeResponse,
@@ -24,6 +27,7 @@ import type {
 
     let isAdmin = false;
     let preview: IngestPreviewResponse | null = null;
+    let currentStandings: Pick<YtdStandingsResponse, 'leads' | 'follows'> = { leads: [], follows: [] };
 
     // ---- screen helpers ----
 
@@ -92,6 +96,7 @@ import type {
             /* keep empty */
         }
 
+        currentStandings = data;
         renderStandings('ytd-lead-body', data.leads || []);
         renderStandings('ytd-follow-body', data.follows || []);
         const empty = (data.leads || []).length === 0 && (data.follows || []).length === 0;
@@ -111,6 +116,259 @@ import type {
                 `<td>${row.battles_entered || 0}</td>`;
             body.appendChild(tr);
         });
+    }
+
+    // ---- top-8 social image export (Instagram feed post, 4:5) ----
+
+    interface PlannedYtdRow {
+        fit: FitNameResult;
+        isTop: boolean;
+        height: number;
+    }
+    interface YtdSectionPlan {
+        rows: PlannedYtdRow[];
+        totalHeight: number;
+        nameFontSize: number;
+        rankFontSize: number;
+    }
+
+    /** Draws one ranked "top 8" card (rank, name, points) — modeled on the battle-results
+     * card chrome in web/js/results.ts's drawSection(), but without round badges since YTD
+     * standings have no per-round data. Row heights/name line-wrapping/font sizes are
+     * pre-computed by exportYtdImage() (via fitNameToBox) and passed in as `plan`, so every
+     * row here just draws whatever it was told to. */
+    function drawYtdCard(
+        ctx: CanvasRenderingContext2D,
+        theme: ReturnType<typeof getSocialTheme>,
+        rows: YtdStandingRow[],
+        label: string,
+        cardX: number,
+        cardW: number,
+        startY: number,
+        plan: YtdSectionPlan,
+    ): void {
+        const CARD_HEADER_H = 76;
+        const CARD_PAD_BOTTOM = 16;
+        const CARD_RADIUS = 20;
+        const cardH = CARD_HEADER_H + plan.totalHeight + CARD_PAD_BOTTOM;
+
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.fillStyle = theme.bgCard;
+        ctx.fill();
+
+        ctx.save();
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.clip();
+        ctx.fillStyle = theme.accent;
+        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
+        ctx.restore();
+
+        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        ctx.strokeStyle = theme.border;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold 52px ${theme.fontDisplay}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
+
+        const rowsStartY = startY + CARD_HEADER_H;
+        const rowPad = cardX + 24;
+        const rankW = 44;
+        const pointsColX = cardX + cardW - 24;
+        const nameAreaW = cardW - 48 - rankW - 140;
+        let rowY = rowsStartY;
+
+        rows.forEach((row, idx) => {
+            const { fit, isTop, height: rowHeight } = plan.rows[idx];
+            const isWrapped = fit.lines.length === 2;
+
+            // Alternating row tint — scoped to this column's own bounds (not the full canvas
+            // width), since there are now two side-by-side cards, not one full-width card.
+            if (idx % 2 === 0) {
+                ctx.fillStyle = theme.rowAlt;
+                ctx.fillRect(cardX + 12, rowY + 1, cardW - 24, rowHeight - 1);
+            }
+
+            // Rank/points baselines: same formula as a normal row; centered instead for a
+            // wrapped row, whose height doesn't match what that formula was tuned for. Rank
+            // uses the proportional body font, not the mono font used for points: a monospace
+            // "1." reserves a full fixed-width cell for the narrow "1" glyph, leaving a visible
+            // gap before the period that a proportional font's natural kerning doesn't have.
+            const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
+            ctx.fillStyle = theme.textMuted;
+            ctx.font = `400 ${plan.rankFontSize}px ${theme.fontBody}`;
+            ctx.textAlign = 'left';
+            ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
+
+            // Name (1 or 2 lines, per fitNameToBox) + crown — clipped to the row's full height
+            // so a wrapped second line never spills into the points column.
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(rowPad + rankW, rowY, nameAreaW, rowHeight);
+            ctx.clip();
+            ctx.fillStyle = isTop ? theme.textPrimary : theme.textSecondary;
+            ctx.font = isTop ? `bold ${fit.fontSize}px ${theme.fontBody}` : `400 ${fit.fontSize}px ${theme.fontBody}`;
+
+            let lastLineY: number;
+            if (!isWrapped) {
+                lastLineY = singleLineBaseline(rowY, rowHeight, fit.fontSize, false);
+                ctx.fillText(fit.lines[0], rowPad + rankW, lastLineY);
+            } else {
+                const lineGap = fit.fontSize * 1.15;
+                const line1Y = rowY + rowHeight / 2 - lineGap / 2 + fit.fontSize * 0.35;
+                lastLineY = line1Y + lineGap;
+                ctx.fillText(fit.lines[0], rowPad + rankW, line1Y);
+                ctx.fillText(fit.lines[1], rowPad + rankW, lastLineY);
+            }
+            if (isTop) {
+                const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
+                ctx.font = `${fit.fontSize}px serif`;
+                ctx.fillText('👑', rowPad + rankW + lastLineW + 5, lastLineY);
+            }
+            ctx.restore();
+
+            const pointsBaseY = singleLineBaseline(rowY, rowHeight, plan.nameFontSize, isWrapped);
+            ctx.textAlign = 'right';
+            ctx.fillStyle = theme.textPrimary;
+            ctx.font = `bold ${plan.nameFontSize}px ${theme.fontMono}`;
+            ctx.fillText(`${row.total_points} pts`, pointsColX, pointsBaseY);
+
+            rowY += rowHeight;
+        });
+    }
+
+    async function exportYtdImage(): Promise<void> {
+        const year = $<HTMLSelectElement>('ytd-year-select').value;
+        const top8Leads = (currentStandings.leads || []).slice(0, 8);
+        const top8Follows = (currentStandings.follows || []).slice(0, 8);
+        if (top8Leads.length === 0 && top8Follows.length === 0) {
+            showToast('No standings to export for this year.', 'error');
+            return;
+        }
+
+        await document.fonts.ready;
+
+        const W = SOCIAL_W;
+        const H = SOCIAL_H;
+        const PAD = 50;
+        const theme = getSocialTheme(isDarkTheme());
+
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            showToast('Failed to generate image', 'error');
+            return;
+        }
+
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = theme.accent;
+        ctx.fillRect(0, 0, W, 12);
+
+        // --- Header --- (shrunk so more vertical room goes to the cards below;
+        // contentStartY is derived from what actually rendered, not a flat constant)
+        const TITLE_SIZE = 44;
+        const SUBTITLE_SIZE = 32;
+        const HEADER_TOP = 20;
+        const HEADER_LINE_GAP = 14;
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = theme.textPrimary;
+        ctx.font = `bold ${TITLE_SIZE}px ${theme.fontDisplay}`;
+        const titleY = HEADER_TOP + TITLE_SIZE * 0.8;
+        ctx.fillText("Hustle n' Tussle", W / 2, titleY);
+
+        ctx.fillStyle = theme.textSecondary;
+        ctx.font = `400 ${SUBTITLE_SIZE}px ${theme.fontBody}`;
+        const subtitleY = titleY + SUBTITLE_SIZE * 0.85 + HEADER_LINE_GAP;
+        ctx.fillText(`Year-to-Date Stats — ${year}`, W / 2, subtitleY);
+
+        const contentStartY = subtitleY + 32;
+
+        // Layout: two side-by-side card columns (Leads | Follows), each sized independently
+        // off its own row count so a shorter list doesn't leave dead space below its card.
+        const CARD_HEADER_H = 76;
+        const CARD_PAD_BOTTOM = 16;
+        const COLUMN_GAP = 24;
+        const FOOTER_H = 40;
+        const ROW_INSET = 12; // matches the old single-card cardX = PAD - 12 inset
+        const MIN_ROW_H = 44;
+        const ABSOLUTE_MAX_ROW_H = 200; // hard ceiling regardless of the other column
+        const ROW_H_CAP_RATIO = 1.6;    // a column can grow up to this many times the other column's own row height
+        const availForRows = (H - FOOTER_H) - contentStartY - (CARD_HEADER_H + CARD_PAD_BOTTOM);
+
+        // A column's row-height cap is relative to the *other* column, not a flat constant: two
+        // even lists (e.g. 8 leads vs 8 follows) should both fill the available height with no
+        // cap at all, while a lopsided pair still gets bounded so the short column doesn't
+        // balloon into a single giant, visually-mismatched row.
+        const naturalRowH = (count: number): number => count > 0 ? Math.floor(availForRows / count) : ABSOLUTE_MAX_ROW_H;
+        const rowHCapFor = (otherCount: number): number =>
+            Math.min(ABSOLUTE_MAX_ROW_H, Math.max(MIN_ROW_H, naturalRowH(otherCount)) * ROW_H_CAP_RATIO);
+
+        const columnW = (W - 2 * (PAD - ROW_INSET) - COLUMN_GAP) / 2;
+        const leadsCardX = PAD - ROW_INSET;
+        const followsCardX = leadsCardX + columnW + COLUMN_GAP;
+
+        const rankW = 44;
+        const nameAreaW = columnW - 48 - rankW - 140;
+
+        // A name that doesn't fit on one line even after shrinking wraps onto two lines
+        // instead of being cut short (see fitNameToBox in socialImage.ts). A wrapped row
+        // needs more vertical room than a normal row; WRAP_ROWS is how much more.
+        const WRAP_ROWS = 1.7;
+
+        const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(40, rowH - 26));
+        const rankFontSizeFor = (nameFontSize: number): number => Math.max(18, nameFontSize - 4);
+        const minNameFontSizeFor = (nameFontSize: number): number => Math.max(18, Math.round(nameFontSize * 0.7));
+
+        // Solves this column's row height independently of the other column: bigger rows for
+        // a shorter list, no shared "sized off the larger list" dead space.
+        const planColumn = (rows: YtdStandingRow[], rowHBaseline: number, rowHCap: number): YtdSectionPlan => {
+            const buildAt = (rowH: number): YtdSectionPlan => {
+                const nameFontSize = nameFontSizeFor(rowH);
+                const rankFontSize = rankFontSizeFor(nameFontSize);
+                const minNameFontSize = minNameFontSizeFor(nameFontSize);
+                let totalHeight = 0;
+                const planned = rows.map((row, idx) => {
+                    const isTop = idx === 0;
+                    const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, isTop);
+                    const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
+                    totalHeight += height;
+                    return { fit, isTop, height };
+                });
+                return { rows: planned, totalHeight, nameFontSize, rankFontSize };
+            };
+
+            let plan = buildAt(rowHBaseline);
+            const effectiveUnits = plan.rows.reduce((sum, r) => sum + r.height / rowHBaseline, 0);
+            if (rows.length > 0 && effectiveUnits > rows.length) {
+                const rowHFinal = Math.max(MIN_ROW_H, Math.min(rowHCap, Math.floor(availForRows / effectiveUnits)));
+                plan = buildAt(rowHFinal);
+            }
+            return plan;
+        };
+
+        const leadsRowHCap = rowHCapFor(top8Follows.length);
+        const followsRowHCap = rowHCapFor(top8Leads.length);
+        const leadsRowHBaseline = top8Leads.length > 0
+            ? Math.max(MIN_ROW_H, Math.min(leadsRowHCap, naturalRowH(top8Leads.length)))
+            : leadsRowHCap;
+        const followsRowHBaseline = top8Follows.length > 0
+            ? Math.max(MIN_ROW_H, Math.min(followsRowHCap, naturalRowH(top8Follows.length)))
+            : followsRowHCap;
+
+        const leadsPlan = planColumn(top8Leads, leadsRowHBaseline, leadsRowHCap);
+        const followsPlan = planColumn(top8Follows, followsRowHBaseline, followsRowHCap);
+
+        drawYtdCard(ctx, theme, top8Leads, 'Leads', leadsCardX, columnW, contentStartY, leadsPlan);
+        drawYtdCard(ctx, theme, top8Follows, 'Follows', followsCardX, columnW, contentStartY, followsPlan);
+
+        downloadCanvasAsPng(canvas, `hnt-ytd-${year}-top8.png`, () => showToast('Failed to generate image', 'error'));
     }
 
     // ---- admin: contributed battles ----
@@ -140,6 +398,11 @@ import type {
             edit.textContent = 'Edit';
             edit.addEventListener('click', () => editBattle(b.id));
             actions.appendChild(edit);
+            const image = document.createElement('button');
+            image.className = 'btn secondary small';
+            image.textContent = 'Instagram Post';
+            image.addEventListener('click', () => exportBattleImage(b.id));
+            actions.appendChild(image);
             const del = document.createElement('button');
             del.className = 'btn secondary small';
             del.textContent = 'Delete';
@@ -148,6 +411,23 @@ import type {
             tr.appendChild(actions);
             body.appendChild(tr);
         });
+    }
+
+    async function exportBattleImage(id: string): Promise<void> {
+        let battle: BattleDetail;
+        try {
+            const res = await fetch(`/api/stats/battles/${id}`);
+            if (!res.ok) throw new Error();
+            battle = (await res.json()) as BattleDetail;
+        } catch {
+            alert('Failed to load battle.');
+            return;
+        }
+        if (!window.exportBattleResultsImage) {
+            alert('Image export is unavailable.');
+            return;
+        }
+        await window.exportBattleResultsImage(battle.raw_data, { name: battle.name, battle_date: battle.battle_date || '' });
     }
 
     async function deleteBattle(id: string, name: string): Promise<void> {
@@ -206,22 +486,28 @@ import type {
         });
     }
 
-    // ---- admin: dancers (merge duplicates) ----
+    // ---- admin: dancers (rename, merge duplicates) ----
 
     let mergeNameDirty = false; // true once the admin has typed into #ytd-merge-name themselves
+    let lastDancers: DancersResponse['dancers'] = [];
+    let editingDancerId: string | null = null; // dancer row currently showing the rename input
 
     async function loadDancers(): Promise<void> {
         if (!isAdmin) return;
-        let dancers: DancersResponse['dancers'] = [];
         try {
             const res = await fetch('/api/stats/dancers');
-            dancers = ((await res.json()) as DancersResponse).dancers || [];
+            lastDancers = ((await res.json()) as DancersResponse).dancers || [];
         } catch {
-            dancers = [];
+            lastDancers = [];
         }
+        editingDancerId = null;
+        renderDancerRows();
+    }
+
+    function renderDancerRows(): void {
         const body = $('ytd-dancers-body');
         body.innerHTML = '';
-        dancers.forEach((d) => {
+        lastDancers.forEach((d) => {
             const tr = document.createElement('tr');
             const checkCell = document.createElement('td');
             const check = document.createElement('input');
@@ -232,7 +518,45 @@ import type {
             tr.appendChild(checkCell);
 
             const nameCell = document.createElement('td');
-            nameCell.textContent = d.display_name;
+            const actionsCell = document.createElement('td');
+
+            if (editingDancerId === d.id) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = d.display_name;
+                nameCell.appendChild(input);
+                const errorEl = document.createElement('div');
+                errorEl.className = 'error-message';
+                nameCell.appendChild(errorEl);
+
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'btn primary small';
+                saveBtn.textContent = 'Save';
+                saveBtn.addEventListener('click', () => void saveDancerRename(d.id, input.value.trim(), errorEl));
+                actionsCell.appendChild(saveBtn);
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'btn secondary small';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.addEventListener('click', () => {
+                    editingDancerId = null;
+                    renderDancerRows();
+                });
+                actionsCell.appendChild(cancelBtn);
+
+                input.focus();
+                input.select();
+            } else {
+                nameCell.textContent = d.display_name;
+                const renameBtn = document.createElement('button');
+                renameBtn.className = 'btn secondary small';
+                renameBtn.textContent = 'Rename';
+                renameBtn.addEventListener('click', () => {
+                    editingDancerId = d.id;
+                    renderDancerRows();
+                });
+                actionsCell.appendChild(renameBtn);
+            }
             tr.appendChild(nameCell);
 
             const aliasCell = document.createElement('td');
@@ -249,9 +573,36 @@ import type {
             }
             tr.appendChild(battlesCell);
 
+            tr.appendChild(actionsCell);
             body.appendChild(tr);
         });
         updateMergeButtonState();
+    }
+
+    async function saveDancerRename(id: string, newName: string, errorEl: HTMLElement): Promise<void> {
+        errorEl.textContent = '';
+        if (!newName) {
+            errorEl.textContent = 'Name is required.';
+            return;
+        }
+        const res = await fetch(`/api/stats/dancers/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: newName }),
+        });
+        let data: Partial<ApiErrorResponse>;
+        try {
+            data = (await res.json()) as Partial<ApiErrorResponse>;
+        } catch {
+            data = {};
+        }
+        if (!res.ok) {
+            errorEl.textContent = data.error || 'Failed to rename dancer.';
+            return;
+        }
+        editingDancerId = null;
+        await loadDancers();
+        await loadStandings();
     }
 
     function updateMergeButtonState(): void {
@@ -561,6 +912,7 @@ import type {
             await loadStandings();
             await loadBattles();
         });
+        on('ytd-export-image-btn', 'click', () => void exportYtdImage());
 
         // admin login modal
         on('ytd-admin-login-btn', 'click', () => {
