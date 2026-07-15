@@ -102,7 +102,90 @@ export function downloadCanvasAsPng(canvas: HTMLCanvasElement, filename: string,
     }, 'image/png');
 }
 
+/**
+ * Baseline Y for a single line of text (rank number, points, etc.) vertically placed within
+ * a row. Normal (single-line-name) rows keep the original "0.64 down from the row top"
+ * placement rows have always used; a wrapped (two-line-name) row is taller than that formula
+ * was tuned for, so it centers the text on the row's actual height instead.
+ */
+export function singleLineBaseline(rowY: number, rowHeight: number, fontSize: number, isWrapped: boolean): number {
+    return isWrapped ? rowY + rowHeight / 2 + fontSize * 0.35 : rowY + rowHeight * 0.64;
+}
+
 /** lowercase, non-alphanumeric -> '-', trimmed; used for downloaded filenames. */
 export function slugify(s: string): string {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'battle';
+}
+
+function fontString(size: number, family: string, bold: boolean): string {
+    return `${bold ? 'bold' : '400'} ${size}px ${family}`;
+}
+
+/** Shrinks `text` (via binary search on measured width) until it plus an ellipsis fits `maxWidth`.
+ * Assumes ctx.font is already set to the size/family the caller wants measured. */
+function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid;
+        else hi = mid - 1;
+    }
+    return text.slice(0, lo) + '…';
+}
+
+export interface FitNameResult {
+    /** 1 or 2 lines to render, in order. */
+    lines: string[];
+    /** px size to use for every returned line. */
+    fontSize: number;
+}
+
+/**
+ * Fits a name into a box of `maxWidth`, in three tiers: shrink the font down to
+ * `minFontSize` to fit on one line; if a multi-word name still doesn't fit even at
+ * `minFontSize`, wrap it onto two lines; if it still doesn't fit (a single very long
+ * word, or an overflowing second line), truncate with an ellipsis as the last resort.
+ */
+export function fitNameToBox(
+    ctx: CanvasRenderingContext2D,
+    name: string,
+    maxWidth: number,
+    baseFontSize: number,
+    minFontSize: number,
+    fontFamily: string,
+    bold: boolean,
+): FitNameResult {
+    ctx.font = fontString(baseFontSize, fontFamily, bold);
+    if (ctx.measureText(name).width <= maxWidth) {
+        return { lines: [name], fontSize: baseFontSize };
+    }
+
+    const shrunk = Math.max(minFontSize, Math.min(baseFontSize - 1, Math.floor(baseFontSize * maxWidth / ctx.measureText(name).width)));
+    ctx.font = fontString(shrunk, fontFamily, bold);
+    if (ctx.measureText(name).width <= maxWidth) {
+        return { lines: [name], fontSize: shrunk };
+    }
+
+    // Doesn't fit on one line even at the size floor - wrap onto two lines if possible.
+    ctx.font = fontString(minFontSize, fontFamily, bold);
+    const words = name.trim().split(/\s+/);
+    if (words.length > 1) {
+        let line1 = words[0];
+        let i = 1;
+        for (; i < words.length; i++) {
+            const candidate = `${line1} ${words[i]}`;
+            if (ctx.measureText(candidate).width > maxWidth) break;
+            line1 = candidate;
+        }
+        const line2Raw = words.slice(i).join(' ');
+        if (line2Raw) {
+            if (ctx.measureText(line1).width > maxWidth) line1 = truncateToWidth(ctx, line1, maxWidth);
+            return { lines: [line1, truncateToWidth(ctx, line2Raw, maxWidth)], fontSize: minFontSize };
+        }
+    }
+
+    // Single unbreakable "word" (or wrapping produced no second line) - truncate as the last resort.
+    return { lines: [truncateToWidth(ctx, name, maxWidth)], fontSize: minFontSize };
 }

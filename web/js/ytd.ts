@@ -3,7 +3,8 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
-import { downloadCanvasAsPng, getSocialTheme, isDarkTheme, roundRect, SOCIAL_H, SOCIAL_W } from './socialImage';
+import { downloadCanvasAsPng, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
+import type { FitNameResult } from './socialImage';
 import { showToast } from './toast';
 import type {
     AdminLoginResponse,
@@ -119,9 +120,21 @@ import type {
 
     // ---- top-8 social image export (Instagram feed post, 4:5) ----
 
-    /** Draws one ranked "top 8" card (rank, name, points, crowns) — modeled on the
-     * battle-results card chrome in web/js/results.ts's drawSection(), but without
-     * round badges since YTD standings have no per-round data. */
+    interface PlannedYtdRow {
+        fit: FitNameResult;
+        isTop: boolean;
+        height: number;
+    }
+    interface YtdSectionPlan {
+        rows: PlannedYtdRow[];
+        totalHeight: number;
+    }
+
+    /** Draws one ranked "top 8" card (rank, name, points) — modeled on the battle-results
+     * card chrome in web/js/results.ts's drawSection(), but without round badges since YTD
+     * standings have no per-round data. Row heights/name line-wrapping are pre-computed by
+     * exportYtdImage() (via fitNameToBox) and passed in as `plan`, so every row here just
+     * draws whatever it was told to. */
     function drawYtdCard(
         ctx: CanvasRenderingContext2D,
         theme: ReturnType<typeof getSocialTheme>,
@@ -130,12 +143,14 @@ import type {
         startY: number,
         cardX: number,
         cardW: number,
-        rowH: number,
+        nameFontSize: number,
+        rankFontSize: number,
+        plan: YtdSectionPlan,
     ): number {
         const CARD_HEADER_H = 76;
         const CARD_PAD_BOTTOM = 16;
         const CARD_RADIUS = 20;
-        const cardH = CARD_HEADER_H + rows.length * rowH + CARD_PAD_BOTTOM;
+        const cardH = CARD_HEADER_H + plan.totalHeight + CARD_PAD_BOTTOM;
 
         roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
         ctx.fillStyle = theme.bgCard;
@@ -162,50 +177,63 @@ import type {
         const rowPad = cardX + 24;
         const rankW = 44;
         const pointsColX = cardX + cardW - 24;
-        const nameFontSize = Math.max(20, Math.min(40, rowH - 26));
-        const rankFontSize = Math.max(16, nameFontSize - 4);
         const nameAreaW = cardW - 48 - rankW - 140;
+        let rowY = rowsStartY;
 
         rows.forEach((row, idx) => {
-            const rowY = rowsStartY + idx * rowH;
-            const textBaseY = rowY + rowH * 0.64;
-            const isTop = idx === 0;
+            const { fit, isTop, height: rowHeight } = plan.rows[idx];
+            const isWrapped = fit.lines.length === 2;
 
             if (idx % 2 === 0) {
                 ctx.fillStyle = theme.rowAlt;
-                ctx.fillRect(cardX + 12, rowY + 1, cardW - 24, rowH - 1);
+                ctx.fillRect(cardX + 12, rowY + 1, cardW - 24, rowHeight - 1);
             }
 
+            // Rank/points baselines: same formula as a normal row; centered instead for a
+            // wrapped row, whose height doesn't match what that formula was tuned for.
+            const rankBaseY = singleLineBaseline(rowY, rowHeight, rankFontSize, isWrapped);
             ctx.fillStyle = theme.textMuted;
             ctx.font = `400 ${rankFontSize}px ${theme.fontMono}`;
             ctx.textAlign = 'left';
-            ctx.fillText((idx + 1) + '.', rowPad, textBaseY);
+            ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 
+            // Name (1 or 2 lines, per fitNameToBox) + crown — clipped to the row's full height
+            // so a wrapped second line never spills into the points column.
             ctx.save();
             ctx.beginPath();
-            ctx.rect(rowPad + rankW, rowY, nameAreaW, rowH);
+            ctx.rect(rowPad + rankW, rowY, nameAreaW, rowHeight);
             ctx.clip();
-            const maxChars = Math.floor(nameAreaW / (nameFontSize * 0.54));
-            const displayName = row.display_name.length > maxChars
-                ? row.display_name.slice(0, maxChars - 1) + '…'
-                : row.display_name;
             ctx.fillStyle = isTop ? theme.textPrimary : theme.textSecondary;
-            ctx.font = isTop ? `bold ${nameFontSize}px ${theme.fontBody}` : `400 ${nameFontSize}px ${theme.fontBody}`;
-            ctx.fillText(displayName, rowPad + rankW, textBaseY);
+            ctx.font = isTop ? `bold ${fit.fontSize}px ${theme.fontBody}` : `400 ${fit.fontSize}px ${theme.fontBody}`;
+
+            let lastLineY: number;
+            if (!isWrapped) {
+                lastLineY = singleLineBaseline(rowY, rowHeight, fit.fontSize, false);
+                ctx.fillText(fit.lines[0], rowPad + rankW, lastLineY);
+            } else {
+                const lineGap = fit.fontSize * 1.15;
+                const line1Y = rowY + rowHeight / 2 - lineGap / 2 + fit.fontSize * 0.35;
+                lastLineY = line1Y + lineGap;
+                ctx.fillText(fit.lines[0], rowPad + rankW, line1Y);
+                ctx.fillText(fit.lines[1], rowPad + rankW, lastLineY);
+            }
             if (isTop) {
-                const nameW = ctx.measureText(displayName).width;
-                ctx.font = `${nameFontSize}px serif`;
-                ctx.fillText('👑', rowPad + rankW + nameW + 5, textBaseY);
+                const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
+                ctx.font = `${fit.fontSize}px serif`;
+                ctx.fillText('👑', rowPad + rankW + lastLineW + 5, lastLineY);
             }
             ctx.restore();
 
+            const pointsBaseY = singleLineBaseline(rowY, rowHeight, nameFontSize, isWrapped);
             ctx.textAlign = 'right';
             ctx.fillStyle = theme.textPrimary;
             ctx.font = `bold ${nameFontSize}px ${theme.fontMono}`;
-            ctx.fillText(`${row.total_points} pts`, pointsColX, textBaseY);
+            ctx.fillText(`${row.total_points} pts`, pointsColX, pointsBaseY);
+
+            rowY += rowHeight;
         });
 
-        return rowsStartY + rows.length * rowH + CARD_PAD_BOTTOM;
+        return rowsStartY + plan.totalHeight + CARD_PAD_BOTTOM;
     }
 
     async function exportYtdImage(): Promise<void> {
@@ -257,13 +285,51 @@ import type {
         const availForRows = (H - FOOTER_H) - contentStartY
             - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
             - SECTION_GAP;
-        const rowH = Math.max(40, Math.floor(availForRows / (2 * maxRows)));
 
         const cardX = PAD - 12;
         const cardW = W - 2 * (PAD - 12);
+        const rankW = 44;
+        const nameAreaW = cardW - 48 - rankW - 140;
 
-        const leadsEnd = drawYtdCard(ctx, theme, top8Leads, 'Leads', contentStartY, cardX, cardW, rowH);
-        drawYtdCard(ctx, theme, top8Follows, 'Follows', leadsEnd + SECTION_GAP, cardX, cardW, rowH);
+        // A name that doesn't fit on one line even after shrinking wraps onto two lines
+        // instead of being cut short (see fitNameToBox in socialImage.ts). A wrapped row
+        // needs more vertical room than a normal row; WRAP_ROWS is how much more.
+        const WRAP_ROWS = 1.7;
+
+        let rowH = Math.max(40, Math.floor(availForRows / (2 * maxRows)));
+        let nameFontSize = Math.max(20, Math.min(40, rowH - 26));
+        let rankFontSize = Math.max(16, nameFontSize - 4);
+        let minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
+
+        const planSection = (rows: YtdStandingRow[]): YtdSectionPlan => {
+            let totalHeight = 0;
+            const planned = rows.map((row, idx) => {
+                const isTop = idx === 0;
+                const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, isTop);
+                const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
+                totalHeight += height;
+                return { fit, isTop, height };
+            });
+            return { rows: planned, totalHeight };
+        };
+
+        let leadsPlan = planSection(top8Leads);
+        let followsPlan = planSection(top8Follows);
+        const wrapCount = [...leadsPlan.rows, ...followsPlan.rows].filter(r => r.fit.lines.length === 2).length;
+
+        if (wrapCount > 0) {
+            const effectiveUnits = 2 * maxRows + wrapCount * (WRAP_ROWS - 1);
+            rowH = Math.max(40, Math.floor(availForRows / effectiveUnits));
+            nameFontSize = Math.max(20, Math.min(40, rowH - 26));
+            rankFontSize = Math.max(16, nameFontSize - 4);
+            minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
+
+            leadsPlan = planSection(top8Leads);
+            followsPlan = planSection(top8Follows);
+        }
+
+        const leadsEnd = drawYtdCard(ctx, theme, top8Leads, 'Leads', contentStartY, cardX, cardW, nameFontSize, rankFontSize, leadsPlan);
+        drawYtdCard(ctx, theme, top8Follows, 'Follows', leadsEnd + SECTION_GAP, cardX, cardW, nameFontSize, rankFontSize, followsPlan);
 
         downloadCanvasAsPng(canvas, `hnt-ytd-${year}-top8.png`, () => showToast('Failed to generate image', 'error'));
     }
