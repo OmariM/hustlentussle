@@ -128,25 +128,25 @@ import type {
     interface YtdSectionPlan {
         rows: PlannedYtdRow[];
         totalHeight: number;
+        nameFontSize: number;
+        rankFontSize: number;
     }
 
     /** Draws one ranked "top 8" card (rank, name, points) — modeled on the battle-results
      * card chrome in web/js/results.ts's drawSection(), but without round badges since YTD
-     * standings have no per-round data. Row heights/name line-wrapping are pre-computed by
-     * exportYtdImage() (via fitNameToBox) and passed in as `plan`, so every row here just
-     * draws whatever it was told to. */
+     * standings have no per-round data. Row heights/name line-wrapping/font sizes are
+     * pre-computed by exportYtdImage() (via fitNameToBox) and passed in as `plan`, so every
+     * row here just draws whatever it was told to. */
     function drawYtdCard(
         ctx: CanvasRenderingContext2D,
         theme: ReturnType<typeof getSocialTheme>,
         rows: YtdStandingRow[],
         label: string,
-        startY: number,
         cardX: number,
         cardW: number,
-        nameFontSize: number,
-        rankFontSize: number,
+        startY: number,
         plan: YtdSectionPlan,
-    ): number {
+    ): void {
         const CARD_HEADER_H = 76;
         const CARD_PAD_BOTTOM = 16;
         const CARD_RADIUS = 20;
@@ -184,6 +184,8 @@ import type {
             const { fit, isTop, height: rowHeight } = plan.rows[idx];
             const isWrapped = fit.lines.length === 2;
 
+            // Alternating row tint — scoped to this column's own bounds (not the full canvas
+            // width), since there are now two side-by-side cards, not one full-width card.
             if (idx % 2 === 0) {
                 ctx.fillStyle = theme.rowAlt;
                 ctx.fillRect(cardX + 12, rowY + 1, cardW - 24, rowHeight - 1);
@@ -191,9 +193,9 @@ import type {
 
             // Rank/points baselines: same formula as a normal row; centered instead for a
             // wrapped row, whose height doesn't match what that formula was tuned for.
-            const rankBaseY = singleLineBaseline(rowY, rowHeight, rankFontSize, isWrapped);
+            const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
             ctx.fillStyle = theme.textMuted;
-            ctx.font = `400 ${rankFontSize}px ${theme.fontMono}`;
+            ctx.font = `400 ${plan.rankFontSize}px ${theme.fontMono}`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 
@@ -224,16 +226,14 @@ import type {
             }
             ctx.restore();
 
-            const pointsBaseY = singleLineBaseline(rowY, rowHeight, nameFontSize, isWrapped);
+            const pointsBaseY = singleLineBaseline(rowY, rowHeight, plan.nameFontSize, isWrapped);
             ctx.textAlign = 'right';
             ctx.fillStyle = theme.textPrimary;
-            ctx.font = `bold ${nameFontSize}px ${theme.fontMono}`;
+            ctx.font = `bold ${plan.nameFontSize}px ${theme.fontMono}`;
             ctx.fillText(`${row.total_points} pts`, pointsColX, pointsBaseY);
 
             rowY += rowHeight;
         });
-
-        return rowsStartY + plan.totalHeight + CARD_PAD_BOTTOM;
     }
 
     async function exportYtdImage(): Promise<void> {
@@ -277,59 +277,84 @@ import type {
         ctx.fillText(`Year-to-Date Stats — ${year}`, W / 2, 200);
 
         const contentStartY = 260;
+
+        // Layout: two side-by-side card columns (Leads | Follows), each sized independently
+        // off its own row count so a shorter list doesn't leave dead space below its card.
         const CARD_HEADER_H = 76;
         const CARD_PAD_BOTTOM = 16;
-        const SECTION_GAP = 20;
+        const COLUMN_GAP = 24;
         const FOOTER_H = 40;
-        const maxRows = Math.max(top8Leads.length, top8Follows.length, 1);
-        const availForRows = (H - FOOTER_H) - contentStartY
-            - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
-            - SECTION_GAP;
+        const ROW_INSET = 12; // matches the old single-card cardX = PAD - 12 inset
+        const MIN_ROW_H = 40;
+        const ABSOLUTE_MAX_ROW_H = 200; // hard ceiling regardless of the other column
+        const ROW_H_CAP_RATIO = 1.6;    // a column can grow up to this many times the other column's own row height
+        const availForRows = (H - FOOTER_H) - contentStartY - (CARD_HEADER_H + CARD_PAD_BOTTOM);
 
-        const cardX = PAD - 12;
-        const cardW = W - 2 * (PAD - 12);
+        // A column's row-height cap is relative to the *other* column, not a flat constant: two
+        // even lists (e.g. 8 leads vs 8 follows) should both fill the available height with no
+        // cap at all, while a lopsided pair still gets bounded so the short column doesn't
+        // balloon into a single giant, visually-mismatched row.
+        const naturalRowH = (count: number): number => count > 0 ? Math.floor(availForRows / count) : ABSOLUTE_MAX_ROW_H;
+        const rowHCapFor = (otherCount: number): number =>
+            Math.min(ABSOLUTE_MAX_ROW_H, Math.max(MIN_ROW_H, naturalRowH(otherCount)) * ROW_H_CAP_RATIO);
+
+        const columnW = (W - 2 * (PAD - ROW_INSET) - COLUMN_GAP) / 2;
+        const leadsCardX = PAD - ROW_INSET;
+        const followsCardX = leadsCardX + columnW + COLUMN_GAP;
+
         const rankW = 44;
-        const nameAreaW = cardW - 48 - rankW - 140;
+        const nameAreaW = columnW - 48 - rankW - 140;
 
         // A name that doesn't fit on one line even after shrinking wraps onto two lines
         // instead of being cut short (see fitNameToBox in socialImage.ts). A wrapped row
         // needs more vertical room than a normal row; WRAP_ROWS is how much more.
         const WRAP_ROWS = 1.7;
 
-        let rowH = Math.max(40, Math.floor(availForRows / (2 * maxRows)));
-        let nameFontSize = Math.max(20, Math.min(40, rowH - 26));
-        let rankFontSize = Math.max(16, nameFontSize - 4);
-        let minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
+        const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(40, rowH - 26));
+        const rankFontSizeFor = (nameFontSize: number): number => Math.max(16, nameFontSize - 4);
+        const minNameFontSizeFor = (nameFontSize: number): number => Math.max(16, Math.round(nameFontSize * 0.7));
 
-        const planSection = (rows: YtdStandingRow[]): YtdSectionPlan => {
-            let totalHeight = 0;
-            const planned = rows.map((row, idx) => {
-                const isTop = idx === 0;
-                const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, isTop);
-                const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
-                totalHeight += height;
-                return { fit, isTop, height };
-            });
-            return { rows: planned, totalHeight };
+        // Solves this column's row height independently of the other column: bigger rows for
+        // a shorter list, no shared "sized off the larger list" dead space.
+        const planColumn = (rows: YtdStandingRow[], rowHBaseline: number, rowHCap: number): YtdSectionPlan => {
+            const buildAt = (rowH: number): YtdSectionPlan => {
+                const nameFontSize = nameFontSizeFor(rowH);
+                const rankFontSize = rankFontSizeFor(nameFontSize);
+                const minNameFontSize = minNameFontSizeFor(nameFontSize);
+                let totalHeight = 0;
+                const planned = rows.map((row, idx) => {
+                    const isTop = idx === 0;
+                    const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, isTop);
+                    const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
+                    totalHeight += height;
+                    return { fit, isTop, height };
+                });
+                return { rows: planned, totalHeight, nameFontSize, rankFontSize };
+            };
+
+            let plan = buildAt(rowHBaseline);
+            const effectiveUnits = plan.rows.reduce((sum, r) => sum + r.height / rowHBaseline, 0);
+            if (rows.length > 0 && effectiveUnits > rows.length) {
+                const rowHFinal = Math.max(MIN_ROW_H, Math.min(rowHCap, Math.floor(availForRows / effectiveUnits)));
+                plan = buildAt(rowHFinal);
+            }
+            return plan;
         };
 
-        let leadsPlan = planSection(top8Leads);
-        let followsPlan = planSection(top8Follows);
-        const wrapCount = [...leadsPlan.rows, ...followsPlan.rows].filter(r => r.fit.lines.length === 2).length;
+        const leadsRowHCap = rowHCapFor(top8Follows.length);
+        const followsRowHCap = rowHCapFor(top8Leads.length);
+        const leadsRowHBaseline = top8Leads.length > 0
+            ? Math.max(MIN_ROW_H, Math.min(leadsRowHCap, naturalRowH(top8Leads.length)))
+            : leadsRowHCap;
+        const followsRowHBaseline = top8Follows.length > 0
+            ? Math.max(MIN_ROW_H, Math.min(followsRowHCap, naturalRowH(top8Follows.length)))
+            : followsRowHCap;
 
-        if (wrapCount > 0) {
-            const effectiveUnits = 2 * maxRows + wrapCount * (WRAP_ROWS - 1);
-            rowH = Math.max(40, Math.floor(availForRows / effectiveUnits));
-            nameFontSize = Math.max(20, Math.min(40, rowH - 26));
-            rankFontSize = Math.max(16, nameFontSize - 4);
-            minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
+        const leadsPlan = planColumn(top8Leads, leadsRowHBaseline, leadsRowHCap);
+        const followsPlan = planColumn(top8Follows, followsRowHBaseline, followsRowHCap);
 
-            leadsPlan = planSection(top8Leads);
-            followsPlan = planSection(top8Follows);
-        }
-
-        const leadsEnd = drawYtdCard(ctx, theme, top8Leads, 'Leads', contentStartY, cardX, cardW, nameFontSize, rankFontSize, leadsPlan);
-        drawYtdCard(ctx, theme, top8Follows, 'Follows', leadsEnd + SECTION_GAP, cardX, cardW, nameFontSize, rankFontSize, followsPlan);
+        drawYtdCard(ctx, theme, top8Leads, 'Leads', leadsCardX, columnW, contentStartY, leadsPlan);
+        drawYtdCard(ctx, theme, top8Follows, 'Follows', followsCardX, columnW, contentStartY, followsPlan);
 
         downloadCanvasAsPng(canvas, `hnt-ytd-${year}-top8.png`, () => showToast('Failed to generate image', 'error'));
     }
