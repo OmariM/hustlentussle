@@ -1113,24 +1113,26 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
         ? Math.max(MIN_ROW_H, Math.min(followsRowHCap, naturalRowH(followsOrder.length)))
         : followsRowHCap;
 
-    // Badge mode/size: shrink to fit one row first; if even the busiest dancer's badges
-    // would be illegibly small on one line, wrap onto a second row instead (same "shrink,
-    // then wrap" approach already used for names). Decided once, using the tighter of the
-    // two columns' baseline row heights as the single-row size cap.
-    const WRAP_THRESHOLD = 18; // below this a single badge row is no longer legible
-    const BADGE_FLOOR = 13;    // hard floor once wrapped to 2 rows
+    // Badge mode/size: shrink to fit one row first; if a single row wouldn't reach a
+    // genuinely good size (not just "technically legible"), wrap onto a second row instead
+    // (same "shrink, then wrap" approach already used for names) — two rows of bigger
+    // badges reads better than one cramped row. Decided once, using the tighter of the two
+    // columns' baseline row heights as the single-row size cap.
+    const TARGET_BADGE_SIZE = 26; // stay on 1 row only if it reaches this size
+    const MAX_BADGE_SIZE = 34;    // cap even in 2-row mode so a moderate round count doesn't overshoot into oversized badges
+    const BADGE_FLOOR = 13;       // hard floor once wrapped to 2 rows
     const singleRowSize = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
     const badgeRowHCap = Math.min(leadsRowHBaseline, followsRowHBaseline);
     let badgeRows: 1 | 2;
     let badgeSize: number;
-    if (singleRowSize >= WRAP_THRESHOLD) {
+    if (singleRowSize >= TARGET_BADGE_SIZE) {
         badgeRows = 1;
-        badgeSize = Math.max(WRAP_THRESHOLD, Math.min(badgeRowHCap - 18, singleRowSize));
+        badgeSize = Math.max(TARGET_BADGE_SIZE, Math.min(badgeRowHCap - 18, singleRowSize));
     } else {
         const perRow = Math.ceil(maxRoundsPerDancer / 2);
         const doubleRowSize = Math.floor((badgeAreaW + badgeGap) / perRow) - badgeGap;
         badgeRows = 2;
-        badgeSize = Math.max(BADGE_FLOOR, doubleRowSize);
+        badgeSize = Math.max(BADGE_FLOOR, Math.min(MAX_BADGE_SIZE, doubleRowSize));
     }
     const bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
     const perLineBadgeCount = Math.floor((badgeAreaW + badgeGap) / (badgeSize + badgeGap));
