@@ -1031,133 +1031,201 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     ctx.fillStyle = C.accent;
     ctx.fillRect(0, 0, W, 12);
 
-    // --- Header ---
+    // --- Header --- (shrunk so more vertical room goes to the cards below; contentStartY
+    // is derived from whatever actually rendered here, not a flat constant, so a battle
+    // with no guest judges doesn't leave a blank gap where their line would have been)
+    const TITLE_SIZE = 44;
+    const SUBTITLE_SIZE = 32;
+    const JUDGES_SIZE = 28;
+    const HEADER_TOP = 20;
+    const HEADER_LINE_GAP = 14;
+
     ctx.textAlign = 'center';
     ctx.fillStyle = C.textPrimary;
-    ctx.font = `bold 78px ${C.fontDisplay}`;
-    ctx.fillText("Hustle n' Tussle", W / 2, 130);
+    ctx.font = `bold ${TITLE_SIZE}px ${C.fontDisplay}`;
+    const titleY = HEADER_TOP + TITLE_SIZE * 0.8;
+    ctx.fillText("Hustle n' Tussle", W / 2, titleY);
 
     ctx.fillStyle = C.textSecondary;
-    ctx.font = `400 38px ${C.fontBody}`;
-    ctx.fillText(subtitleText, W / 2, 200);
+    ctx.font = `400 ${SUBTITLE_SIZE}px ${C.fontBody}`;
+    const subtitleY = titleY + SUBTITLE_SIZE * 0.85 + HEADER_LINE_GAP;
+    ctx.fillText(subtitleText, W / 2, subtitleY);
 
+    let headerEndY = subtitleY;
     if (guestJudges.length > 0) {
         const judgeLabel = guestJudges.length === 1 ? 'Judge' : 'Judges';
         ctx.fillStyle = C.textSecondary;
-        ctx.font = `600 40px ${C.fontDisplay}`;
-        ctx.fillText(`${judgeLabel}: ${guestJudges.join(', ')}`, W / 2, 258);
+        ctx.font = `600 ${JUDGES_SIZE}px ${C.fontDisplay}`;
+        headerEndY = subtitleY + JUDGES_SIZE * 0.85 + HEADER_LINE_GAP;
+        ctx.fillText(`${judgeLabel}: ${guestJudges.join(', ')}`, W / 2, headerEndY);
     }
 
-    const contentStartY = 300;
+    const contentStartY = headerEndY + 32;
 
-    // Layout: two card sections (Leads then Follows)
+    // Layout: two side-by-side card columns (Leads | Follows), each sized independently
+    // off its own row count so a shorter list doesn't leave dead space below its card.
     const CARD_HEADER_H = 76;   // dark strip at top of each card
     const CARD_PAD_BOTTOM = 16; // padding below last row inside card
-    const SECTION_GAP = 20;
+    const COLUMN_GAP = 24;      // horizontal gap between the two cards
     const FOOTER_H = 40;
-    const availForRows = (H - FOOTER_H) - contentStartY
-        - 2 * (CARD_HEADER_H + CARD_PAD_BOTTOM)
-        - SECTION_GAP;
-    const maxDancers = Math.max(leadsOrder.length, followsOrder.length);
+    const ROW_INSET = 12;       // matches the old single-card cardX = PAD - 12 inset
+    const MIN_ROW_H = 40;
+    const ABSOLUTE_MAX_ROW_H = 200; // hard ceiling regardless of the other column
+    const ROW_H_CAP_RATIO = 1.6;    // a column can grow up to this many times the other column's own row height
+    const availForRows = (H - FOOTER_H) - contentStartY - (CARD_HEADER_H + CARD_PAD_BOTTOM);
 
-    // Badge sizing: fit all rounds on a single horizontal line per row
-    const rankW = 44;
-    const nameAreaW = 260;
-    const badgeStartX = PAD + rankW + nameAreaW + 24;
-    const badgeAreaW = W - PAD - badgeStartX;
+    // A column's row-height cap is relative to the *other* column, not a flat constant: two
+    // even lists (e.g. 4 leads vs 4 follows) should both fill the available height with no
+    // cap at all, while a lopsided pair (e.g. 1 lead vs 8 follows) still gets bounded so the
+    // short column doesn't balloon into a single giant, visually-mismatched row.
+    const naturalRowH = (count: number): number => count > 0 ? Math.floor(availForRows / count) : ABSOLUTE_MAX_ROW_H;
+    const rowHCapFor = (otherCount: number): number =>
+        Math.min(ABSOLUTE_MAX_ROW_H, Math.max(MIN_ROW_H, naturalRowH(otherCount)) * ROW_H_CAP_RATIO);
+
+    const columnW = (W - 2 * (PAD - ROW_INSET) - COLUMN_GAP) / 2;
+    const leadsCardX = PAD - ROW_INSET;
+    const followsCardX = leadsCardX + columnW + COLUMN_GAP;
+
+    // Badge geometry is shared across both columns (same width) so a given round's badge
+    // is the same physical size in the Leads and Follows cards.
+    const rankW = 40;
+    const nameToBadgeGap = 16;
+    const rowContentW = columnW - 2 * ROW_INSET;
+    const badgeAreaW = 230; // widened at the name column's expense so badges render bigger
+    const nameAreaW = rowContentW - rankW - nameToBadgeGap - badgeAreaW;
     const badgeGap = 4;
+    const badgeRowGap = 6;
 
-    // Use the most rounds any individual dancer competed in (not total game rounds)
-    // so the badge row fills the full width for the most active dancer.
+    // Use the most rounds any individual dancer competed in (not total game rounds) so the
+    // badge row fills the full width for the most active dancer.
     const allRoundCounts = [
         ...leadsOrder.map(n => (leadMap.get(n) || []).length),
         ...followsOrder.map(n => (followMap.get(n) || []).length),
     ];
     const maxRoundsPerDancer = Math.max(...allRoundCounts, 1);
-    const badgeSizeFromRounds = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
 
-    // rowH fills all available vertical space; badgeSize is the smaller of the two constraints
-    const maxRowHFromSpace = maxDancers > 0 ? Math.floor(availForRows / (2 * maxDancers)) : 70;
-    let rowH = Math.max(36, maxRowHFromSpace);
-    let badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
-    let bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
-    let nameFontSize = Math.max(20, Math.min(44, rowH - 26));
-    let rankFontSize = Math.max(16, nameFontSize - 4);
-    let minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
+    const leadsRowHCap = rowHCapFor(followsOrder.length);
+    const followsRowHCap = rowHCapFor(leadsOrder.length);
+    const leadsRowHBaseline = leadsOrder.length > 0
+        ? Math.max(MIN_ROW_H, Math.min(leadsRowHCap, naturalRowH(leadsOrder.length)))
+        : leadsRowHCap;
+    const followsRowHBaseline = followsOrder.length > 0
+        ? Math.max(MIN_ROW_H, Math.min(followsRowHCap, naturalRowH(followsOrder.length)))
+        : followsRowHCap;
+
+    // Badge mode/size: shrink to fit one row first; if a single row wouldn't reach a
+    // genuinely good size (not just "technically legible"), wrap onto a second row instead
+    // (same "shrink, then wrap" approach already used for names) — two rows of bigger
+    // badges reads better than one cramped row. Decided once, using the tighter of the two
+    // columns' baseline row heights as the single-row size cap.
+    const TARGET_BADGE_SIZE = 26; // stay on 1 row only if it reaches this size
+    const MAX_BADGE_SIZE = 34;    // cap even in 2-row mode so a moderate round count doesn't overshoot into oversized badges
+    const BADGE_FLOOR = 13;       // hard floor once wrapped to 2 rows
+    const singleRowSize = Math.floor((badgeAreaW + badgeGap) / maxRoundsPerDancer) - badgeGap;
+    const badgeRowHCap = Math.min(leadsRowHBaseline, followsRowHBaseline);
+    let badgeRows: 1 | 2;
+    let badgeSize: number;
+    if (singleRowSize >= TARGET_BADGE_SIZE) {
+        badgeRows = 1;
+        badgeSize = Math.max(TARGET_BADGE_SIZE, Math.min(badgeRowHCap - 18, singleRowSize));
+    } else {
+        const perRow = Math.ceil(maxRoundsPerDancer / 2);
+        const doubleRowSize = Math.floor((badgeAreaW + badgeGap) / perRow) - badgeGap;
+        badgeRows = 2;
+        badgeSize = Math.max(BADGE_FLOOR, Math.min(MAX_BADGE_SIZE, doubleRowSize));
+    }
+    const bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
+    const perLineBadgeCount = Math.floor((badgeAreaW + badgeGap) / (badgeSize + badgeGap));
+
+    const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(44, rowH - 26));
+    const rankFontSizeFor = (nameFontSize: number): number => Math.max(18, nameFontSize - 4);
+    const minNameFontSizeFor = (nameFontSize: number): number => Math.max(18, Math.round(nameFontSize * 0.7));
 
     // A name that doesn't fit on one line even after shrinking wraps onto two lines instead
-    // of being cut short (see fitNameToBox in socialImage.ts). A wrapped row needs more
-    // vertical room than a normal row; WRAP_ROWS is how much more.
+    // of being cut short (see fitNameToBox in socialImage.ts); a dancer with more round
+    // badges than fit on one line at the shared badgeSize gets a second badge row instead of
+    // shrinking past legibility. Either reason a row needs more height uses the same
+    // WRAP_ROWS multiplier — the row simply grows to fit whichever needs more room.
     const WRAP_ROWS = 1.7;
 
     interface PlannedRow {
         fit: FitNameResult;
         isTop: boolean;
+        badgeRowsUsed: 1 | 2;
         height: number;
     }
     interface SectionPlan {
         rows: PlannedRow[];
         totalHeight: number;
+        rankFontSize: number;
     }
 
-    const planSection = (order: string[], topName: string | null): SectionPlan => {
-        let totalHeight = 0;
-        const rows = order.map(name => {
-            const isTop = name === topName;
-            const fit = fitNameToBox(ctx, name, nameAreaW, nameFontSize, minNameFontSize, C.fontBody, isTop);
-            const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
-            totalHeight += height;
-            return { fit, isTop, height };
-        });
-        return { rows, totalHeight };
+    const roundsFor = (map: Map<string, RoundBadge[]>, name: string): number => (map.get(name) || []).length;
+
+    // Solves this column's row height independently of the other column: bigger rows for a
+    // shorter list, no shared "sized off the larger list" dead space.
+    const planColumn = (order: string[], map: Map<string, RoundBadge[]>, topName: string | null, rowHBaseline: number, rowHCap: number): SectionPlan => {
+        const buildAt = (rowH: number): SectionPlan => {
+            const nameFontSize = nameFontSizeFor(rowH);
+            const rankFontSize = rankFontSizeFor(nameFontSize);
+            const minNameFontSize = minNameFontSizeFor(nameFontSize);
+            let totalHeight = 0;
+            const rows = order.map(name => {
+                const isTop = name === topName;
+                const fit = fitNameToBox(ctx, name, nameAreaW, nameFontSize, minNameFontSize, C.fontBody, isTop);
+                const n = roundsFor(map, name);
+                const badgeRowsUsed: 1 | 2 = (badgeRows === 2 && n > perLineBadgeCount) ? 2 : 1;
+                const badgeStackH = badgeRowsUsed === 2 ? (2 * badgeSize + badgeRowGap + 14) : 0;
+                const multiplier = Math.max(
+                    1,
+                    fit.lines.length === 2 ? WRAP_ROWS : 1,
+                    badgeRowsUsed === 2 ? Math.max(1, badgeStackH / rowH) : 1,
+                );
+                const height = rowH * multiplier;
+                totalHeight += height;
+                return { fit, isTop, badgeRowsUsed, height };
+            });
+            return { rows, totalHeight, rankFontSize };
+        };
+
+        let plan = buildAt(rowHBaseline);
+        const effectiveUnits = plan.rows.reduce((sum, r) => sum + r.height / rowHBaseline, 0);
+        if (order.length > 0 && effectiveUnits > order.length) {
+            const rowHFinal = Math.max(MIN_ROW_H, Math.min(rowHCap, Math.floor(availForRows / effectiveUnits)));
+            plan = buildAt(rowHFinal);
+        }
+        return plan;
     };
 
-    let leadsPlan = planSection(leadsOrder, topLeadName);
-    let followsPlan = planSection(followsOrder, topFollowName);
-    const wrapCount = [...leadsPlan.rows, ...followsPlan.rows].filter(r => r.fit.lines.length === 2).length;
-
-    if (wrapCount > 0) {
-        // Give wrapped rows their extra room by shrinking the shared rowH, then re-derive
-        // everything sized off it (and re-run the fit so its own results match what's drawn).
-        const effectiveUnits = 2 * maxDancers + wrapCount * (WRAP_ROWS - 1);
-        rowH = Math.max(36, Math.floor(availForRows / effectiveUnits));
-        badgeSize = Math.max(16, Math.min(rowH - 18, badgeSizeFromRounds));
-        bFontSize = Math.max(9, Math.round(badgeSize * 0.52));
-        nameFontSize = Math.max(20, Math.min(44, rowH - 26));
-        rankFontSize = Math.max(16, nameFontSize - 4);
-        minNameFontSize = Math.max(16, Math.round(nameFontSize * 0.7));
-
-        leadsPlan = planSection(leadsOrder, topLeadName);
-        followsPlan = planSection(followsOrder, topFollowName);
-    }
+    const leadsPlan = planColumn(leadsOrder, leadMap, topLeadName, leadsRowHBaseline, leadsRowHCap);
+    const followsPlan = planColumn(followsOrder, followMap, topFollowName, followsRowHBaseline, followsRowHCap);
 
     const drawSection = (
         order: string[],
         map: Map<string, RoundBadge[]>,
         label: string,
-        startY: number,
+        cardX: number,
         plan: SectionPlan,
-    ): number => {
+    ): void => {
         const CARD_RADIUS = 20;
-        const cardX = PAD - 12;
-        const cardW = W - 2 * (PAD - 12);
+        const startY = contentStartY;
         const cardH = CARD_HEADER_H + plan.totalHeight + CARD_PAD_BOTTOM;
 
         // Card background
-        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, columnW, cardH, CARD_RADIUS);
         ctx.fillStyle = C.bgCard;
         ctx.fill();
 
         // Accent header strip — clipped to card shape so top corners are rounded
         ctx.save();
-        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, columnW, cardH, CARD_RADIUS);
         ctx.clip();
         ctx.fillStyle = C.accent;
-        ctx.fillRect(cardX, startY, cardW, CARD_HEADER_H);
+        ctx.fillRect(cardX, startY, columnW, CARD_HEADER_H);
         ctx.restore();
 
         // Card border
-        roundRect(ctx, cardX, startY, cardW, cardH, CARD_RADIUS);
+        roundRect(ctx, cardX, startY, columnW, cardH, CARD_RADIUS);
         ctx.strokeStyle = C.border;
         ctx.lineWidth = 1.5;
         ctx.stroke();
@@ -1170,30 +1238,37 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
 
         const rowsStartY = startY + CARD_HEADER_H;
         let rowY = rowsStartY;
+        const rowPad = cardX + ROW_INSET;
+        const nameX = rowPad + rankW;
+        const badgeStartX = nameX + nameAreaW + nameToBadgeGap;
 
         order.forEach((name, idx) => {
-            const { fit, isTop, height: rowHeight } = plan.rows[idx];
+            const { fit, isTop, badgeRowsUsed, height: rowHeight } = plan.rows[idx];
             const isWrapped = fit.lines.length === 2;
 
-            // Alternating row tint
+            // Alternating row tint — scoped to this column's own bounds (not the full canvas
+            // width), since there are now two side-by-side cards, not one full-width card.
             if (idx % 2 === 0) {
                 ctx.fillStyle = C.rowAlt;
-                ctx.fillRect(PAD - 8, rowY + 1, W - (PAD - 8) * 2, rowHeight - 1);
+                ctx.fillRect(cardX + 4, rowY + 1, columnW - 8, rowHeight - 1);
             }
 
             // Rank — same baseline formula as a normal row; centered instead for a wrapped row,
-            // whose height doesn't match what that formula was tuned for.
-            const rankBaseY = singleLineBaseline(rowY, rowHeight, rankFontSize, isWrapped);
+            // whose height doesn't match what that formula was tuned for. Uses the proportional
+            // body font, not the mono font used for badges/points: a monospace "1." reserves a
+            // full fixed-width cell for the narrow "1" glyph, leaving a visible gap before the
+            // period that a proportional font's natural kerning doesn't have.
+            const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
             ctx.fillStyle = C.textMuted;
-            ctx.font = `400 ${rankFontSize}px ${C.fontMono}`;
+            ctx.font = `400 ${plan.rankFontSize}px ${C.fontBody}`;
             ctx.textAlign = 'left';
-            ctx.fillText((idx + 1) + '.', PAD, rankBaseY);
+            ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 
             // Name (1 or 2 lines, per fitNameToBox) + crown — clipped to the row's full height
             // so a wrapped second line (or a bleeding crown) never spills into the badge area.
             ctx.save();
             ctx.beginPath();
-            ctx.rect(PAD + rankW, rowY, nameAreaW, rowHeight);
+            ctx.rect(nameX, rowY, nameAreaW, rowHeight);
             ctx.clip();
             ctx.fillStyle = isTop ? C.textPrimary : C.textSecondary;
             ctx.font = isTop
@@ -1203,54 +1278,61 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
             let lastLineY: number;
             if (!isWrapped) {
                 lastLineY = rowY + rowHeight * 0.64;
-                ctx.fillText(fit.lines[0], PAD + rankW, lastLineY);
+                ctx.fillText(fit.lines[0], nameX, lastLineY);
             } else {
                 const lineGap = fit.fontSize * 1.15;
                 const line1Y = rowY + rowHeight / 2 - lineGap / 2 + fit.fontSize * 0.35;
                 lastLineY = line1Y + lineGap;
-                ctx.fillText(fit.lines[0], PAD + rankW, line1Y);
-                ctx.fillText(fit.lines[1], PAD + rankW, lastLineY);
+                ctx.fillText(fit.lines[0], nameX, line1Y);
+                ctx.fillText(fit.lines[1], nameX, lastLineY);
             }
             if (isTop) {
                 const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
                 ctx.font = `${fit.fontSize}px serif`;
-                ctx.fillText('👑', PAD + rankW + lastLineW + 5, lastLineY);
+                ctx.fillText('👑', nameX + lastLineW + 5, lastLineY);
             }
             ctx.restore();
 
-            // Round badges — one row of circles, vertically centered on the row's actual height
+            // Round badges — one or two rows of circles (see badgeRowsUsed), vertically
+            // centered as a block on the row's actual height.
             const rounds = (map.get(name) || []).slice().sort((a, b) => a.round - b.round);
-            const badgeCY = rowY + rowHeight / 2;
-            rounds.forEach((info, bi) => {
-                const cx = badgeStartX + bi * (badgeSize + badgeGap) + badgeSize / 2;
-                const cy = badgeCY;
-                const r = badgeSize / 2;
+            const drawBadgeRow = (roundsInRow: RoundBadge[], cy: number): void => {
+                roundsInRow.forEach((info, bi) => {
+                    const cx = badgeStartX + bi * (badgeSize + badgeGap) + badgeSize / 2;
+                    const r = badgeSize / 2;
 
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.fillStyle = info.win ? C.badgeWin : C.badgeLose;
-                ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                    ctx.fillStyle = info.win ? C.badgeWin : C.badgeLose;
+                    ctx.fill();
 
-                ctx.beginPath();
-                ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
-                ctx.strokeStyle = info.win ? C.badgeWinBorder : C.badgeLoseBorder;
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r - 0.75, 0, Math.PI * 2);
+                    ctx.strokeStyle = info.win ? C.badgeWinBorder : C.badgeLoseBorder;
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
 
-                ctx.fillStyle = info.win ? C.badgeWinText : C.badgeLoseText;
-                ctx.font = `bold ${bFontSize}px ${C.fontMono}`;
-                ctx.textAlign = 'center';
-                ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
-            });
+                    ctx.fillStyle = info.win ? C.badgeWinText : C.badgeLoseText;
+                    ctx.font = `bold ${bFontSize}px ${C.fontMono}`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(String(info.round), cx, cy + bFontSize * 0.37);
+                });
+            };
+
+            if (badgeRowsUsed === 1) {
+                drawBadgeRow(rounds, rowY + rowHeight / 2);
+            } else {
+                const row1Count = Math.ceil(rounds.length / 2);
+                drawBadgeRow(rounds.slice(0, row1Count), rowY + rowHeight / 2 - (badgeSize + badgeRowGap) / 2);
+                drawBadgeRow(rounds.slice(row1Count), rowY + rowHeight / 2 + (badgeSize + badgeRowGap) / 2);
+            }
 
             rowY += rowHeight;
         });
-
-        return rowsStartY + plan.totalHeight + CARD_PAD_BOTTOM;
     };
 
-    const leadsEnd = drawSection(leadsOrder, leadMap, 'Leads', contentStartY, leadsPlan);
-    drawSection(followsOrder, followMap, 'Follows', leadsEnd + SECTION_GAP, followsPlan);
+    drawSection(leadsOrder, leadMap, 'Leads', leadsCardX, leadsPlan);
+    drawSection(followsOrder, followMap, 'Follows', followsCardX, followsPlan);
 
     return canvas;
 }
