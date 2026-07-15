@@ -164,7 +164,7 @@ import type {
         const pointsColX = cardX + cardW - 24;
         const nameFontSize = Math.max(20, Math.min(40, rowH - 26));
         const rankFontSize = Math.max(16, nameFontSize - 4);
-        const nameAreaW = cardW - 48 - rankW - 220;
+        const nameAreaW = cardW - 48 - rankW - 140;
 
         rows.forEach((row, idx) => {
             const rowY = rowsStartY + idx * rowH;
@@ -202,8 +202,7 @@ import type {
             ctx.textAlign = 'right';
             ctx.fillStyle = theme.textPrimary;
             ctx.font = `bold ${nameFontSize}px ${theme.fontMono}`;
-            const crownSuffix = row.crowns ? `  👑×${row.crowns}` : '';
-            ctx.fillText(`${row.total_points} pts${crownSuffix}`, pointsColX, textBaseY);
+            ctx.fillText(`${row.total_points} pts`, pointsColX, textBaseY);
         });
 
         return rowsStartY + rows.length * rowH + CARD_PAD_BOTTOM;
