@@ -192,10 +192,13 @@ import type {
             }
 
             // Rank/points baselines: same formula as a normal row; centered instead for a
-            // wrapped row, whose height doesn't match what that formula was tuned for.
+            // wrapped row, whose height doesn't match what that formula was tuned for. Rank
+            // uses the proportional body font, not the mono font used for points: a monospace
+            // "1." reserves a full fixed-width cell for the narrow "1" glyph, leaving a visible
+            // gap before the period that a proportional font's natural kerning doesn't have.
             const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
             ctx.fillStyle = theme.textMuted;
-            ctx.font = `400 ${plan.rankFontSize}px ${theme.fontMono}`;
+            ctx.font = `400 ${plan.rankFontSize}px ${theme.fontBody}`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 

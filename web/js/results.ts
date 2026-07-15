@@ -1240,10 +1240,13 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
             }
 
             // Rank — same baseline formula as a normal row; centered instead for a wrapped row,
-            // whose height doesn't match what that formula was tuned for.
+            // whose height doesn't match what that formula was tuned for. Uses the proportional
+            // body font, not the mono font used for badges/points: a monospace "1." reserves a
+            // full fixed-width cell for the narrow "1" glyph, leaving a visible gap before the
+            // period that a proportional font's natural kerning doesn't have.
             const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
             ctx.fillStyle = C.textMuted;
-            ctx.font = `400 ${plan.rankFontSize}px ${C.fontMono}`;
+            ctx.font = `400 ${plan.rankFontSize}px ${C.fontBody}`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 
