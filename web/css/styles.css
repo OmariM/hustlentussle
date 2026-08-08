@@ -3638,6 +3638,29 @@ input.prelims-number-input.dup {
     width: 4.5em;
 }
 
+/* Prelims — bulk "paste a list" roster add */
+.prelims-bulk {
+    margin-top: var(--space-sm);
+}
+.prelims-bulk > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 4px 0;
+}
+.prelims-bulk > summary:hover {
+    color: var(--text-primary);
+}
+.prelims-bulk textarea {
+    width: 100%;
+    margin-bottom: var(--space-sm);
+    font-family: inherit;
+    resize: vertical;
+}
+.prelims-bulk .form-helper-text {
+    margin: var(--space-xs) 0;
+}
+
 /* Prelim setup screen (dedicated) */
 .prelim-setup-cols {
     display: flex;

@@ -246,6 +246,12 @@
                         <input id="prelim-setup-add-lead-bib" type="number" min="1" placeholder="Bib" class="prelims-add-bib" />
                         <button id="prelim-setup-add-lead-btn" class="btn secondary">Add</button>
                     </div>
+                    <details class="prelims-bulk">
+                        <summary>Paste a list</summary>
+                        <p class="form-helper-text">One dancer per line (or a single comma-separated line). Bibs are optional: <code>12 Alice</code>, <code>12. Alice</code> or <code>Alice, 12</code>. Anyone without one gets the next free number.</p>
+                        <textarea id="prelim-setup-bulk-lead" rows="5" placeholder="Alice&#10;Ben&#10;12 Chris"></textarea>
+                        <button id="prelim-setup-bulk-lead-btn" class="btn secondary">Add all</button>
+                    </details>
                     <label class="prelim-setup-spots">Advance
                         <input type="number" id="prelim-setup-lead-spots" min="1" placeholder="all" />
                         leads
@@ -259,6 +265,12 @@
                         <input id="prelim-setup-add-follow-bib" type="number" min="1" placeholder="Bib" class="prelims-add-bib" />
                         <button id="prelim-setup-add-follow-btn" class="btn secondary">Add</button>
                     </div>
+                    <details class="prelims-bulk">
+                        <summary>Paste a list</summary>
+                        <p class="form-helper-text">One dancer per line (or a single comma-separated line). Bibs are optional: <code>12 Dana</code>, <code>12. Dana</code> or <code>Dana, 12</code>. Anyone without one gets the next free number.</p>
+                        <textarea id="prelim-setup-bulk-follow" rows="5" placeholder="Dana&#10;Erin&#10;12 Fran"></textarea>
+                        <button id="prelim-setup-bulk-follow-btn" class="btn secondary">Add all</button>
+                    </details>
                     <label class="prelim-setup-spots">Advance
                         <input type="number" id="prelim-setup-follow-spots" min="1" placeholder="all" />
                         follows
