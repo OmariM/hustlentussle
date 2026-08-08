@@ -513,7 +513,7 @@ function renderDisplay(next: PrelimStateResponse): void {
             timer.textContent = '🎵';
             timer.classList.remove('paused');
         }
-        if (status) status.textContent = 'Music change — get ready to switch partners';
+        if (status) status.textContent = 'Music change';
     } else if (next.running && next.phase === 'break') {
         if (timer) {
             timer.style.display = showTimer ? '' : 'none';
