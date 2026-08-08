@@ -166,15 +166,16 @@ else:
 import unittest
 from battle_rules_test_suite import BattleRulesValidator
 
+
 class MyCustomTests(unittest.TestCase):
     def test_my_scenario(self):
         # Create specific game scenario
         game = create_my_scenario()
-        
+
         # Validate rules
         validator = BattleRulesValidator(game)
         violations = validator.validate_all_rules(validator.capture_state())
-        
+
         # Assert no violations
         self.assertEqual(violations, [], f"Rule violations: {violations}")
 ```
