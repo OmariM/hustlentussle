@@ -174,6 +174,15 @@ def start_game():
     game, warning = _build_game(lead_names, follow_names, config)
     session_id = repo.create(game)
 
+    # Started from a prelim-prefilled setup screen: point the prelim at the battle so
+    # its spectator display can follow the crowd over to the battle display.
+    prelim_session_id = data.get("prelim_session_id")
+    if prelim_session_id:
+        prelim, error = get_prelim_or_404(prelim_session_id)
+        if not error:
+            prelim.battle_session_id = session_id
+            repo.save(prelim_session_id, prelim)
+
     return jsonify(_start_game_response(game, session_id, config, warning))
 
 

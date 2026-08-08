@@ -14,6 +14,8 @@
  * - Display (/prelims/<id>?mode=display): the rotating-circle visualization for
  *   contestants/spectators — a circle of follows with leads rotating clockwise. It
  *   polls /api/prelims/state (~1s) and renders the current heat/rotation + countdown.
+ *   It keeps polling through selection, and once the battle has been started the
+ *   prelim's battle_session_id sends it on to /battle/<id>?mode=display.
  *
  * Rotation/timer state (current_rotation_index, running, rotation_started_at) lives on
  * the server so both views stay in sync and a reload resumes cleanly.
@@ -470,7 +472,19 @@ function positionChips(): void {
     });
 }
 
+// The battle has been started from this prelim — send the spectator screen after it.
+// A full load (rather than a client-side route) re-runs display-mode detection and
+// starts the battle display from a clean slate; replace() keeps it off the back stack.
+function followBattleDisplay(battleId: string): void {
+    stopTimers();
+    window.location.replace('/battle/' + encodeURIComponent(battleId) + '?mode=display');
+}
+
 function renderDisplay(next: PrelimStateResponse): void {
+    if (next.battle_session_id) {
+        followBattleDisplay(next.battle_session_id);
+        return;
+    }
     state = next;
     heatIndex = next.current_heat_index;
     rotationIndex = next.current_rotation_index;
@@ -487,10 +501,8 @@ function renderDisplay(next: PrelimStateResponse): void {
         if (status) status.style.display = 'none';
         if (selecting) selecting.style.display = '';
         if (selectingText) selectingText.textContent = next.complete ? 'Competitors selected!' : 'Selecting competitors…';
-        if (next.complete && pollTimer !== null) {
-            window.clearInterval(pollTimer); // done — stop polling
-            pollTimer = null;
-        }
+        // Keep polling even once complete: the battle is started from the setup screen a
+        // moment later, and battle_session_id is what sends this screen over to it.
         return;
     }
 

@@ -376,6 +376,7 @@ class TestPrelimPersistence(unittest.TestCase):
     def test_round_trip_is_stable(self):
         p = Prelim.create(_names("L", 20), _names("F", 8), lead_spots=10, follow_spots=8, group_size=8)
         p.session_id = "abc123"
+        p.battle_session_id = "battle456"
         p.advance_heat()
         d = p.to_dict()
         self.assertEqual(d["kind"], "prelim")
@@ -384,6 +385,7 @@ class TestPrelimPersistence(unittest.TestCase):
         self.assertEqual(p2.to_dict(), d)
         self.assertEqual(p2.current_heat_index, 1)
         self.assertEqual(p2.session_id, "abc123")
+        self.assertEqual(p2.battle_session_id, "battle456")
 
 
 class TestPrelimFlaskFlow(unittest.TestCase):
@@ -440,6 +442,7 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         after = c.get(f"/api/prelims/state?session_id={sid}").get_json()
         self.assertEqual(after["selection"], cd["selection"])
         self.assertEqual(after["config"]["judges"], ["J1", "J2"])
+        self.assertIsNone(after["battle_session_id"])  # no battle yet
 
         # The setup screen then starts the battle the normal way, at 0 points.
         battle = c.post(
@@ -448,8 +451,15 @@ class TestPrelimFlaskFlow(unittest.TestCase):
                 "leads": after["selection"]["leads"],
                 "follows": after["selection"]["follows"],
                 "judges": ",".join(after["config"]["judges"]),
+                "prelim_session_id": sid,
             },
         ).get_json()
+
+        # The prelim now points at the battle, which is how the prelim spectator
+        # display knows to redirect to /battle/<id>?mode=display.
+        linked = c.get(f"/api/prelims/state?session_id={sid}").get_json()
+        self.assertEqual(linked["battle_session_id"], battle["session_id"])
+
         state = c.get(f"/api/state?session_id={battle['session_id']}").get_json()
         pts = [x["points"] for x in state["scoreboard"]["leads"]] + [
             x["points"] for x in state["scoreboard"]["follows"]

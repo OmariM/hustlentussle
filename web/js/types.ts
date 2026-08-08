@@ -304,6 +304,8 @@ export interface PrelimStateResponse {
     eligible: { leads: string[]; follows: string[] };
     selection: { leads: string[]; follows: string[] };
     complete: boolean;
+    /** Set once the battle has been started from this prelim (spectator redirect). */
+    battle_session_id: string | null;
 }
 
 // ---- Tie-break flow (/api/end_game + /api/tiebreak/*, web/routes/game.py) ----

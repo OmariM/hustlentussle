@@ -76,6 +76,9 @@ def serialize_prelim(prelim: Prelim) -> dict:
         "eligible": {"leads": prelim.eligible_leads, "follows": prelim.eligible_follows},
         "selection": {"leads": prelim.selected_leads, "follows": prelim.selected_follows},
         "complete": prelim.complete,
+        # Non-null once the battle has been started from this prelim; the spectator
+        # display follows it to /battle/<id>?mode=display.
+        "battle_session_id": prelim.battle_session_id,
     }
 
 
