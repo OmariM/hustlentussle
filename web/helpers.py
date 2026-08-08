@@ -57,6 +57,8 @@ def serialize_prelim(prelim: Prelim) -> dict:
             "break_seconds": prelim.break_seconds,
             "intermission_after": prelim.intermission_after,
             "playlist_url": prelim.battle_config.get("playlist_url") or "",
+            # Carried from prelim setup so the battle setup screen can prefill them.
+            "judges": list(prelim.battle_config.get("judges") or []),
         },
         "num_heats": len(prelim.heats),
         "current_heat_index": prelim.current_heat_index,
@@ -74,6 +76,9 @@ def serialize_prelim(prelim: Prelim) -> dict:
         "eligible": {"leads": prelim.eligible_leads, "follows": prelim.eligible_follows},
         "selection": {"leads": prelim.selected_leads, "follows": prelim.selected_follows},
         "complete": prelim.complete,
+        # Non-null once the battle has been started from this prelim; the spectator
+        # display follows it to /battle/<id>?mode=display.
+        "battle_session_id": prelim.battle_session_id,
     }
 
 

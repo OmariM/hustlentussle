@@ -376,6 +376,7 @@ class TestPrelimPersistence(unittest.TestCase):
     def test_round_trip_is_stable(self):
         p = Prelim.create(_names("L", 20), _names("F", 8), lead_spots=10, follow_spots=8, group_size=8)
         p.session_id = "abc123"
+        p.battle_session_id = "battle456"
         p.advance_heat()
         d = p.to_dict()
         self.assertEqual(d["kind"], "prelim")
@@ -384,6 +385,7 @@ class TestPrelimPersistence(unittest.TestCase):
         self.assertEqual(p2.to_dict(), d)
         self.assertEqual(p2.current_heat_index, 1)
         self.assertEqual(p2.session_id, "abc123")
+        self.assertEqual(p2.battle_session_id, "battle456")
 
 
 class TestPrelimFlaskFlow(unittest.TestCase):
@@ -424,22 +426,45 @@ class TestPrelimFlaskFlow(unittest.TestCase):
         adv = c.post("/api/prelims/advance_heat", json={"session_id": sid})
         self.assertEqual(adv.get_json()["current_heat_index"], 1)
 
-        # Commit -> a new battle session with the advancers at 0 points.
+        # Commit records the advancers on the prelim; no battle is built yet.
         commit = c.post(
             "/api/prelims/commit_selection",
             json={"session_id": sid, "lead_selections": d["eligible"]["leads"][:10], "follow_selections": []},
         )
         self.assertEqual(commit.status_code, 200)
         cd = commit.get_json()
-        self.assertEqual(len(cd["initial_leads"]), 10)
-        self.assertEqual(len(cd["initial_follows"]), 8)
+        self.assertEqual(cd["session_id"], sid)  # still the prelim session
+        self.assertEqual(len(cd["selection"]["leads"]), 10)
+        self.assertEqual(len(cd["selection"]["follows"]), 8)
+        self.assertNotIn("initial_leads", cd)
 
-        state = c.get(f"/api/prelims/state?session_id={sid}").status_code  # still a prelim
-        self.assertEqual(state, 200)
-        battle = c.get(f"/api/state?session_id={cd['session_id']}").get_json()
-        pts = [x["points"] for x in battle["scoreboard"]["leads"]] + [
-            x["points"] for x in battle["scoreboard"]["follows"]
+        # The selection survives a re-read: /setup?prelim=<id> prefills from this.
+        after = c.get(f"/api/prelims/state?session_id={sid}").get_json()
+        self.assertEqual(after["selection"], cd["selection"])
+        self.assertEqual(after["config"]["judges"], ["J1", "J2"])
+        self.assertIsNone(after["battle_session_id"])  # no battle yet
+
+        # The setup screen then starts the battle the normal way, at 0 points.
+        battle = c.post(
+            "/api/start_game",
+            json={
+                "leads": after["selection"]["leads"],
+                "follows": after["selection"]["follows"],
+                "judges": ",".join(after["config"]["judges"]),
+                "prelim_session_id": sid,
+            },
+        ).get_json()
+
+        # The prelim now points at the battle, which is how the prelim spectator
+        # display knows to redirect to /battle/<id>?mode=display.
+        linked = c.get(f"/api/prelims/state?session_id={sid}").get_json()
+        self.assertEqual(linked["battle_session_id"], battle["session_id"])
+
+        state = c.get(f"/api/state?session_id={battle['session_id']}").get_json()
+        pts = [x["points"] for x in state["scoreboard"]["leads"]] + [
+            x["points"] for x in state["scoreboard"]["follows"]
         ]
+        self.assertEqual(len(pts), 18)
         self.assertTrue(all(p == 0 for p in pts))
 
     def test_start_heat_and_next_phase_endpoints(self):

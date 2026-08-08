@@ -174,6 +174,15 @@ def start_game():
     game, warning = _build_game(lead_names, follow_names, config)
     session_id = repo.create(game)
 
+    # Started from a prelim-prefilled setup screen: point the prelim at the battle so
+    # its spectator display can follow the crowd over to the battle display.
+    prelim_session_id = data.get("prelim_session_id")
+    if prelim_session_id:
+        prelim, error = get_prelim_or_404(prelim_session_id)
+        if not error:
+            prelim.battle_session_id = session_id
+            repo.save(prelim_session_id, prelim)
+
     return jsonify(_start_game_response(game, session_id, config, warning))
 
 
@@ -364,7 +373,7 @@ def prelims_commit_selection():
         return error
 
     try:
-        selected_leads, selected_follows = prelim.commit_selection(
+        prelim.commit_selection(
             data.get("lead_selections", []),
             data.get("follow_selections", []),
         )
@@ -373,12 +382,11 @@ def prelims_commit_selection():
 
     repo.save(session_id, prelim)
 
-    # Build the main battle from the advancers (fresh at 0), reusing the stored config.
-    game, warning = _build_game(selected_leads, selected_follows, prelim.battle_config)
-    new_session_id = repo.create(game)
-
-    response = _start_game_response(game, new_session_id, prelim.battle_config, warning)
-    response["prelim_session_id"] = session_id
+    # No battle is built here: the advancers are handed to the normal battle setup
+    # screen (/setup?prelim=<id>), which prefills from this state and posts the usual
+    # /api/start_game once the operator has picked the battle options.
+    response = serialize_prelim(prelim)
+    response["session_id"] = session_id
     return jsonify(response)
 
 
