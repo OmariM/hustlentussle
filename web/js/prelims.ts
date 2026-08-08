@@ -5,8 +5,11 @@
  *   now) plus a per-heat Start button. The operator presses Start once dancers are in
  *   place; the client then drives the 45s rotation timer, pushing each rotation change
  *   to the server so the spectator display can mirror it. After the last heat, the
- *   operator picks who advances (selection checklist) and commits, which builds the
- *   main battle (POST /api/prelims/commit_selection) and routes to /battle/<newId>.
+ *   operator picks who advances (selection checklist) and commits
+ *   (POST /api/prelims/commit_selection), which records the advancers on the prelim and
+ *   routes to the normal battle setup screen at /setup?prelim=<id> — prefilled by
+ *   hydrateSetupFromPrelim() below, so the battle options can still be set before
+ *   /api/start_game builds the battle.
  *
  * - Display (/prelims/<id>?mode=display): the rotating-circle visualization for
  *   contestants/spectators — a circle of follows with leads rotating clockwise. It
@@ -18,11 +21,6 @@
 import { apiFetch, postJson } from './api';
 import { showToast } from './toast';
 import type { PrelimStateResponse } from './types';
-
-interface CommitResponse {
-    session_id: string;
-    contestant_judges_warning?: string;
-}
 
 let state: PrelimStateResponse | null = null;
 let prelimId: string | null = null;
@@ -637,13 +635,15 @@ async function confirmSelection(): Promise<void> {
     const btn = $('prelims-confirm-selection') as HTMLButtonElement | null;
     if (btn) btn.disabled = true;
     try {
-        const data = await postJson<CommitResponse>('/api/prelims/commit_selection', {
+        await postJson<PrelimStateResponse>('/api/prelims/commit_selection', {
             session_id: prelimId,
             // Auto-advance roles send [] and the server fills in the full eligible set.
             lead_selections: state.config.lead_needs_cut ? Array.from(leadPicks) : [],
             follow_selections: state.config.follow_needs_cut ? Array.from(followPicks) : [],
         });
-        window.navigate?.('/battle/' + encodeURIComponent(data.session_id));
+        // Hand off to battle setup rather than starting the battle outright, so the
+        // operator can still set judges, points to win, Spotify, etc.
+        window.navigate?.('/setup?prelim=' + encodeURIComponent(prelimId));
     } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to advance to the battle.';
         showToast(msg, 'error');
@@ -802,4 +802,51 @@ function escapeAttr(s: string): string {
     return escapeHtml(s);
 }
 
+// ---- handoff to battle setup ----------------------------------------------
+
+function setField(id: string, value: string): void {
+    const el = $(id) as HTMLInputElement | HTMLTextAreaElement | null;
+    if (el) el.value = value;
+}
+
+/**
+ * Prefill the battle setup screen from a committed prelim (/setup?prelim=<id>).
+ *
+ * Only the roster carries over — the advancers, plus the judges and playlist typed at
+ * prelim setup. Every other battle option is left at whatever the form already shows,
+ * which is the point of stopping here instead of starting the battle straight away.
+ * Called with null for a plain /setup visit, which just hides the note.
+ */
+async function hydrateSetupFromPrelim(id: string | null): Promise<void> {
+    const note = $('setup-prelim-note');
+    if (note) note.style.display = 'none';
+    if (!id) return;
+
+    let prelim: PrelimStateResponse;
+    try {
+        prelim = await apiFetch<PrelimStateResponse>(`/api/prelims/state?session_id=${encodeURIComponent(id)}`);
+    } catch {
+        showToast('That prelim was not found or has expired.', 'error');
+        return;
+    }
+    const leads = prelim.selection.leads;
+    const follows = prelim.selection.follows;
+    if (leads.length === 0 && follows.length === 0) {
+        showToast('That prelim has no advancers yet.', 'info');
+        return;
+    }
+
+    setField('lead-names', leads.join(', '));
+    setField('follow-names', follows.join(', '));
+    const judges = prelim.config.judges || [];
+    if (judges.length) setField('judge-names', judges.join(', '));
+    if (prelim.config.playlist_url) setField('playlist-url', prelim.config.playlist_url);
+
+    if (note) {
+        note.textContent = `Roster carried over from prelims — ${leads.length} lead${leads.length === 1 ? '' : 's'} and ${follows.length} follow${follows.length === 1 ? '' : 's'} advanced. Edit anything below before starting.`;
+        note.style.display = '';
+    }
+}
+
 window.hydratePrelimRoute = hydratePrelimRoute;
+window.hydrateSetupFromPrelim = hydrateSetupFromPrelim;

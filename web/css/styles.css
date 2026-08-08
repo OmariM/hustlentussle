@@ -3638,6 +3638,16 @@ input.prelims-number-input.dup {
     width: 4.5em;
 }
 
+/* Setup screen — banner shown when the roster came from a committed prelim */
+.setup-prelim-note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-light);
+    color: var(--text-primary);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-md);
+}
+
 /* Prelims — bulk "paste a list" roster add */
 .prelims-bulk {
     margin-top: var(--space-sm);

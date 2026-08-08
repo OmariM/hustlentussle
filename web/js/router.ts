@@ -22,7 +22,15 @@
 
     const routes: Route[] = [
         { re: /^\/$/, enter: () => activate('home-screen') },
-        { re: /^\/setup\/?$/, enter: () => activate('setup-screen') },
+        {
+            re: /^\/setup\/?$/,
+            enter: () => {
+                activate('setup-screen');
+                // ?prelim=<id> arrives from a committed prelim: prefill with its advancers.
+                const prelim = new URLSearchParams(window.location.search).get('prelim');
+                if (typeof window.hydrateSetupFromPrelim === 'function') window.hydrateSetupFromPrelim(prelim);
+            },
+        },
         {
             re: /^\/prelim-setup\/?$/,
             enter: () => {

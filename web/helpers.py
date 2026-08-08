@@ -57,6 +57,8 @@ def serialize_prelim(prelim: Prelim) -> dict:
             "break_seconds": prelim.break_seconds,
             "intermission_after": prelim.intermission_after,
             "playlist_url": prelim.battle_config.get("playlist_url") or "",
+            # Carried from prelim setup so the battle setup screen can prefill them.
+            "judges": list(prelim.battle_config.get("judges") or []),
         },
         "num_heats": len(prelim.heats),
         "current_heat_index": prelim.current_heat_index,

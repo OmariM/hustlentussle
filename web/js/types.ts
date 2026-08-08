@@ -286,6 +286,7 @@ export interface PrelimStateResponse {
         break_seconds: number;
         intermission_after: number;
         playlist_url: string;
+        judges: string[];
     };
     num_heats: number;
     current_heat_index: number;

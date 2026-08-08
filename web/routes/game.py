@@ -364,7 +364,7 @@ def prelims_commit_selection():
         return error
 
     try:
-        selected_leads, selected_follows = prelim.commit_selection(
+        prelim.commit_selection(
             data.get("lead_selections", []),
             data.get("follow_selections", []),
         )
@@ -373,12 +373,11 @@ def prelims_commit_selection():
 
     repo.save(session_id, prelim)
 
-    # Build the main battle from the advancers (fresh at 0), reusing the stored config.
-    game, warning = _build_game(selected_leads, selected_follows, prelim.battle_config)
-    new_session_id = repo.create(game)
-
-    response = _start_game_response(game, new_session_id, prelim.battle_config, warning)
-    response["prelim_session_id"] = session_id
+    # No battle is built here: the advancers are handed to the normal battle setup
+    # screen (/setup?prelim=<id>), which prefills from this state and posts the usual
+    # /api/start_game once the operator has picked the battle options.
+    response = serialize_prelim(prelim)
+    response["session_id"] = session_id
     return jsonify(response)
 
 
