@@ -3,7 +3,7 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
-import { downloadCanvasAsPng, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
+import { downloadCanvasAsPng, drawCrown, fitCrownedNameToBox, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
 import type { FitNameResult } from './socialImage';
 import { showToast } from './toast';
 import type {
@@ -224,8 +224,7 @@ import type {
             }
             if (isTop) {
                 const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
-                ctx.font = `${fit.fontSize}px serif`;
-                ctx.fillText('👑', rowPad + rankW + lastLineW + 5, lastLineY);
+                drawCrown(ctx, rowPad + rankW + lastLineW, lastLineY, fit.fontSize);
             }
             ctx.restore();
 
@@ -336,7 +335,9 @@ import type {
                 let totalHeight = 0;
                 const planned = rows.map((row, idx) => {
                     const isTop = idx === 0;
-                    const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, isTop);
+                    const fit = isTop
+                        ? fitCrownedNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody)
+                        : fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, false);
                     const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
                     totalHeight += height;
                     return { fit, isTop, height };

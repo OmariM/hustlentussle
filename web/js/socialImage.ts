@@ -135,6 +135,44 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
     return text.slice(0, lo) + '…';
 }
 
+// ---- Champion crown ----
+//
+// The crown is drawn immediately after a champion's name, inside the same (narrow) name
+// column, so the space it needs has to come out of the name box before the name is fitted —
+// otherwise the name fills the column and the crown gets clipped away.
+
+const CROWN_GLYPH = '\u{1F451}';
+/** Crown size relative to the name it follows: an emoji at the full name size reads as
+ * oversized next to the text, and every pixel it reserves is taken from the name. */
+const CROWN_SCALE = 0.8;
+/** Gap between the end of the name and the crown. */
+const CROWN_GAP = 6;
+/** A crowned name may shrink further than a normal one before wrapping/truncating: it has
+ * less room to work with, and a slightly smaller champion name reads better than a cut-off one. */
+const CROWNED_MIN_FONT_RATIO = 0.65;
+
+function crownFontSize(nameFontSize: number): number {
+    return Math.round(nameFontSize * CROWN_SCALE);
+}
+
+/** Width a crown claims after a name rendered at `nameFontSize` (gap + glyph). */
+export function crownReserveWidth(ctx: CanvasRenderingContext2D, nameFontSize: number): number {
+    ctx.font = `${crownFontSize(nameFontSize)}px serif`;
+    return CROWN_GAP + ctx.measureText(CROWN_GLYPH).width;
+}
+
+/** Draws the crown right after a champion's name. `nameEndX` is the x the name's last line
+ * ends at, measured in the name's own font; `nameFontSize` is that line's size. */
+export function drawCrown(
+    ctx: CanvasRenderingContext2D,
+    nameEndX: number,
+    baselineY: number,
+    nameFontSize: number,
+): void {
+    ctx.font = `${crownFontSize(nameFontSize)}px serif`;
+    ctx.fillText(CROWN_GLYPH, nameEndX + CROWN_GAP, baselineY);
+}
+
 export interface FitNameResult {
     /** 1 or 2 lines to render, in order. */
     lines: string[];
@@ -188,4 +226,23 @@ export function fitNameToBox(
 
     // Single unbreakable "word" (or wrapping produced no second line) - truncate as the last resort.
     return { lines: [truncateToWidth(ctx, name, maxWidth)], fontSize: minFontSize };
+}
+
+/**
+ * fitNameToBox for a row that also draws a crown (see drawCrown): fits the name into
+ * `maxWidth` minus the crown's reserved width, so name + crown together stay inside the
+ * name column. The reserve is measured at `baseFontSize` while the crown is drawn at the
+ * (never larger) fitted size, so it always has room to spare, never less.
+ */
+export function fitCrownedNameToBox(
+    ctx: CanvasRenderingContext2D,
+    name: string,
+    maxWidth: number,
+    baseFontSize: number,
+    minFontSize: number,
+    fontFamily: string,
+): FitNameResult {
+    const crownW = crownReserveWidth(ctx, baseFontSize);
+    const crownedMin = Math.max(16, Math.round(minFontSize * CROWNED_MIN_FONT_RATIO));
+    return fitNameToBox(ctx, name, maxWidth - crownW, baseFontSize, crownedMin, fontFamily, true);
 }
