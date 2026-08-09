@@ -11,7 +11,7 @@
 
 import { getResults } from './api';
 import { stopDisplayPolling } from './display';
-import { downloadCanvasAsPng, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, slugify, SOCIAL_H, SOCIAL_W } from './socialImage';
+import { downloadCanvasAsPng, drawCrown, fitCrownedNameToBox, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, slugify, SOCIAL_H, SOCIAL_W } from './socialImage';
 import type { FitNameResult } from './socialImage';
 import { getSpotifyToken, isSpotifyEnabled } from './spotify';
 import { showToast } from './toast';
@@ -1088,11 +1088,14 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
 
     // Badge geometry is shared across both columns (same width) so a given round's badge
     // is the same physical size in the Leads and Follows cards.
-    const rankW = 40;
+    //
+    // Rows lead with the name, not a rank number: this list is in initial queue order, so a
+    // leading "1." reads as a placement it isn't — and that column is worth more as name
+    // width, which is what the champion's crown is drawn inside of (see fitCrownedNameToBox).
+    const NAME_INSET = 24; // aligns row names with the card header's section label
     const nameToBadgeGap = 16;
-    const rowContentW = columnW - 2 * ROW_INSET;
     const badgeAreaW = 230; // widened at the name column's expense so badges render bigger
-    const nameAreaW = rowContentW - rankW - nameToBadgeGap - badgeAreaW;
+    const nameAreaW = columnW - NAME_INSET - nameToBadgeGap - badgeAreaW - ROW_INSET;
     const badgeGap = 4;
     const badgeRowGap = 6;
 
@@ -1138,7 +1141,6 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     const perLineBadgeCount = Math.floor((badgeAreaW + badgeGap) / (badgeSize + badgeGap));
 
     const nameFontSizeFor = (rowH: number): number => Math.max(20, Math.min(44, rowH - 26));
-    const rankFontSizeFor = (nameFontSize: number): number => Math.max(18, nameFontSize - 4);
     const minNameFontSizeFor = (nameFontSize: number): number => Math.max(18, Math.round(nameFontSize * 0.7));
 
     // A name that doesn't fit on one line even after shrinking wraps onto two lines instead
@@ -1157,7 +1159,6 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     interface SectionPlan {
         rows: PlannedRow[];
         totalHeight: number;
-        rankFontSize: number;
     }
 
     const roundsFor = (map: Map<string, RoundBadge[]>, name: string): number => (map.get(name) || []).length;
@@ -1167,12 +1168,13 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
     const planColumn = (order: string[], map: Map<string, RoundBadge[]>, topName: string | null, rowHBaseline: number, rowHCap: number): SectionPlan => {
         const buildAt = (rowH: number): SectionPlan => {
             const nameFontSize = nameFontSizeFor(rowH);
-            const rankFontSize = rankFontSizeFor(nameFontSize);
             const minNameFontSize = minNameFontSizeFor(nameFontSize);
             let totalHeight = 0;
             const rows = order.map(name => {
                 const isTop = name === topName;
-                const fit = fitNameToBox(ctx, name, nameAreaW, nameFontSize, minNameFontSize, C.fontBody, isTop);
+                const fit = isTop
+                    ? fitCrownedNameToBox(ctx, name, nameAreaW, nameFontSize, minNameFontSize, C.fontBody)
+                    : fitNameToBox(ctx, name, nameAreaW, nameFontSize, minNameFontSize, C.fontBody, false);
                 const n = roundsFor(map, name);
                 const badgeRowsUsed: 1 | 2 = (badgeRows === 2 && n > perLineBadgeCount) ? 2 : 1;
                 const badgeStackH = badgeRowsUsed === 2 ? (2 * badgeSize + badgeRowGap + 14) : 0;
@@ -1185,7 +1187,7 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
                 totalHeight += height;
                 return { fit, isTop, badgeRowsUsed, height };
             });
-            return { rows, totalHeight, rankFontSize };
+            return { rows, totalHeight };
         };
 
         let plan = buildAt(rowHBaseline);
@@ -1238,8 +1240,7 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
 
         const rowsStartY = startY + CARD_HEADER_H;
         let rowY = rowsStartY;
-        const rowPad = cardX + ROW_INSET;
-        const nameX = rowPad + rankW;
+        const nameX = cardX + NAME_INSET;
         const badgeStartX = nameX + nameAreaW + nameToBadgeGap;
 
         order.forEach((name, idx) => {
@@ -1253,19 +1254,11 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
                 ctx.fillRect(cardX + 4, rowY + 1, columnW - 8, rowHeight - 1);
             }
 
-            // Rank — same baseline formula as a normal row; centered instead for a wrapped row,
-            // whose height doesn't match what that formula was tuned for. Uses the proportional
-            // body font, not the mono font used for badges/points: a monospace "1." reserves a
-            // full fixed-width cell for the narrow "1" glyph, leaving a visible gap before the
-            // period that a proportional font's natural kerning doesn't have.
-            const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
-            ctx.fillStyle = C.textMuted;
-            ctx.font = `400 ${plan.rankFontSize}px ${C.fontBody}`;
-            ctx.textAlign = 'left';
-            ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
+            ctx.textAlign = 'left'; // reset: the previous row's badges left it centered
 
-            // Name (1 or 2 lines, per fitNameToBox) + crown — clipped to the row's full height
-            // so a wrapped second line (or a bleeding crown) never spills into the badge area.
+            // Name (1 or 2 lines, per fitNameToBox) + crown — the crown's width was already
+            // reserved out of the name box (fitCrownedNameToBox), and the clip to the row's
+            // full height is the backstop so nothing ever spills into the badge area.
             ctx.save();
             ctx.beginPath();
             ctx.rect(nameX, rowY, nameAreaW, rowHeight);
@@ -1288,8 +1281,7 @@ function renderBattleResultsCanvas(params: BattleImageParams): HTMLCanvasElement
             }
             if (isTop) {
                 const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
-                ctx.font = `${fit.fontSize}px serif`;
-                ctx.fillText('👑', nameX + lastLineW + 5, lastLineY);
+                drawCrown(ctx, nameX + lastLineW, lastLineY, fit.fontSize);
             }
             ctx.restore();
 
