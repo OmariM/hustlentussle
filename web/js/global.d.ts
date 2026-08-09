@@ -21,6 +21,7 @@ declare global {
         showScreen?: (el: HTMLElement) => void;
         hydrateBattleRoute?: (sessionId: string) => void;
         hydratePrelimRoute?: (sessionId: string) => void;
+        hydrateSetupFromPrelim?: (prelimId: string | null) => void;
         initPrelimSetup?: () => void;
         hydrateResultsRoute?: (sessionId: string | null) => void;
         updateSessionIdDisplay?: () => void;

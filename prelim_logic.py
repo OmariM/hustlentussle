@@ -133,6 +133,9 @@ class Prelim:
         self.selected_leads: List[str] = []
         self.selected_follows: List[str] = []
         self.complete = False
+        # Set once the battle is started from the prefilled setup screen. The prelim
+        # spectator display polls for it and follows the crowd to the battle display.
+        self.battle_session_id: Optional[str] = None
 
         # Computed structures (persisted so they stay stable across reloads).
         self.heats: List[Dict] = []
@@ -489,6 +492,7 @@ class Prelim:
             "selected_leads": self.selected_leads,
             "selected_follows": self.selected_follows,
             "complete": self.complete,
+            "battle_session_id": self.battle_session_id,
             "heats": self.heats,
             "eligible_leads": self.eligible_leads,
             "eligible_follows": self.eligible_follows,
@@ -528,6 +532,7 @@ class Prelim:
         prelim.selected_leads = data.get("selected_leads", [])
         prelim.selected_follows = data.get("selected_follows", [])
         prelim.complete = data.get("complete", False)
+        prelim.battle_session_id = data.get("battle_session_id")
         prelim.heats = data.get("heats", [])
         prelim.eligible_leads = data.get("eligible_leads", [])
         prelim.eligible_follows = data.get("eligible_follows", [])

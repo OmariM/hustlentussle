@@ -1319,6 +1319,9 @@ async function startCompetition(useSimpleContestantJudges: boolean, allowContest
     const contestantJudgingRequested = allowContestantJudging !== false;
     const simpleModeRequested = contestantJudgingRequested && !!useSimpleContestantJudges;
     const randomizeOrder = randomizeOrderToggle ? randomizeOrderToggle.checked : true;
+    // Present on /setup?prelim=<id> (the roster came from a prelim). Sending it links the
+    // battle back to the prelim so its spectator display can redirect here.
+    const prelimSessionId = new URLSearchParams(window.location.search).get('prelim');
 
     if (!leads || !follows || !judges) {
         showToast('Please enter names for leads, follows, and judges.', 'error');
@@ -1340,7 +1343,8 @@ async function startCompetition(useSimpleContestantJudges: boolean, allowContest
                 playlist_url: playlistUrlRaw,
                 simple_contestant_judges: simpleModeRequested,
                 contestant_judging_enabled: contestantJudgingRequested,
-                randomize_order: randomizeOrder
+                randomize_order: randomizeOrder,
+                prelim_session_id: prelimSessionId
             })
         });
         
