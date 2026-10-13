@@ -26,6 +26,7 @@ import type {
     const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
     let isAdmin = false;
+    let prodDbSync = false; // dev server only (/api/admin/me reports it)
     let preview: IngestPreviewResponse | null = null;
     let currentStandings: Pick<YtdStandingsResponse, 'leads' | 'follows'> = { leads: [], follows: [] };
 
@@ -45,9 +46,11 @@ import type {
             const res = await fetch('/api/admin/me');
             const data = (await res.json()) as AdminMeResponse;
             isAdmin = !!data.authenticated;
+            prodDbSync = !!data.prod_db_sync;
             applyAdminUI(data.email ?? null);
         } catch {
             isAdmin = false;
+            prodDbSync = false;
             applyAdminUI(null);
         }
     }
@@ -61,6 +64,7 @@ import type {
         set('ytd-admin-logout-btn', isAdmin);
         set('ytd-admin-tools', isAdmin);
         set('publish-to-ytd', isAdmin);
+        set('ytd-dev-sync', isAdmin && prodDbSync);
         const who = $('ytd-admin-email');
         if (who) who.textContent = isAdmin && email ? email : '';
     }
@@ -844,6 +848,40 @@ import type {
         alert('Battle published to year-to-date stats.');
     }
 
+    // ---- admin (dev server only): mirror the prod database ----
+
+    async function syncFromProd(): Promise<void> {
+        const msg = 'Replace this dev database with a copy of prod? All dev battles, dancers, admins and games are overwritten.';
+        if (!confirm(msg)) return;
+        const btn = $<HTMLButtonElement>('ytd-dev-sync-btn');
+        btn.disabled = true;
+        btn.textContent = 'Syncing…';
+        try {
+            const res = await fetch('/api/admin/dev/sync-prod-db', { method: 'POST' });
+            let data: Partial<ApiErrorResponse> = {};
+            try {
+                data = (await res.json()) as Partial<ApiErrorResponse>;
+            } catch {
+                /* non-JSON body */
+            }
+            if (!res.ok) {
+                showToast(data.error || 'Sync failed.', 'error', 8000);
+                return;
+            }
+            showToast('Dev database now mirrors prod.', 'success');
+            await refreshAdmin();
+            await loadYears();
+            await loadStandings();
+            await loadBattles();
+            await loadDancers();
+        } catch {
+            showToast('Sync failed.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sync Database from Prod';
+        }
+    }
+
     // ---- admin login ----
 
     async function submitLogin(): Promise<void> {
@@ -867,6 +905,7 @@ import type {
             return;
         }
         isAdmin = true;
+        prodDbSync = !!data.prod_db_sync;
         applyAdminUI(data.email ?? null);
         closeModal('ytd-login-modal');
         $<HTMLInputElement>('ytd-login-password').value = '';
@@ -923,6 +962,7 @@ import type {
         on('ytd-login-cancel', 'click', () => closeModal('ytd-login-modal'));
         on('ytd-login-submit', 'click', submitLogin);
         on('ytd-admin-logout-btn', 'click', logout);
+        on('ytd-dev-sync-btn', 'click', () => void syncFromProd());
 
         // ingest
         on('ytd-upload-btn', 'click', previewFromFile);

@@ -29,6 +29,7 @@ class Config:
     PORT = 5001
     DEBUG = False
     ENABLE_DEBUG_TOOLS = False  # Master switch for debug tools
+    ENABLE_PROD_DB_SYNC = False  # Dev-only prod -> dev DB mirror; see DevelopmentConfig
 
     # Session cookie hardening. Secure is enabled in production only so that
     # plain-HTTP local development keeps working.
@@ -57,6 +58,11 @@ class DevelopmentConfig(Config):
     ENABLE_DEBUG_TOOLS = True  # Enable debug tools in development
     HOST = os.environ.get("HOST", "127.0.0.1")
     PORT = int(os.environ.get("PORT", 5001))
+
+    # Dev-only "Sync from prod" admin button (scripts/sync-prod-db-to-dev.sh).
+    # Opt-in: only scripts/dev-server-start.sh sets it, and ProductionConfig
+    # never enables it regardless of the env var.
+    ENABLE_PROD_DB_SYNC = os.environ.get("ENABLE_PROD_DB_SYNC", "").lower() in ("1", "true")
 
     # In development, use in-memory by default (no DATABASE_URL)
     # Set DATABASE_URL env var to test with PostgreSQL locally

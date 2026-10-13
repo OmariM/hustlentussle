@@ -82,6 +82,12 @@ How it works:
 - Run migrations / create an admin against the dev DB the same way as prod, just
   pointed at the dev database URL from `.env`:
   `DATABASE_URL=postgresql://$DEV_POSTGRES_USER:$DEV_POSTGRES_PASSWORD@localhost:$DEV_POSTGRES_PORT/$DEV_POSTGRES_DB .venv-dev/bin/python scripts/migrate.py`
+- To test against real data, mirror prod into dev with `./scripts/sync-prod-db-to-dev.sh`
+  or the **Sync Database from Prod** button in the stats page's Admin Tools. It dumps prod
+  (read-only), replaces the dev DB in one transaction (a failure leaves dev untouched), then
+  re-runs `migrate.py` so unshipped migrations land on top. The dev DB's `admins` table becomes
+  prod's, so log in to dev with prod credentials afterwards. The button only exists when
+  `ENABLE_PROD_DB_SYNC=1`, which `dev-server-start.sh` sets and `ProductionConfig` ignores.
 
 ## Architecture
 
