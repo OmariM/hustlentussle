@@ -11,11 +11,14 @@
 export interface AdminMeResponse {
     authenticated: boolean;
     email?: string | null;
+    /** Dev server only: the "Sync from prod" admin button is available. */
+    prod_db_sync?: boolean;
 }
 
 export interface AdminLoginResponse {
     authenticated?: boolean;
     email?: string;
+    prod_db_sync?: boolean;
     error?: string;
 }
 

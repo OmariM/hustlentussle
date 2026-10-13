@@ -2,6 +2,8 @@
 
 import datetime
 import json
+import os
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -13,7 +15,7 @@ from werkzeug.security import check_password_hash
 
 from stats import normalize_battle, DuplicateBattleError, DuplicateDancerError, StatsError
 from web.config import ALLOWED_ORIGIN_HOSTS
-from web.extensions import repo, stats_repo
+from web.extensions import config, repo, stats_repo
 from web.helpers import build_battle_export, parse_battle_json
 
 bp = Blueprint("admin_stats", __name__)
@@ -92,7 +94,7 @@ def admin_login():
         _login_failures.pop(client_ip, None)
     session["admin_id"] = str(admin["id"])
     session["admin_email"] = admin["email"]
-    return jsonify({"authenticated": True, "email": admin["email"]})
+    return jsonify({"authenticated": True, "email": admin["email"], "prod_db_sync": _prod_db_sync_enabled()})
 
 
 @bp.route("/api/admin/logout", methods=["POST"])
@@ -105,8 +107,42 @@ def admin_logout():
 @bp.route("/api/admin/me", methods=["GET"])
 def admin_me():
     if session.get("admin_id"):
-        return jsonify({"authenticated": True, "email": session.get("admin_email")})
+        return jsonify(
+            {"authenticated": True, "email": session.get("admin_email"), "prod_db_sync": _prod_db_sync_enabled()}
+        )
     return jsonify({"authenticated": False})
+
+
+# ---- dev only: mirror the prod database into the dev one ----
+
+_SYNC_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts", "sync-prod-db-to-dev.sh"
+)
+_sync_lock = threading.Lock()
+
+
+def _prod_db_sync_enabled() -> bool:
+    return bool(getattr(config, "ENABLE_PROD_DB_SYNC", False))
+
+
+@bp.route("/api/admin/dev/sync-prod-db", methods=["POST"])
+@admin_required
+def dev_sync_prod_db():
+    """Replace the dev database with a copy of prod (dev server only)."""
+    if not _prod_db_sync_enabled():
+        return jsonify({"error": "Not found"}), 404
+    if not _sync_lock.acquire(blocking=False):
+        return jsonify({"error": "A sync is already running"}), 409
+    try:
+        result = subprocess.run([_SYNC_SCRIPT], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Sync timed out"}), 504
+    finally:
+        _sync_lock.release()
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()[-5:]
+        return jsonify({"error": "Sync failed: " + " | ".join(detail)}), 500
+    return jsonify({"success": True, "log": result.stdout})
 
 
 @bp.route("/api/stats/years", methods=["GET"])

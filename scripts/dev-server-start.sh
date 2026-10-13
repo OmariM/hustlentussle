@@ -37,6 +37,7 @@ export FLASK_ENV=development
 export HOST=0.0.0.0
 export PORT=8091
 export FLASK_DEBUGGER=0
+export ENABLE_PROD_DB_SYNC=1
 export DATABASE_URL='postgresql://${DEV_POSTGRES_USER:-hustlentussle_dev}:${DEV_POSTGRES_PASSWORD}@localhost:${DEV_POSTGRES_PORT:-5433}/${DEV_POSTGRES_DB:-hustlentussle_dev}'
 exec .venv-dev/bin/python web/app.py
 " C-m
