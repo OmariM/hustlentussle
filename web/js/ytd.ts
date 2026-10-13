@@ -3,7 +3,7 @@
  * Self-contained; reuses the existing `.screen`/`.active` show pattern and
  * shared button/table classes. Talks to /api/stats/* and /api/admin/* .
  */
-import { downloadCanvasAsPng, drawCrown, fitCrownedNameToBox, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
+import { downloadCanvasAsPng, fitNameToBox, getSocialTheme, isDarkTheme, roundRect, singleLineBaseline, SOCIAL_H, SOCIAL_W } from './socialImage';
 import type { FitNameResult } from './socialImage';
 import { showToast } from './toast';
 import type {
@@ -126,7 +126,6 @@ import type {
 
     interface PlannedYtdRow {
         fit: FitNameResult;
-        isTop: boolean;
         height: number;
     }
     interface YtdSectionPlan {
@@ -178,6 +177,8 @@ import type {
         ctx.fillText(label.toUpperCase(), cardX + 24, startY + CARD_HEADER_H - 18);
 
         const rowsStartY = startY + CARD_HEADER_H;
+        // Rank, name and points are plain black (light mode) / white (dark mode), regular weight.
+        const rowTextColor = isDarkTheme() ? '#ffffff' : '#000000';
         const rowPad = cardX + 24;
         const rankW = 44;
         const pointsColX = cardX + cardW - 24;
@@ -185,7 +186,7 @@ import type {
         let rowY = rowsStartY;
 
         rows.forEach((row, idx) => {
-            const { fit, isTop, height: rowHeight } = plan.rows[idx];
+            const { fit, height: rowHeight } = plan.rows[idx];
             const isWrapped = fit.lines.length === 2;
 
             // Alternating row tint — scoped to this column's own bounds (not the full canvas
@@ -201,41 +202,35 @@ import type {
             // "1." reserves a full fixed-width cell for the narrow "1" glyph, leaving a visible
             // gap before the period that a proportional font's natural kerning doesn't have.
             const rankBaseY = singleLineBaseline(rowY, rowHeight, plan.rankFontSize, isWrapped);
-            ctx.fillStyle = theme.textMuted;
+            ctx.fillStyle = rowTextColor;
             ctx.font = `400 ${plan.rankFontSize}px ${theme.fontBody}`;
             ctx.textAlign = 'left';
             ctx.fillText((idx + 1) + '.', rowPad, rankBaseY);
 
-            // Name (1 or 2 lines, per fitNameToBox) + crown — clipped to the row's full height
-            // so a wrapped second line never spills into the points column.
+            // Name (1 or 2 lines, per fitNameToBox) — clipped to the row's full height so a
+            // wrapped second line never spills into the points column. Every top-8 name gets
+            // the same styling and no crown: the image honors all eight, not just #1.
             ctx.save();
             ctx.beginPath();
             ctx.rect(rowPad + rankW, rowY, nameAreaW, rowHeight);
             ctx.clip();
-            ctx.fillStyle = isTop ? theme.textPrimary : theme.textSecondary;
-            ctx.font = isTop ? `bold ${fit.fontSize}px ${theme.fontBody}` : `400 ${fit.fontSize}px ${theme.fontBody}`;
+            ctx.fillStyle = rowTextColor;
+            ctx.font = `400 ${fit.fontSize}px ${theme.fontBody}`;
 
-            let lastLineY: number;
             if (!isWrapped) {
-                lastLineY = singleLineBaseline(rowY, rowHeight, fit.fontSize, false);
-                ctx.fillText(fit.lines[0], rowPad + rankW, lastLineY);
+                ctx.fillText(fit.lines[0], rowPad + rankW, singleLineBaseline(rowY, rowHeight, fit.fontSize, false));
             } else {
                 const lineGap = fit.fontSize * 1.15;
                 const line1Y = rowY + rowHeight / 2 - lineGap / 2 + fit.fontSize * 0.35;
-                lastLineY = line1Y + lineGap;
                 ctx.fillText(fit.lines[0], rowPad + rankW, line1Y);
-                ctx.fillText(fit.lines[1], rowPad + rankW, lastLineY);
-            }
-            if (isTop) {
-                const lastLineW = ctx.measureText(fit.lines[fit.lines.length - 1]).width;
-                drawCrown(ctx, rowPad + rankW + lastLineW, lastLineY, fit.fontSize);
+                ctx.fillText(fit.lines[1], rowPad + rankW, line1Y + lineGap);
             }
             ctx.restore();
 
             const pointsBaseY = singleLineBaseline(rowY, rowHeight, plan.nameFontSize, isWrapped);
             ctx.textAlign = 'right';
-            ctx.fillStyle = theme.textPrimary;
-            ctx.font = `bold ${plan.nameFontSize}px ${theme.fontMono}`;
+            ctx.fillStyle = rowTextColor;
+            ctx.font = `400 ${plan.nameFontSize}px ${theme.fontMono}`;
             ctx.fillText(`${row.total_points} pts`, pointsColX, pointsBaseY);
 
             rowY += rowHeight;
@@ -337,14 +332,11 @@ import type {
                 const rankFontSize = rankFontSizeFor(nameFontSize);
                 const minNameFontSize = minNameFontSizeFor(nameFontSize);
                 let totalHeight = 0;
-                const planned = rows.map((row, idx) => {
-                    const isTop = idx === 0;
-                    const fit = isTop
-                        ? fitCrownedNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody)
-                        : fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, false);
+                const planned = rows.map((row) => {
+                    const fit = fitNameToBox(ctx, row.display_name, nameAreaW, nameFontSize, minNameFontSize, theme.fontBody, false);
                     const height = fit.lines.length === 2 ? rowH * WRAP_ROWS : rowH;
                     totalHeight += height;
-                    return { fit, isTop, height };
+                    return { fit, height };
                 });
                 return { rows: planned, totalHeight, nameFontSize, rankFontSize };
             };
